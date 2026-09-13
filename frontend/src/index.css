@@ -1,0 +1,53 @@
+:root { font-family: Georgia, 'Times New Roman', serif; color: #20231f; background: #f4f0e8; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+a { color: inherit; }
+.app-shell { min-height: 100vh; display: grid; grid-template-columns: 240px 1fr; background: radial-gradient(circle at 80% 0%, #e8dcc8 0, transparent 34%), #f4f0e8; }
+.sidebar { padding: 34px 24px; border-right: 1px solid #d5cdbc; display: flex; flex-direction: column; }
+.brand { font-size: 1.25rem; font-weight: 700; letter-spacing: .02em; }
+.eyebrow { margin: 0; color: #8c4d2e; font: 700 .72rem/1.4 Arial, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
+.sidebar .eyebrow { margin-top: 8px; }
+nav { display: grid; gap: 6px; margin-top: 52px; }
+nav a, .new-debate { padding: 11px 12px; border-radius: 4px; text-decoration: none; font: 600 .9rem Arial, sans-serif; }
+nav a.active { background: #20231f; color: #f4f0e8; }
+.new-debate { margin-top: auto; background: #c8663d; color: #fff8f0; }
+.main-content { padding: clamp(36px, 8vw, 110px) clamp(24px, 8vw, 120px); }
+.page-stack { max-width: 920px; }
+h1 { max-width: 700px; margin: 16px 0 18px; font-size: clamp(3rem, 7vw, 6.6rem); line-height: .93; letter-spacing: -.04em; font-weight: 500; }
+.lede { max-width: 560px; color: #66665e; font: 1.08rem/1.6 Arial, sans-serif; }
+.api-status { color: #8c4d2e; font: 700 .72rem Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 72px; }
+.dashboard-grid article { min-height: 230px; padding: 22px; border-top: 2px solid #20231f; background: rgba(255,255,255,.28); }
+.dashboard-grid span { color: #c8663d; font: 700 .8rem Arial, sans-serif; }
+h2 { margin: 38px 0 12px; font-size: 1.65rem; font-weight: 500; }
+article p { color: #66665e; font: .9rem/1.5 Arial, sans-serif; }
+article a { display: inline-block; margin-top: 18px; color: #8c4d2e; font: 700 .8rem Arial, sans-serif; text-transform: uppercase; letter-spacing: .08em; }
+.button { margin-top: 22px; border: 0; border-radius: 3px; padding: 13px 18px; background: #20231f; color: #fff8f0; font: 700 .8rem Arial, sans-serif; cursor: pointer; }
+.button:disabled { cursor: wait; opacity: .55; }
+.button.secondary { background: #d5cdbc; color: #20231f; margin-left: 8px; }
+.button.danger { background: #8c4d2e; margin-left: 8px; }
+.auth-page { max-width: 760px; margin: 0 auto; padding-top: 5vh; }
+.auth-page h1 { font-size: clamp(3rem, 7vw, 5.5rem); }
+.form-card { display: grid; gap: 18px; max-width: 520px; margin-top: 38px; padding: 26px; border-top: 2px solid #20231f; background: rgba(255,255,255,.34); }
+.form-card.wide { max-width: 680px; }
+label { display: grid; gap: 7px; color: #66665e; font: 700 .76rem Arial, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+input, textarea, select { width: 100%; border: 1px solid #c8c0b2; border-radius: 3px; padding: 12px; background: #fffaf2; color: #20231f; font: 1rem Georgia, serif; }
+textarea { resize: vertical; }
+input:disabled { color: #8a877d; }
+.form-card p { color: #66665e; font: .9rem/1.5 Arial, sans-serif; }
+.form-actions, .inline-form { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.page-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
+.page-heading h1 { margin-bottom: 0; }
+.page-heading .button { flex-shrink: 0; }
+.loading-state, .empty-state { padding: 24px 0; color: #66665e; font: 1rem Arial, sans-serif; }
+.empty-state { border-top: 2px solid #20231f; margin-top: 36px; }
+.error-message { color: #9b3e2d !important; font: 700 .85rem Arial, sans-serif !important; }
+.success-message { color: #36705a !important; font: 700 .85rem Arial, sans-serif !important; }
+.list-stack { display: grid; gap: 10px; margin-top: 42px; }
+.list-item { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 20px; border-left: 3px solid #c8663d; background: rgba(255,255,255,.32); text-decoration: none; }
+.list-item div { display: grid; gap: 6px; }.list-item strong { font-size: 1.2rem; font-weight: 500; }.list-item span { color: #66665e; font: .75rem Arial, sans-serif; text-transform: uppercase; letter-spacing: .07em; }
+.status { padding: 6px 8px; border-radius: 3px; color: #fff8f0 !important; background: #66665e; font: 700 .68rem Arial, sans-serif !important; text-transform: uppercase; }.status-scheduled { background: #8c4d2e; }.status-active { background: #36705a; }.status-completed { background: #20231f; }.status-cancelled { background: #9b3e2d; }
+.back-link, .text-button { color: #8c4d2e; font: 700 .75rem Arial, sans-serif; text-transform: uppercase; letter-spacing: .06em; }.back-link { display: inline-block; margin-bottom: 28px; }.text-button { padding: 0; border: 0; background: none; cursor: pointer; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 52px; }.detail-panel { padding: 22px; border-top: 2px solid #20231f; background: rgba(255,255,255,.3); }.detail-panel h2 { margin-top: 14px; text-transform: capitalize; }.detail-panel > p:not(.eyebrow), .muted { color: #66665e; font: .95rem/1.55 Arial, sans-serif; }.participant-list { display: grid; gap: 9px; margin: 20px 0; }.participant { display: flex; justify-content: space-between; gap: 10px; padding-bottom: 9px; border-bottom: 1px solid #d5cdbc; font: .85rem Arial, sans-serif; }.sidebar-footer { display: grid; gap: 8px; margin-top: 22px; padding-top: 18px; border-top: 1px solid #d5cdbc; font: .82rem Arial, sans-serif; }.sidebar-footer .text-button { text-align: left; }
+@media (max-width: 720px) { .app-shell { display: block; } .sidebar { padding: 22px; border-right: 0; border-bottom: 1px solid #d5cdbc; } nav { display: flex; overflow-x: auto; margin-top: 24px; } .new-debate { margin-top: 22px; align-self: flex-start; } .main-content { padding: 48px 22px; } h1 { font-size: clamp(3rem, 16vw, 5rem); } .dashboard-grid { grid-template-columns: 1fr; margin-top: 48px; } }
+@media (max-width: 720px) { .page-heading { align-items: start; flex-direction: column; }.detail-grid { grid-template-columns: 1fr; margin-top: 36px; }.form-card { padding: 20px; }.button.secondary, .button.danger { margin-left: 0; } }

@@ -1,0 +1,9 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import api from '../services/api'
+
+const formats = ['one_on_one', 'parliamentary', 'oxford', 'policy', 'public_forum', 'ai_simulation']
+export default function CreateDebate() { const navigate = useNavigate(); const [form, setForm] = useState({ topic: '', description: '', format: formats[0], scheduled_at: '' }); const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
+  async function submit(event) { event.preventDefault(); setSaving(true); setError(''); try { const { data } = await api.post('/debates', { ...form, scheduled_at: form.scheduled_at || null }); navigate(`/debates/${data.id}`) } catch (requestError) { setError(requestError.response?.data?.detail || 'Unable to create session.') } finally { setSaving(false) } }
+  return <section className="page-stack"><p className="eyebrow">Practice / new session</p><h1>Set the room.</h1><form className="form-card wide" onSubmit={submit}><label>Topic<input required minLength="2" value={form.topic} onChange={(event) => setForm({ ...form, topic: event.target.value })} /></label><label>Format<select value={form.format} onChange={(event) => setForm({ ...form, format: event.target.value })}>{formats.map((format) => <option key={format}>{format}</option>)}</select></label><label>Scheduled at<input type="datetime-local" value={form.scheduled_at} onChange={(event) => setForm({ ...form, scheduled_at: event.target.value })} /></label><label>Description<textarea rows="4" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>{error && <p className="error-message">{error}</p>}<button className="button" disabled={saving}>{saving ? 'Creating...' : 'Create session'}</button></form></section>
+}
