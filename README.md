@@ -1,42 +1,58 @@
 # Agentic AI Debate Coach & Presentation Analysis Platform
 
-Milestone 1 establishes a clean full-stack foundation for a future debate coaching product. This milestone includes project scaffolding, PostgreSQL persistence, authentication architecture, basic user/profile/skill/debate contracts, and a responsive React shell. AI argument analysis, fallacy detection, counterargument generation, AI debate opponents, speech analysis, and presentation analytics are intentionally deferred.
+## About
 
-## Technology Stack
+This is my internship project for building a platform for debate practice and presentation skills. This README currently covers Milestone 1, which includes the basic application and the main user and debate features.
 
-- Frontend: React, Vite, JavaScript, React Router, Axios
-- Backend: FastAPI, Uvicorn, SQLAlchemy, Pydantic, PostgreSQL
-- Security: JWT foundation, Passlib bcrypt hashing
-- Migrations: Alembic
-- Development: Git, Docker Compose, VS Code
+## Milestone 1
+
+Milestone 1 covers the basic project setup, user authentication, profiles, skills, and debate sessions. It also includes the first database migration and the frontend pages for using these features.
+
+## Features
+
+- User registration, login, logout, and current-user authentication
+- Password hashing and JWT-based authentication
+- Protected routes and navigation
+- View and update user profiles
+- Add, view, update, and delete skills
+- Track skill and proficiency information
+- Create, view, update, and cancel debate sessions
+- List debate sessions and view individual debate details
+- Manage debate participants and session status
+- Login, registration, dashboard, profile, skills, and debate pages
+- Initial database migration with Alembic
+
+## Tech Stack
+
+- React and Vite for the frontend
+- Python and FastAPI for the backend
+- PostgreSQL for the database
+- SQLAlchemy and Pydantic
+- Alembic for database migrations
+- Docker Compose for running PostgreSQL locally
 
 ## Project Structure
 
 ```text
 debate-coach-platform/
-├── frontend/                  # Vite React application
-├── backend/                   # FastAPI application and Alembic
-├── docs/                      # Architecture, database, API, and wireframes
-├── docker-compose.yml         # PostgreSQL only
-├── .gitignore
+├── frontend/          # React/Vite application
+├── backend/           # FastAPI application and migrations
+├── docs/              # Project documentation
+├── docker-compose.yml # PostgreSQL container setup
 └── README.md
 ```
 
-## Prerequisites
+## How to Run
 
-Install Node.js 20+, Python 3.11+, Git, and Docker Desktop. PostgreSQL can be supplied by Docker Compose or a local PostgreSQL installation.
+The project can be run locally with PostgreSQL in Docker, the FastAPI backend, and the React frontend.
 
-## PostgreSQL Setup
-
-From the project root:
+From the project root, start PostgreSQL:
 
 ```powershell
 docker compose up -d postgres
 ```
 
-The default development connection is `postgresql://postgres:password@localhost:5432/debate_coach`. Change `POSTGRES_PASSWORD` and `DATABASE_URL` for a different credential.
-
-## Backend Setup
+In a new terminal, set up and start the backend:
 
 ```powershell
 cd backend
@@ -48,11 +64,9 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-The backend runs at http://localhost:8000.
+The backend runs at `http://localhost:8000`.
 
-## Frontend Setup
-
-In a second terminal:
+In another terminal, set up and start the frontend:
 
 ```powershell
 cd frontend
@@ -61,54 +75,8 @@ copy .env.example .env
 npm run dev
 ```
 
-The frontend runs at http://localhost:5173.
+The frontend runs at `http://localhost:5173`.
 
-## Environment Variables
+## Status
 
-Backend `.env`:
-
-```env
-DATABASE_URL=postgresql://postgres:password@localhost:5432/debate_coach
-SECRET_KEY=change_this_secret_key
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-CORS_ORIGINS=http://localhost:5173
-```
-
-Frontend `.env`:
-
-```env
-VITE_API_URL=http://localhost:8000
-```
-
-Only the example files are committed. Never commit real credentials or `.env` files.
-
-## Database Migrations
-
-The initial migration is included. Apply it with:
-
-```powershell
-cd backend
-alembic upgrade head
-```
-
-After changing SQLAlchemy models, generate a migration and apply it:
-
-```powershell
-alembic revision --autogenerate -m "describe schema change"
-alembic upgrade head
-```
-
-## API Documentation
-
-Once the backend is running, FastAPI provides Swagger UI at http://localhost:8000/docs and ReDoc at http://localhost:8000/redoc. Health checks are available at `/` and `/health`.
-
-## Milestone 1 Scope
-
-Included: modular backend and frontend structure, PostgreSQL database foundation, initial schema and migration, JWT/password security utilities, role dependency foundation, auth endpoints, basic profile and skill endpoints, debate CRUD and participant endpoints, Axios configuration, and placeholder UI routes.
-
-Not included: AI argument analysis, fallacy detection, counterargument generation, AI debate opponent, speech analysis, presentation analytics, or advanced coaching workflows.
-
-## Future Milestones
-
-Later milestones can add domain services and UI on top of these stable contracts without changing the initial project layout.
+Milestone 1 is completed. The implemented application, authentication, profile management, skill tracking, and debate-session management are working locally.
