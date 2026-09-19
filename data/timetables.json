@@ -1,0 +1,186 @@
+{
+  "stations": [
+    "Thiruvananthapuram Central",
+    "Attingal",
+    "Kollam",
+    "Kottarakkara",
+    "Pathanamthitta",
+    "Thiruvalla",
+    "Alappuzha",
+    "Kayamkulam",
+    "Changanassery",
+    "Kottayam",
+    "Pala",
+    "Ernakulam / Kochi",
+    "Muvattupuzha",
+    "Perumbavoor",
+    "Munnar",
+    "Kattappana",
+    "Thrissur",
+    "Chalakudy",
+    "Palakkad",
+    "Malappuram",
+    "Perinthalmanna",
+    "Kozhikode",
+    "Vadakara",
+    "Sulthan Bathery",
+    "Kalpetta",
+    "Kannur",
+    "Thalassery",
+    "Kasaragod",
+    "Kanhangad",
+    "Nagercoil"
+  ],
+  "trips": [
+    {
+      "id": "TRIP-TVM-EKM-0530",
+      "origin": "Thiruvananthapuram Central",
+      "dest": "Ernakulam / Kochi",
+      "departureTime": "05:30",
+      "arrivalTime": "10:00",
+      "serviceClass": "Super Fast",
+      "busNo": "KL-15 X 1420",
+      "capacityKg": 250
+    },
+    {
+      "id": "TRIP-TVM-EKM-0715",
+      "origin": "Thiruvananthapuram Central",
+      "dest": "Ernakulam / Kochi",
+      "departureTime": "07:15",
+      "arrivalTime": "11:30",
+      "serviceClass": "Swift Deluxe",
+      "busNo": "KL-15 Z 8841",
+      "capacityKg": 300
+    },
+    {
+      "id": "TRIP-TVM-CLT-0800",
+      "origin": "Thiruvananthapuram Central",
+      "dest": "Kozhikode",
+      "departureTime": "08:00",
+      "arrivalTime": "17:30",
+      "serviceClass": "Garuda Volvo",
+      "busNo": "KL-15 V 9901",
+      "capacityKg": 350
+    },
+    {
+      "id": "TRIP-TVM-KTM-0645",
+      "origin": "Thiruvananthapuram Central",
+      "dest": "Kottayam",
+      "departureTime": "06:45",
+      "arrivalTime": "10:15",
+      "serviceClass": "Fast Passenger",
+      "busNo": "KL-15 F 2311",
+      "capacityKg": 200
+    },
+    {
+      "id": "TRIP-QLN-EKM-0615",
+      "origin": "Kollam",
+      "dest": "Ernakulam / Kochi",
+      "departureTime": "06:15",
+      "arrivalTime": "09:30",
+      "serviceClass": "Super Express",
+      "busNo": "KL-02 AQ 4421",
+      "capacityKg": 220
+    },
+    {
+      "id": "TRIP-ALP-EKM-0830",
+      "origin": "Alappuzha",
+      "dest": "Ernakulam / Kochi",
+      "departureTime": "08:30",
+      "arrivalTime": "10:00",
+      "serviceClass": "Ordinary",
+      "busNo": "KL-04 Y 1092",
+      "capacityKg": 180
+    },
+    {
+      "id": "TRIP-EKM-TCR-0700",
+      "origin": "Ernakulam / Kochi",
+      "dest": "Thrissur",
+      "departureTime": "07:00",
+      "arrivalTime": "08:45",
+      "serviceClass": "Fast Passenger",
+      "busNo": "KL-07 CC 3012",
+      "capacityKg": 220
+    },
+    {
+      "id": "TRIP-EKM-CLT-0915",
+      "origin": "Ernakulam / Kochi",
+      "dest": "Kozhikode",
+      "departureTime": "09:15",
+      "arrivalTime": "14:30",
+      "serviceClass": "Super Fast",
+      "busNo": "KL-07 AX 4821",
+      "capacityKg": 250
+    },
+    {
+      "id": "TRIP-EKM-MNR-0600",
+      "origin": "Ernakulam / Kochi",
+      "dest": "Munnar",
+      "departureTime": "06:00",
+      "arrivalTime": "10:30",
+      "serviceClass": "Super Express",
+      "busNo": "KL-07 BX 7710",
+      "capacityKg": 200
+    },
+    {
+      "id": "TRIP-TCR-PKD-0815",
+      "origin": "Thrissur",
+      "dest": "Palakkad",
+      "departureTime": "08:15",
+      "arrivalTime": "10:00",
+      "serviceClass": "Fast Passenger",
+      "busNo": "KL-08 AG 1188",
+      "capacityKg": 200
+    },
+    {
+      "id": "TRIP-CLT-KNR-1000",
+      "origin": "Kozhikode",
+      "dest": "Kannur",
+      "departureTime": "10:00",
+      "arrivalTime": "12:30",
+      "serviceClass": "Super Fast",
+      "busNo": "KL-11 BD 9002",
+      "capacityKg": 250
+    },
+    {
+      "id": "TRIP-CLT-SBY-0730",
+      "origin": "Kozhikode",
+      "dest": "Sulthan Bathery",
+      "departureTime": "07:30",
+      "arrivalTime": "10:45",
+      "serviceClass": "Fast Passenger",
+      "busNo": "KL-11 AW 5514",
+      "capacityKg": 220
+    },
+    {
+      "id": "TRIP-KNR-KSG-1100",
+      "origin": "Kannur",
+      "dest": "Kasaragod",
+      "departureTime": "11:00",
+      "arrivalTime": "13:15",
+      "serviceClass": "Super Fast",
+      "busNo": "KL-13 AC 8820",
+      "capacityKg": 240
+    },
+    {
+      "id": "TRIP-KTM-TVM-1400",
+      "origin": "Kottayam",
+      "dest": "Thiruvananthapuram Central",
+      "departureTime": "14:00",
+      "arrivalTime": "17:30",
+      "serviceClass": "Super Fast",
+      "busNo": "KL-05 AW 3310",
+      "capacityKg": 250
+    },
+    {
+      "id": "TRIP-EKM-TVM-1630",
+      "origin": "Ernakulam / Kochi",
+      "dest": "Thiruvananthapuram Central",
+      "departureTime": "16:30",
+      "arrivalTime": "21:00",
+      "serviceClass": "Garuda Volvo",
+      "busNo": "KL-15 V 9904",
+      "capacityKg": 350
+    }
+  ]
+}
