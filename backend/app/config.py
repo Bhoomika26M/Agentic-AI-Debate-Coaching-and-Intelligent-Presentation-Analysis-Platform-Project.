@@ -6,8 +6,10 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
     access_token_expire_minutes: int = 1440
     allow_origins: str = "http://localhost:3000,http://localhost:8000"
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.8-flash"
+    openrouter_api_key: str = ""
+    openrouter_model: str = "openai/gpt-4o-mini"
+    openrouter_site_url: str = "http://localhost:8000"
+    openrouter_app_name: str = "ArgueWell"
     upload_dir: str = "uploads"
     max_upload_size_mb: int = 100
     whisper_model: str = ""
@@ -18,8 +20,8 @@ class Settings(BaseSettings):
         return [x.strip() for x in self.allow_origins.split(",") if x.strip()]
 
     @property
-    def gemini_enabled(self) -> bool:
-        return bool(self.gemini_api_key.strip())
+    def openrouter_enabled(self) -> bool:
+        return bool(self.openrouter_api_key.strip())
 
 
 settings = Settings()

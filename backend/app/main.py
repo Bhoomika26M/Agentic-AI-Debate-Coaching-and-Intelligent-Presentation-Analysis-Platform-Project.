@@ -153,7 +153,7 @@ def counterarguments(session_id: int, payload: CounterargumentRequest, user: Use
 
 @app.post("/api/debate/turn")
 def debate_turn(payload: DebateTurnRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Persist a multi-turn simulation; Gemini is optional and never required."""
+    """Persist a multi-turn simulation; OpenRouter is optional with a local fallback."""
     session = db.get(DebateSession, payload.session_id) if payload.session_id else None
     if session and session.user_id != user.id: raise HTTPException(404, "Simulation not found")
     if not session:
