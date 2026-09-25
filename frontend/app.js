@@ -26,12 +26,18 @@ async function login() {
 }
 async function register() {
   try {
+    const nameValue = fieldValue("name");
+    const emailValue = fieldValue("email");
+    const passwordValue = document.getElementById("password").value;
+    if (!nameValue || !emailValue || passwordValue.length < 8) {
+      throw new Error("Enter a name, a valid email, and a password with at least 8 characters.");
+    }
     save(await api("/auth/register", {
       method: "POST",
       body: JSON.stringify({
-        name: fieldValue("name"),
-        email: fieldValue("email"),
-        password: document.getElementById("password").value
+        name: nameValue,
+        email: emailValue,
+        password: passwordValue
       })
     }));
   } catch (e) { document.getElementById("err").innerHTML = `<div class="alert">${e.message}</div>`; }
