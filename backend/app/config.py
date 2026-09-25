@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 1440
     allow_origins: str = "http://localhost:3000,http://localhost:8000"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-3.8-flash"
     upload_dir: str = "uploads"
     max_upload_size_mb: int = 100
     whisper_model: str = ""
