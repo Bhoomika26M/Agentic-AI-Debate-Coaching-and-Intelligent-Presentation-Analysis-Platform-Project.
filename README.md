@@ -7,7 +7,7 @@ ArgueWell is a runnable MVP for practicing debate and presentation skills. It co
 - **Backend:** FastAPI, SQLAlchemy, Pydantic, JWT authentication
 - **Frontend:** responsive static app (vanilla JavaScript and CSS) served by FastAPI
 - **Storage:** SQLite by default; PostgreSQL-ready through `DATABASE_URL`
-- **Analysis:** deterministic, explainable baseline analyzer designed to be replaceable with an LLM/audio pipeline
+- **Analysis:** Gemini provider (opt-in via local environment) with deterministic fallback, plus a LangGraph-compatible simulation
 
 ## Run locally
 
@@ -37,6 +37,9 @@ Open http://localhost:8000. API documentation is available at http://localhost:8
 - `POST /api/presentations/analyze` and `POST /api/presentation-analysis`
 - `GET /api/sessions/{id}/export?format=json|csv`
 - `GET /api/health`
+- `POST /api/debate/turn` - stateful debate turn (LangGraph when installed, local fallback otherwise)
+- `POST /api/media/upload`, `GET /api/media` - validated audio/video uploads and transcript analysis
+- `GET /api/role-dashboard` - role-aware capability and progress view
 
 All session, profile, dashboard, and report routes require a bearer token returned by the authentication endpoints.
 
@@ -59,4 +62,17 @@ pytest -q
 
 The backend source lives in `backend/app/`, the frontend source lives in `frontend/`, and tests live in `tests/`.
 
-The MVP intentionally keeps analysis local and transparent. A production evolution can add audio upload/transcription, richer claim extraction, background jobs, and an LLM provider behind the `analyze_transcript` interface.
+### AI and media behavior
+
+Set `GEMINI_API_KEY` only in the local environment or deployment secret store; it is
+never committed or returned by the API. The provider automatically falls back to
+the explainable local analyzer if the key is absent or Gemini is unavailable.
+Uploads accept supported audio/video MIME types up to `MAX_UPLOAD_SIZE_MB` and
+store metadata locally. A supplied transcript is analyzed immediately; actual
+speech-to-text can be connected as a background worker without changing the API.
+Install `langgraph` separately when desired—the debate endpoint remains usable
+without it.
+
+Render deployment can use the included `render.yaml`. For production media,
+configure object storage and PostgreSQL by setting `DATABASE_URL`; local SQLite
+and filesystem storage remain the default for development.

@@ -1,7 +1,9 @@
 import json
 import csv
 import io
-from fastapi import Depends, FastAPI, HTTPException
+from pathlib import Path
+from uuid import uuid4
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -10,9 +12,11 @@ from sqlalchemy.orm import Session
 from .analysis import analyze_transcript, serial_analysis
 from .config import settings
 from .db import Base, engine, get_db
-from .models import Analysis, DebateSession, User
+from .models import Analysis, DebateSession, MediaAsset, User
+from .provider import provider
+from .debate_graph import simulate_turn
 from .schemas import (CounterargumentRequest, PresentationCreate, ProfileUpdate, SessionCreate,
-                      SessionOut, Token, UserCreate, UserLogin, UserOut)
+                      SessionOut, Token, UserCreate, UserLogin, UserOut, DebateTurnRequest)
 from .security import current_user, hash_password, make_token, verify_password
 
 Base.metadata.create_all(bind=engine)
@@ -53,7 +57,7 @@ def profile(payload: ProfileUpdate, user: User = Depends(current_user), db: Sess
 @app.post("/api/sessions", response_model=SessionOut, status_code=201)
 def create_session(payload: SessionCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
     session = DebateSession(user_id=user.id, title=payload.title, topic=payload.topic, position=payload.position, transcript=payload.transcript)
-    result = analyze_transcript(payload.transcript, payload.topic, payload.position, payload.scoring_weights)
+    result = provider.analyze(payload.transcript, payload.topic, payload.position, payload.scoring_weights)
     session.overall_score = result["overall_score"]; db.add(session); db.flush()
     db.add(Analysis(session_id=session.id, clarity=result["clarity"], evidence=result["evidence"], persuasiveness=result["persuasiveness"], delivery=result["delivery"], fallacies=json.dumps(result["fallacies"]), counterarguments=json.dumps(result["counterarguments"]), recommendations=json.dumps(result["recommendations"]), pacing_wpm=result["pacing_wpm"], filler_words=result["filler_words"]))
     db.commit(); db.refresh(session); return session
@@ -106,6 +110,73 @@ def counterarguments(session_id: int, payload: CounterargumentRequest, user: Use
     if not session: raise HTTPException(404, "Session not found")
     return {"claim": payload.claim, "counterargument": f"A strong opponent could challenge '{payload.claim}' by asking for its evidence, scope, and trade-offs.",
             "coaching_prompt": "Steelman that objection, then answer it with one source and one concrete example."}
+
+
+@app.post("/api/debate/turn")
+def debate_turn(payload: DebateTurnRequest, user: User = Depends(current_user)):
+    """Stateful simulation endpoint; uses LangGraph when installed, local fallback otherwise."""
+    result = simulate_turn({"topic": payload.topic, "position": payload.position,
+                            "transcript": payload.transcript, "turn": payload.turn, "messages": []})
+    return {"topic": payload.topic, "position": payload.position, "turn": result["turn"],
+            "response": result["response"], "engine": "langgraph-compatible"}
+
+
+@app.get("/api/role-dashboard")
+def role_dashboard(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Role-aware dashboard foundation without exposing other users' private work."""
+    base = dashboard(user, db)
+    actions = {
+        "learner": ["practice_debate", "upload_presentation"],
+        "debate_coach": ["review_progress", "assign_drill"],
+        "educator": ["review_progress", "compare_cohorts"],
+        "administrator": ["manage_users", "review_system_health"],
+    }
+    return {"role": user.role, "capabilities": actions.get(user.role, actions["learner"]), "dashboard": base}
+
+
+ALLOWED_MEDIA = {
+    "audio": {"audio/mpeg", "audio/wav", "audio/x-wav", "audio/webm", "audio/ogg"},
+    "video": {"video/mp4", "video/webm", "video/quicktime"},
+}
+
+
+@app.post("/api/media/upload")
+async def upload_media(file: UploadFile = File(...), transcript: str = Form(""),
+                       topic: str = Form("Presentation upload"), position: str = Form("for"),
+                       user: User = Depends(current_user), db: Session = Depends(get_db)):
+    content_type = (file.content_type or "").lower()
+    media_type = next((kind for kind, types in ALLOWED_MEDIA.items() if content_type in types), None)
+    if not media_type:
+        raise HTTPException(415, "Only supported audio or video files can be uploaded")
+    max_bytes = settings.max_upload_size_mb * 1024 * 1024
+    data = await file.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise HTTPException(413, f"File exceeds {settings.max_upload_size_mb} MB limit")
+    extension = Path(file.filename or "").suffix.lower()
+    safe_name = f"{uuid4().hex}{extension}"
+    upload_root = Path(settings.upload_dir)
+    upload_root.mkdir(parents=True, exist_ok=True)
+    destination = upload_root / safe_name
+    destination.write_bytes(data)
+    transcript = transcript[:30000]
+    analysis = provider.analyze(transcript, topic, position) if transcript else {}
+    asset = MediaAsset(user_id=user.id, filename=file.filename or safe_name, stored_path=str(destination),
+                       media_type=media_type, content_type=content_type, size_bytes=len(data),
+                       transcript=transcript, analysis_json=json.dumps(analysis),
+                       status="analyzed" if transcript else "awaiting_transcript")
+    db.add(asset); db.commit(); db.refresh(asset)
+    return {"id": asset.id, "filename": asset.filename, "media_type": media_type,
+            "content_type": content_type, "size_bytes": asset.size_bytes, "status": asset.status,
+            "transcript_available": bool(transcript), "analysis": analysis,
+            "message": "Upload stored. Add a transcript to run deterministic or Gemini analysis."
+            if not transcript else "Upload analyzed."}
+
+
+@app.get("/api/media")
+def list_media(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    assets = db.query(MediaAsset).filter_by(user_id=user.id).order_by(desc(MediaAsset.created_at)).limit(50).all()
+    return [{"id": a.id, "filename": a.filename, "media_type": a.media_type, "content_type": a.content_type,
+             "size_bytes": a.size_bytes, "status": a.status, "created_at": a.created_at} for a in assets]
 
 
 @app.get("/api/coaching/plan")

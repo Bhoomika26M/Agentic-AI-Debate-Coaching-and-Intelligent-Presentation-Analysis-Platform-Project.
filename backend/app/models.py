@@ -45,3 +45,18 @@ class Analysis(Base):
     pacing_wpm: Mapped[float] = mapped_column(Float, default=0)
     filler_words: Mapped[int] = mapped_column(Integer, default=0)
     session = relationship("DebateSession", back_populates="analyses")
+
+
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    stored_path: Mapped[str] = mapped_column(String(500))
+    media_type: Mapped[str] = mapped_column(String(30))
+    content_type: Mapped[str] = mapped_column(String(120))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    transcript: Mapped[str] = mapped_column(Text, default="")
+    analysis_json: Mapped[str] = mapped_column(Text, default="{}")
+    status: Mapped[str] = mapped_column(String(30), default="analyzed")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

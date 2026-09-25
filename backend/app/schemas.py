@@ -62,3 +62,10 @@ class SessionOut(BaseModel):
 class ProfileUpdate(BaseModel):
     name: str | None = None
     bio: str | None = None
+
+
+class DebateTurnRequest(BaseModel):
+    topic: str = Field(min_length=3, max_length=500)
+    position: str = Field(default="for", pattern="^(for|against)$")
+    transcript: str = Field(default="", max_length=30000)
+    turn: int = Field(default=0, ge=0)
