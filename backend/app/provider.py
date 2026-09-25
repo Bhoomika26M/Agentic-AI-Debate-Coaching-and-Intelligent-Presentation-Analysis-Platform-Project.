@@ -59,5 +59,24 @@ class AnalysisProvider:
             baseline["ai_insights"] = ai
         return baseline
 
+    def debate_response(self, topic: str, position: str, transcript: str, turn_type: str) -> tuple[str, str]:
+        """Return a debate response and provider name, falling back safely when Gemini is unavailable."""
+        if self.gemini.available:
+            try:
+                prompt = (f"Respond as a rigorous debate coach. Topic: {topic}. Position: {position}. "
+                          f"Turn type: {turn_type}. Prior turns: {transcript}. Return one concise challenge.")
+                url = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s" % (
+                    quote(self.gemini.model), quote(self.gemini.api_key))
+                request = Request(url, data=json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode(),
+                                  headers={"Content-Type": "application/json"}, method="POST")
+                with urlopen(request, timeout=20) as response:
+                    body = json.loads(response.read().decode())
+                return body["candidates"][0]["content"]["parts"][0]["text"], "gemini"
+            except Exception:
+                pass
+        return (f"An opponent would challenge your {position} position on {topic}. "
+                "What evidence supports your strongest claim, and what trade-off would you accept?",
+                "deterministic_fallback")
+
 
 provider = AnalysisProvider()

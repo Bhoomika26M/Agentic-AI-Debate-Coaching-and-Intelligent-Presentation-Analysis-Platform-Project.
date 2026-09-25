@@ -29,7 +29,7 @@ Open http://localhost:8000. API documentation is available at http://localhost:8
 ## API highlights
 
 - `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`
-- `PATCH /api/profile`
+- `GET/PATCH /api/profile` - profile, experience, topics, domains, goals, preferences, and tracked skills
 - `POST /api/sessions` - analyze a transcript and persist a session
 - `GET /api/sessions`, `GET /api/sessions/{id}`, `GET /api/sessions/{id}/report`
 - `GET /api/dashboard`
@@ -37,11 +37,16 @@ Open http://localhost:8000. API documentation is available at http://localhost:8
 - `POST /api/presentations/analyze` and `POST /api/presentation-analysis`
 - `GET /api/sessions/{id}/export?format=json|csv`
 - `GET /api/health`
-- `POST /api/debate/turn` - stateful debate turn (LangGraph when installed, local fallback otherwise)
+- `POST /api/debate/turn` - persistent multi-turn opening/challenge/rebuttal/final evaluation
 - `POST /api/media/upload`, `GET /api/media` - validated audio/video uploads and transcript analysis
 - `GET /api/role-dashboard` - role-aware capability and progress view
+- `PATCH /api/admin/users/{id}/role`, `GET /api/admin/users` - administrator-only role management
 
 All session, profile, dashboard, and report routes require a bearer token returned by the authentication endpoints.
+
+Roles are `learner`, `debate_coach`, `educator`, and `administrator`. New accounts are
+learners; only administrators can change roles. Debate turns use Gemini when
+`GEMINI_API_KEY` is set, otherwise the deterministic local fallback is persisted.
 
 ## Docker deployment
 

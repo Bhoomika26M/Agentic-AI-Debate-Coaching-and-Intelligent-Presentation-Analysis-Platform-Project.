@@ -4,11 +4,14 @@ import re
 from collections import Counter
 
 FALLACY_PATTERNS = {
-    "ad hominem": r"\b(stupid|idiot|ignorant|uneducated)\b",
-    "false dilemma": r"\b(only two choices|either .* or nothing|with us or against us)\b",
-    "hasty generalization": r"\b(always|never|everyone|no one)\b",
-    "appeal to authority": r"\b(expert says|because .* said so)\b",
-    "slippery slope": r"\b(if we .* then .* (disaster|chaos|nothing will stop))\b",
+    "ad hominem": (r"\b(stupid|idiot|ignorant|uneducated)\b", "Address the claim, not the person."),
+    "false dilemma": (r"\b(only two choices|either .* or nothing|with us or against us)\b", "Name additional options and trade-offs."),
+    "hasty generalization": (r"\b(always|never|everyone|no one)\b", "Qualify the claim and add representative evidence."),
+    "appeal to authority": (r"\b(expert says|because .* said so)\b", "Explain the evidence rather than relying on status."),
+    "slippery slope": (r"\b(if we .* then .* (disaster|chaos|nothing will stop))\b", "Show the causal steps and their likelihood."),
+    "straw man": (r"\b(they (want|believe) .* (nothing|everything|all)\b)", "Restate the strongest version of the opposing view."),
+    "circular reasoning": (r"\b(because it is true|true because|proves itself)\b", "Supply an independent premise or source."),
+    "red herring": (r"\b(irrelevant|besides the point|what about)\b", "Return to the question and connect evidence to the claim."),
 }
 FILLERS = re.compile(r"\b(um+|uh+|like|you know|basically|actually)\b", re.I)
 EVIDENCE = ("study", "data", "research", "source", "evidence", "according", "%", "survey", "example")
@@ -42,8 +45,9 @@ def analyze_transcript(text: str, topic: str, position: str, weights: dict | Non
     arguments = extract_arguments(text)
     fallacies = [
         {"type": name, "excerpt": next((s for s in sentences if re.search(pattern, s, re.I)), text[:140]),
-         "severity": "high" if name in ("ad hominem", "false dilemma") else "medium"}
-        for name, pattern in FALLACY_PATTERNS.items() if re.search(pattern, lower)
+         "severity": "high" if name in ("ad hominem", "false dilemma") else "medium",
+         "explanation": FALLACY_PATTERNS[name][1], "correction": FALLACY_PATTERNS[name][1]}
+        for name, (pattern, _) in FALLACY_PATTERNS.items() if re.search(pattern, lower)
     ]
     evidence_terms = sum(lower.count(x) for x in EVIDENCE)
     reasoning_terms = sum(lower.count(x) for x in REASONING)
@@ -58,8 +62,10 @@ def analyze_transcript(text: str, topic: str, position: str, weights: dict | Non
     weights = {**default_weights, **(weights or {})}
     total = sum(weights.get(k, 0) * v for k, v in {"clarity": clarity, "evidence": evidence_score, "persuasiveness": persuasiveness, "delivery": delivery}.items())
     counter = [
-        {"claim": f"Opposing view on {topic}", "response": f"Address the strongest {('against' if position == 'for' else 'for')} case with evidence and a specific trade-off.", "strategy": "steelman"},
-        {"claim": "What would change your mind?", "response": "Name a measurable condition or source that could update your position.", "strategy": "falsifiability"},
+        {"type": "steelman", "claim": f"Opposing view on {topic}", "response": f"Address the strongest {('against' if position == 'for' else 'for')} case with evidence and a specific trade-off.", "strategy": "steelman"},
+        {"type": "falsifiability", "claim": "What would change your mind?", "response": "Name a measurable condition or source that could update your position.", "strategy": "falsifiability"},
+        {"type": "reframe", "claim": "Can this claim be scoped more precisely?", "response": "Define the audience, time horizon, and constraints before defending it.", "strategy": "scope"},
+        {"type": "evidence_request", "claim": "What is your strongest supporting evidence?", "response": "Cite a source and explain why it applies to this context.", "strategy": "evidence"},
     ]
     recommendations = ["Lead with a one-sentence thesis, then signpost your two strongest reasons.",
                        "Support each key claim with a concrete source, example, or measurable outcome."]

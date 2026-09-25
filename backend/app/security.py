@@ -36,3 +36,11 @@ def current_user(token: str = Depends(oauth2), db: Session = Depends(get_db)) ->
     if not user:
         raise error
     return user
+
+
+def require_roles(*roles):
+    def dependency(user: User = Depends(current_user)) -> User:
+        if user.role not in roles:
+            raise HTTPException(status_code=403, detail="Insufficient role")
+        return user
+    return dependency

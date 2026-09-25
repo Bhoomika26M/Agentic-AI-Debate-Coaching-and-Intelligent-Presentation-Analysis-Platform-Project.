@@ -7,19 +7,33 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, inspect, text
 from sqlalchemy.orm import Session
 from .analysis import analyze_transcript, serial_analysis
 from .config import settings
 from .db import Base, engine, get_db
-from .models import Analysis, DebateSession, MediaAsset, User
+from .models import Analysis, DebateSession, DebateTurn, MediaAsset, User
 from .provider import provider
 from .debate_graph import simulate_turn
 from .schemas import (CounterargumentRequest, PresentationCreate, ProfileUpdate, SessionCreate,
-                      SessionOut, Token, UserCreate, UserLogin, UserOut, DebateTurnRequest)
-from .security import current_user, hash_password, make_token, verify_password
+                      SessionOut, Token, UserCreate, UserLogin, UserOut, DebateTurnRequest, RoleUpdate)
+from .security import current_user, hash_password, make_token, verify_password, require_roles
 
 Base.metadata.create_all(bind=engine)
+# create_all does not add columns to an existing SQLite database used by local installs.
+with engine.begin() as connection:
+    columns = {c["name"] for c in inspect(engine).get_columns("users")}
+    additions = {
+        "experience_level": "VARCHAR(30) DEFAULT 'beginner'",
+        "preferred_debate_topics": "TEXT DEFAULT '[]'",
+        "presentation_domains": "TEXT DEFAULT '[]'",
+        "learning_goals": "TEXT DEFAULT '[]'",
+        "coaching_preferences": "TEXT DEFAULT '{}'",
+        "tracked_skills": "TEXT DEFAULT '{}'",
+    }
+    for name, definition in additions.items():
+        if name not in columns:
+            connection.execute(text(f"ALTER TABLE users ADD COLUMN {name} {definition}"))
 app = FastAPI(title="Debate Coach API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -51,7 +65,32 @@ def me(user: User = Depends(current_user)): return user
 def profile(payload: ProfileUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)):
     if payload.name is not None: user.name = payload.name
     if payload.bio is not None: user.bio = payload.bio
+    for field in ("experience_level", "preferred_debate_topics", "presentation_domains", "learning_goals", "coaching_preferences", "tracked_skills"):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(user, field, json.dumps(value) if isinstance(value, (list, dict)) else value)
     db.commit(); db.refresh(user); return user
+
+
+@app.get("/api/profile", response_model=UserOut)
+def get_profile(user: User = Depends(current_user)): return user
+
+
+@app.patch("/api/admin/users/{user_id}/role", response_model=UserOut)
+def update_role(user_id: int, payload: RoleUpdate, admin: User = Depends(require_roles("administrator")),
+                db: Session = Depends(get_db)):
+    target = db.get(User, user_id)
+    if not target: raise HTTPException(404, "User not found")
+    if target.id == admin.id and payload.role != "administrator":
+        raise HTTPException(400, "Administrators cannot remove their own administrator role")
+    target.role = payload.role
+    db.commit(); db.refresh(target)
+    return target
+
+
+@app.get("/api/admin/users")
+def list_users(admin: User = Depends(require_roles("administrator")), db: Session = Depends(get_db)):
+    return [UserOut.model_validate(item) for item in db.query(User).order_by(User.id).all()]
 
 
 @app.post("/api/sessions", response_model=SessionOut, status_code=201)
@@ -113,12 +152,37 @@ def counterarguments(session_id: int, payload: CounterargumentRequest, user: Use
 
 
 @app.post("/api/debate/turn")
-def debate_turn(payload: DebateTurnRequest, user: User = Depends(current_user)):
-    """Stateful simulation endpoint; uses LangGraph when installed, local fallback otherwise."""
-    result = simulate_turn({"topic": payload.topic, "position": payload.position,
-                            "transcript": payload.transcript, "turn": payload.turn, "messages": []})
-    return {"topic": payload.topic, "position": payload.position, "turn": result["turn"],
-            "response": result["response"], "engine": "langgraph-compatible"}
+def debate_turn(payload: DebateTurnRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Persist a multi-turn simulation; Gemini is optional and never required."""
+    session = db.get(DebateSession, payload.session_id) if payload.session_id else None
+    if session and session.user_id != user.id: raise HTTPException(404, "Simulation not found")
+    if not session:
+        session = DebateSession(user_id=user.id, title=f"Debate: {payload.topic}", topic=payload.topic,
+                                position=payload.position, status="active", transcript="")
+        db.add(session); db.flush()
+    existing = db.query(DebateTurn).filter_by(session_id=session.id).count()
+    turn_number = existing + 1
+    prior = "\n".join(t.content for t in session.turns)
+    state = {"topic": session.topic, "position": session.position, "transcript": prior,
+             "turn": existing, "messages": []}
+    response, engine = provider.debate_response(session.topic, session.position, prior, payload.turn_type)
+    if engine == "deterministic_fallback":
+        response = simulate_turn(state)["response"]
+    if payload.content:
+        db.add(DebateTurn(session_id=session.id, turn_number=turn_number, speaker="learner",
+                          turn_type=payload.turn_type, content=payload.content, evaluation=json.dumps({"engine": engine})))
+        session.transcript = (session.transcript + "\n" + payload.content).strip()
+        if payload.turn_type == "final_evaluation":
+            session.status = "completed"
+    db.add(DebateTurn(session_id=session.id, turn_number=turn_number + (1 if payload.content else 0),
+                      speaker="coach", turn_type="final_evaluation" if payload.turn_type == "final_evaluation" else "challenge",
+                      content=response, evaluation=json.dumps({"engine": engine})))
+    db.commit(); db.refresh(session)
+    return {"session_id": session.id, "topic": session.topic, "position": session.position,
+            "turn": turn_number, "response": response, "engine": engine,
+            "status": session.status,
+            "turns": [{"turn_number": t.turn_number, "speaker": t.speaker, "turn_type": t.turn_type,
+                       "content": t.content} for t in session.turns]}
 
 
 @app.get("/api/role-dashboard")

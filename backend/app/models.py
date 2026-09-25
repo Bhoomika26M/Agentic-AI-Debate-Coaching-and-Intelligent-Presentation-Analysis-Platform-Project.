@@ -12,6 +12,12 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(120))
     bio: Mapped[str] = mapped_column(Text, default="")
     role: Mapped[str] = mapped_column(String(30), default="learner")
+    experience_level: Mapped[str] = mapped_column(String(30), default="beginner")
+    preferred_debate_topics: Mapped[str] = mapped_column(Text, default="[]")
+    presentation_domains: Mapped[str] = mapped_column(Text, default="[]")
+    learning_goals: Mapped[str] = mapped_column(Text, default="[]")
+    coaching_preferences: Mapped[str] = mapped_column(Text, default="{}")
+    tracked_skills: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     sessions = relationship("DebateSession", back_populates="user", cascade="all, delete-orphan")
 
@@ -29,6 +35,20 @@ class DebateSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     user = relationship("User", back_populates="sessions")
     analyses = relationship("Analysis", back_populates="session", cascade="all, delete-orphan")
+    turns = relationship("DebateTurn", back_populates="session", cascade="all, delete-orphan")
+
+
+class DebateTurn(Base):
+    __tablename__ = "debate_turns"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("debate_sessions.id"), index=True)
+    turn_number: Mapped[int] = mapped_column(Integer)
+    speaker: Mapped[str] = mapped_column(String(20))
+    turn_type: Mapped[str] = mapped_column(String(30), default="challenge")
+    content: Mapped[str] = mapped_column(Text)
+    evaluation: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    session = relationship("DebateSession", back_populates="turns")
 
 
 class Analysis(Base):
