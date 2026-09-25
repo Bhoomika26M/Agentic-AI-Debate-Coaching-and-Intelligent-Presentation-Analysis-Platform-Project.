@@ -17,7 +17,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 Copy-Item .env.example .env
-uvicorn app.main:app --reload
+uvicorn backend.app.main:app --reload
 ```
 
 Open http://localhost:8000. API documentation is available at http://localhost:8000/docs.
@@ -56,5 +56,7 @@ The container serves the API and static frontend on port 8000. Back up the
 ```powershell
 pytest -q
 ```
+
+The backend source lives in `backend/app/`, the frontend source lives in `frontend/`, and tests live in `tests/`.
 
 The MVP intentionally keeps analysis local and transparent. A production evolution can add audio upload/transcription, richer claim extraction, background jobs, and an LLM provider behind the `analyze_transcript` interface.
