@@ -1,17 +1,18 @@
-"""OpenRouter AI provider boundary with a deterministic local fallback."""
+"""Groq AI provider boundary with a deterministic local fallback."""
 import json
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .analysis import analyze_transcript
 from .config import settings
 
 
-class OpenRouterProvider:
-    name = "openrouter"
+class GroqProvider:
+    name = "groq"
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
-        self.api_key = (api_key or settings.openrouter_api_key).strip()
-        self.model = model or settings.openrouter_model
+        self.api_key = (api_key or settings.groq_api_key).strip()
+        self.model = model or settings.groq_model
 
     @property
     def available(self) -> bool:
@@ -19,9 +20,9 @@ class OpenRouterProvider:
 
     def _complete(self, prompt: str) -> str:
         if not self.available:
-            raise RuntimeError("OpenRouter is not configured")
+            raise RuntimeError("Groq is not configured")
         request = Request(
-            "https://openrouter.ai/api/v1/chat/completions",
+            "https://api.groq.com/openai/v1/chat/completions",
             data=json.dumps({
                 "model": self.model,
                 "messages": [{"role": "user", "content": prompt}],
@@ -29,9 +30,7 @@ class OpenRouterProvider:
             }).encode(),
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-                "HTTP-Referer": settings.openrouter_site_url,
-                "X-Title": settings.openrouter_app_name,
+                "Authorization": "Bearer " + self.api_key,
             },
             method="POST",
         )
@@ -49,7 +48,7 @@ class OpenRouterProvider:
         try:
             return json.loads(text.removeprefix("```json").removesuffix("```").strip())
         except (json.JSONDecodeError, KeyError, IndexError) as exc:
-            raise RuntimeError("OpenRouter returned invalid analysis JSON") from exc
+            raise RuntimeError("Groq returned invalid analysis JSON") from exc
 
     def debate_response(self, topic: str, position: str, transcript: str, turn_type: str) -> str:
         prompt = (
@@ -63,10 +62,10 @@ class OpenRouterProvider:
 
 
 class AnalysisProvider:
-    """Use OpenRouter when configured, while preserving local behavior."""
+    """Use Groq when configured, while preserving local behavior."""
 
-    def __init__(self, ai: OpenRouterProvider | None = None):
-        self.ai = ai or OpenRouterProvider()
+    def __init__(self, ai: GroqProvider | None = None):
+        self.ai = ai or GroqProvider()
 
     def analyze(self, transcript: str, topic: str, position: str, weights: dict | None = None) -> dict:
         baseline = analyze_transcript(transcript, topic, position, weights)
@@ -74,7 +73,7 @@ class AnalysisProvider:
         if self.ai.available:
             try:
                 ai = self.ai.analyze(transcript, topic, position)
-            except Exception:
+            except (HTTPError, URLError, TimeoutError, RuntimeError, ValueError):
                 ai = None
         baseline["provider"] = self.ai.name if ai else "local"
         if ai:
@@ -85,7 +84,7 @@ class AnalysisProvider:
         if self.ai.available:
             try:
                 return self.ai.debate_response(topic, position, transcript, turn_type), self.ai.name
-            except Exception:
+            except (HTTPError, URLError, TimeoutError, RuntimeError, ValueError):
                 pass
         return (
             f"An opponent would challenge your {position} position on {topic}. "
