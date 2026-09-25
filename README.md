@@ -33,9 +33,23 @@ Open http://localhost:8000. API documentation is available at http://localhost:8
 - `POST /api/sessions` - analyze a transcript and persist a session
 - `GET /api/sessions`, `GET /api/sessions/{id}`, `GET /api/sessions/{id}/report`
 - `GET /api/dashboard`
+- `POST /api/sessions/{id}/counterarguments`, `GET /api/coaching/plan`
+- `POST /api/presentations/analyze` and `POST /api/presentation-analysis`
+- `GET /api/sessions/{id}/export?format=json|csv`
 - `GET /api/health`
 
 All session, profile, dashboard, and report routes require a bearer token returned by the authentication endpoints.
+
+## Docker deployment
+
+```powershell
+Copy-Item .env.example .env
+# Set a long random SECRET_KEY in .env before deployment
+docker compose up --build
+```
+
+The container serves the API and static frontend on port 8000. Back up the
+`debate_data` volume, and use PostgreSQL via `DATABASE_URL` for multi-instance production.
 
 ## Test
 
