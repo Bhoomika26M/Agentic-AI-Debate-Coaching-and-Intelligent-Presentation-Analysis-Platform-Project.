@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.0-flash"
     upload_dir: str = "uploads"
     max_upload_size_mb: int = 100
+    whisper_model: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

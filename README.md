@@ -5,7 +5,7 @@ ArgueWell is a runnable MVP for practicing debate and presentation skills. It co
 ## Stack
 
 - **Backend:** FastAPI, SQLAlchemy, Pydantic, JWT authentication
-- **Frontend:** responsive static app (vanilla JavaScript and CSS) served by FastAPI
+- **Frontend:** React 18 + Vite dashboard (FastAPI serves `frontend/dist` in production)
 - **Storage:** SQLite by default; PostgreSQL-ready through `DATABASE_URL`
 - **Analysis:** Gemini provider (opt-in via local environment) with deterministic fallback, plus a LangGraph-compatible simulation
 
@@ -21,6 +21,8 @@ uvicorn backend.app.main:app --reload
 ```
 
 Open http://localhost:8000. API documentation is available at http://localhost:8000/docs.
+For frontend development, run `cd frontend; npm install; npm run dev`; Vite proxies
+`/api` to `http://localhost:8000`.
 
 ## Configuration
 
@@ -35,7 +37,7 @@ Open http://localhost:8000. API documentation is available at http://localhost:8
 - `GET /api/dashboard`
 - `POST /api/sessions/{id}/counterarguments`, `GET /api/coaching/plan`
 - `POST /api/presentations/analyze` and `POST /api/presentation-analysis`
-- `GET /api/sessions/{id}/export?format=json|csv`
+- `GET /api/sessions/{id}/export?format=json|csv|pdf|xlsx`
 - `GET /api/health`
 - `POST /api/debate/turn` - persistent multi-turn opening/challenge/rebuttal/final evaluation
 - `POST /api/media/upload`, `GET /api/media` - validated audio/video uploads and transcript analysis
@@ -73,8 +75,11 @@ Set `GEMINI_API_KEY` only in the local environment or deployment secret store; i
 never committed or returned by the API. The provider automatically falls back to
 the explainable local analyzer if the key is absent or Gemini is unavailable.
 Uploads accept supported audio/video MIME types up to `MAX_UPLOAD_SIZE_MB` and
-store metadata locally. A supplied transcript is analyzed immediately; actual
-speech-to-text can be connected as a background worker without changing the API.
+store metadata locally. A supplied transcript is analyzed immediately. If the
+optional `openai-whisper` package is installed and `WHISPER_MODEL` is configured,
+local transcription runs safely without sending media anywhere; otherwise the
+response uses the explicit `deterministic_no_transcript` fallback and persists
+that status. Reports can be downloaded as PDF or Excel workbooks.
 Install `langgraph` separately when desired—the debate endpoint remains usable
 without it.
 

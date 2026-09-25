@@ -1,6 +1,7 @@
 """Explainable, local analysis primitives used by the API."""
 import json
 import re
+from pathlib import Path
 from collections import Counter
 
 FALLACY_PATTERNS = {
@@ -82,3 +83,25 @@ def serial_analysis(analysis) -> dict:
               for k in ("clarity", "evidence", "persuasiveness", "delivery", "fallacies", "counterarguments", "recommendations", "pacing_wpm", "filler_words")}
     result["overall_score"] = round((result["clarity"] + result["evidence"] + result["persuasiveness"] + result["delivery"]) / 4, 1)
     return result
+
+
+def transcribe_media(path: str, supplied: str = "") -> tuple[str, str]:
+    """Best-effort transcription with a deterministic, explicit fallback.
+
+    Whisper is intentionally optional because it brings a large torch dependency.
+    No cloud key is ever passed to a local process.
+    """
+    if supplied.strip():
+        return supplied.strip()[:30000], "supplied_transcript"
+    try:
+        import whisper  # type: ignore
+        from .config import settings
+        model_name = getattr(settings, "whisper_model", "") or "base"
+        model = whisper.load_model(model_name)
+        result = model.transcribe(str(Path(path)), fp16=False)
+        text = str(result.get("text", "")).strip()[:30000]
+        if text:
+            return text, "local_whisper"
+    except Exception:
+        pass
+    return "", "deterministic_no_transcript"

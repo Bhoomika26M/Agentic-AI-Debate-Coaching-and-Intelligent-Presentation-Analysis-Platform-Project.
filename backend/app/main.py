@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, func, inspect, text
 from sqlalchemy.orm import Session
-from .analysis import analyze_transcript, serial_analysis
+from .analysis import analyze_transcript, serial_analysis, transcribe_media
 from .config import settings
 from .db import Base, engine, get_db
 from .models import Analysis, DebateSession, DebateTurn, MediaAsset, User
@@ -187,15 +187,21 @@ def debate_turn(payload: DebateTurnRequest, user: User = Depends(current_user), 
 
 @app.get("/api/role-dashboard")
 def role_dashboard(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Role-aware dashboard foundation without exposing other users' private work."""
+    """Role-specific aggregate dashboard; private learner transcripts remain private."""
     base = dashboard(user, db)
-    actions = {
-        "learner": ["practice_debate", "upload_presentation"],
-        "debate_coach": ["review_progress", "assign_drill"],
-        "educator": ["review_progress", "compare_cohorts"],
-        "administrator": ["manage_users", "review_system_health"],
-    }
-    return {"role": user.role, "capabilities": actions.get(user.role, actions["learner"]), "dashboard": base}
+    actions = {"learner": ["practice_debate", "upload_presentation", "follow_learning_plan"],
+               "debate_coach": ["review_progress", "assign_drill", "coach_sessions"],
+               "educator": ["review_progress", "compare_cohorts", "design_curriculum"],
+               "administrator": ["manage_users", "review_system_health", "manage_roles"]}
+    result = {"role": user.role, "capabilities": actions.get(user.role, actions["learner"]),
+              "dashboard": base}
+    if user.role in ("debate_coach", "educator", "administrator"):
+        result["platform"] = {"total_users": db.query(User).count(),
+                              "total_sessions": db.query(DebateSession).count(),
+                              "active_media": db.query(MediaAsset).filter_by(status="analyzed").count()}
+    if user.role == "learner":
+        result["learning_plan"] = coaching_plan(user, db)
+    return result
 
 
 ALLOWED_MEDIA = {
@@ -222,8 +228,11 @@ async def upload_media(file: UploadFile = File(...), transcript: str = Form(""),
     upload_root.mkdir(parents=True, exist_ok=True)
     destination = upload_root / safe_name
     destination.write_bytes(data)
-    transcript = transcript[:30000]
-    analysis = provider.analyze(transcript, topic, position) if transcript else {}
+    transcript, transcription_engine = transcribe_media(str(destination), transcript)
+    analysis = provider.analyze(transcript, topic, position) if transcript else {
+        "provider": transcription_engine, "overall_score": 0, "metrics": {}
+    }
+    analysis["transcription_engine"] = transcription_engine
     asset = MediaAsset(user_id=user.id, filename=file.filename or safe_name, stored_path=str(destination),
                        media_type=media_type, content_type=content_type, size_bytes=len(data),
                        transcript=transcript, analysis_json=json.dumps(analysis),
@@ -232,8 +241,9 @@ async def upload_media(file: UploadFile = File(...), transcript: str = Form(""),
     return {"id": asset.id, "filename": asset.filename, "media_type": media_type,
             "content_type": content_type, "size_bytes": asset.size_bytes, "status": asset.status,
             "transcript_available": bool(transcript), "analysis": analysis,
-            "message": "Upload stored. Add a transcript to run deterministic or Gemini analysis."
-            if not transcript else "Upload analyzed."}
+            "transcription_engine": transcription_engine,
+            "message": "Upload stored; no transcript was available. Install/configure Whisper or provide a transcript."
+            if not transcript else "Upload transcribed and analyzed."}
 
 
 @app.get("/api/media")
@@ -276,8 +286,37 @@ def presentation_analysis(payload: PresentationCreate, user: User = Depends(curr
 @app.get("/api/sessions/{session_id}/export")
 def export_report(session_id: int, format: str = "json", user: User = Depends(current_user), db: Session = Depends(get_db)):
     result = report(session_id, user, db)
-    if format.lower() != "csv":
+    requested = format.lower()
+    if requested == "json":
         return result
+    if requested in ("xlsx", "excel"):
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        output = io.BytesIO()
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Report"
+        sheet.append(["Metric", "Value"]); sheet["A1"].font = Font(bold=True)
+        for key, value in result["analysis"].items():
+            if isinstance(value, (str, int, float)): sheet.append([key, value])
+        workbook.save(output); output.seek(0)
+        return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                 headers={"Content-Disposition": f'attachment; filename="debate-report-{session_id}.xlsx"'})
+    if requested == "pdf":
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen.canvas import Canvas
+        output = io.BytesIO(); canvas = Canvas(output, pagesize=letter)
+        y = 760; canvas.setFont("Helvetica-Bold", 15); canvas.drawString(48, y, result["report_title"]); y -= 30
+        canvas.setFont("Helvetica", 10)
+        for key, value in result["analysis"].items():
+            if isinstance(value, (str, int, float)):
+                canvas.drawString(48, y, f"{key}: {value}"); y -= 16
+                if y < 48: canvas.showPage(); y = 760
+        canvas.save(); output.seek(0)
+        return StreamingResponse(output, media_type="application/pdf",
+                                 headers={"Content-Disposition": f'attachment; filename="debate-report-{session_id}.pdf"'})
+    if requested != "csv":
+        raise HTTPException(400, "format must be json, csv, pdf, or xlsx")
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["metric", "value"])
@@ -287,4 +326,5 @@ def export_report(session_id: int, format: str = "json", user: User = Depends(cu
                              headers={"Content-Disposition": f'attachment; filename="debate-report-{session_id}.csv"'})
 
 
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+frontend_dist = Path("frontend/dist")
+app.mount("/", StaticFiles(directory=str(frontend_dist if frontend_dist.exists() else Path("frontend")), html=True), name="frontend")
