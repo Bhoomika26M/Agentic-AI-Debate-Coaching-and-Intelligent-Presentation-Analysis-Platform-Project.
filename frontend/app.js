@@ -2,13 +2,40 @@ const app = document.getElementById("app");
 let token = localStorage.getItem("token"), user = JSON.parse(localStorage.getItem("user") || "null");
 const api = async (path, opt = {}) => {
   opt.headers = { ...(opt.headers || {}), "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) };
-  const r = await fetch("/api" + path, opt); if (!r.ok) throw new Error((await r.json()).detail || "Something went wrong"); return r.json();
+  const r = await fetch("/api" + path, opt);
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    const detail = Array.isArray(body.detail)
+      ? body.detail.map((item) => item.msg).join(", ")
+      : body.detail;
+    throw new Error(detail || "Something went wrong");
+  }
+  return r.json();
 };
 function auth() { app.innerHTML = `<main class="auth"><section class="card"><div class="logo-big">Argue<span>Well</span></div><p class="muted">Your local debate and presentation coach.</p><div id="authbox"></div></section></main>`; showLogin(); }
 function showLogin() { document.getElementById("authbox").innerHTML = `<h2>Welcome back</h2><div class="field"><label>Email</label><input id="email" type="email"></div><div class="field"><label>Password</label><input id="password" type="password"></div><div id="err"></div><button class="btn primary" onclick="login()">Sign in</button><button class="btn ghost" onclick="showRegister()">Create an account</button>`; }
 function showRegister() { document.getElementById("authbox").innerHTML = `<h2>Start improving</h2><div class="field"><label>Name</label><input id="name"></div><div class="field"><label>Email</label><input id="email" type="email"></div><div class="field"><label>Password</label><input id="password" type="password" placeholder="8+ characters"></div><div id="err"></div><button class="btn primary" onclick="register()">Create account</button><button class="btn ghost" onclick="showLogin()">I already have an account</button>`; }
-async function login() { try { save(await api("/auth/login", { method: "POST", body: JSON.stringify({ email: email.value, password: password.value }) })); } catch (e) { err.innerHTML = `<div class="alert">${e.message}</div>`; } }
-async function register() { try { save(await api("/auth/register", { method: "POST", body: JSON.stringify({ name: name.value, email: email.value, password: password.value }) })); } catch (e) { err.innerHTML = `<div class="alert">${e.message}</div>`; } }
+const fieldValue = (id) => document.getElementById(id).value.trim();
+async function login() {
+  try {
+    save(await api("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: fieldValue("email"), password: document.getElementById("password").value })
+    }));
+  } catch (e) { document.getElementById("err").innerHTML = `<div class="alert">${e.message}</div>`; }
+}
+async function register() {
+  try {
+    save(await api("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({
+        name: fieldValue("name"),
+        email: fieldValue("email"),
+        password: document.getElementById("password").value
+      })
+    }));
+  } catch (e) { document.getElementById("err").innerHTML = `<div class="alert">${e.message}</div>`; }
+}
 function save(x) { token = x.access_token; user = x.user; localStorage.setItem("token", token); localStorage.setItem("user", JSON.stringify(user)); render("dashboard"); }
 function layout(content, active) { app.innerHTML = `<div class="shell"><aside class="side"><div class="brand">Argue<span>Well</span></div><nav class="nav"><a class="${active === "dashboard" ? "active" : ""}" href="#" onclick="render('dashboard')">Dashboard</a><a class="${active === "new" ? "active" : ""}" href="#" onclick="render('new')">New debate</a><a class="${active === "presentation" ? "active" : ""}" href="#" onclick="render('presentation')">Presentation</a><a class="${active === "plan" ? "active" : ""}" href="#" onclick="render('plan')">Learning plan</a><a class="${active === "profile" ? "active" : ""}" href="#" onclick="render('profile')">Profile</a></nav><button class="btn ghost" style="margin-top:auto" onclick="logout()">Sign out</button></aside><main class="main">${content}</main></div>`; }
 async function render(page, id) { if (!token) return auth(); if (page === "new") return newSession(); if (page === "presentation") return presentation(); if (page === "plan") return plan(); if (page === "profile") return profile(); if (page === "detail") return detail(id); const d = await api("/dashboard"); const list = d.recent_sessions.map(s => `<div class="session"><div><b>${s.title}</b><div class="muted">${s.topic} · ${new Date(s.created_at).toLocaleDateString()}</div></div><div class="row"><span class="pill">${s.overall_score}/100</span><button class="btn secondary" onclick="render('detail',${s.id})">View</button></div></div>`).join(""); layout(`<div class="top"><div><div class="eyebrow">Practice studio</div><h1>Good to see you, ${user.name.split(" ")[0]}.</h1><p class="muted">Clear arguments, credible evidence, compelling delivery.</p></div><button class="btn primary" onclick="render('new')">+ New session</button></div><div class="grid stats"><div class="card stat"><small>Sessions completed</small><strong>${d.sessions_count}</strong></div><div class="card stat"><small>Average score</small><strong>${d.average_score}</strong></div><div class="card stat"><small>Personal best</small><strong>${d.best_score}</strong></div></div><div class="card" style="margin-top:22px"><div class="top"><h2>Skill snapshot</h2><span class="muted">Trend points: ${d.trend.length}</span></div><div class="row">${Object.entries(d.skills).map(([k,v]) => `<span class="pill">${k}: ${v}</span>`).join("")}</div><h2 style="margin-top:25px">Recent sessions</h2>${list || '<div class="empty">Your first practice session is one click away.</div>'}</div>`, "dashboard"); }
