@@ -21,13 +21,20 @@ Deliver a polished, locally runnable AI debate demo by Monday, October 5, 2026, 
 - Finalized the October 5 demo and October 12 showcase scope with the user.
 - Rewrote the untracked reference README, decisions, implementation schedule, and design direction to match the confirmed plan.
 - Added `.gitignore` entries for `.references/`, `ARCHITECTURE_WORKING.md`, credentials, environments, caches, and model downloads. Confirmed the planning references remain ignored.
+- Scaffolded the React/Vite UI and FastAPI inference service; split schemas, prompt construction, and Ollama streaming into Python modules.
+- Built the walkthrough, setup flow, streamed arena, and local session recap. Browser smoke confirmed the installed Qwen3.5 4B model returns a relevant opening and a streamed reply to a learner argument.
+- Added reliable local model warmup retries and setup status polling so starting Ollama after FastAPI no longer leaves the setup screen stuck.
+- Added local setup instructions and the ignored mentor architecture guide for the Python request flow.
+- Verified the walkthrough, setup, model-ready state, streamed debate response, and recap in the browser. Python compilation and the optimized frontend build both pass.
 
 ## In progress
 
-- Setting up the local web and Python services before building the debate demo.
+- Start the October 12 showcase phase: implement learner authentication and persistence, then argument analysis and coaching modules in dependency order. Keep the free local Ollama path working while adding bring-your-own-key deployment configuration.
+- Rebuild this checkpoint as a reviewable sequence of focused commits: docs, Python package, request schema, prompt design, Ollama adapter, API routes, web scaffold, browser stream client, demo screens, visual system, and model-readiness polish.
 
 ## Next
 
-- Scaffold the web application and Python AI backend.
-- Connect a local Ollama model and build the streamed debate experience.
-- Add setup instructions and keep this log current at each completed phase.
+- Refine the product walkthrough and debate interaction from user feedback.
+- Add Supabase learner sign-up/sign-in with validation and Google OAuth.
+- Add transcript persistence, argument/fallacy/rebuttal analysis, presentation feedback, scores, recommendations, learner dashboard, reports, and in-app notifications.
+- Prepare free-tier deployment with explicit per-user AI key handling and no paid fallback.
