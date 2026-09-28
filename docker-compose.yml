@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: debateai-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./debateai.db
+      - JWT_SECRET=production-secure-debate-ai-jwt-secret-key-2026
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - UPLOAD_DIR=/app/uploads
+      - EXPORT_DIR=/app/exports
+    volumes:
+      - debateai-data:/app/uploads
+      - debateai-exports:/app/exports
+      - debateai-db:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: debateai-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  debateai-data:
+  debateai-exports:
+  debateai-db:
