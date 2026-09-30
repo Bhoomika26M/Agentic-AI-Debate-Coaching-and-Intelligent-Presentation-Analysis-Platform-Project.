@@ -181,7 +181,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (backendState !== "warming") return;
+    if (backendState === "ready") return;
     const poll = window.setInterval(() => void refreshBackend(), 2500);
     return () => window.clearInterval(poll);
   }, [backendState]);

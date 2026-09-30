@@ -26,11 +26,11 @@ Deliver a polished, locally runnable AI debate demo by Monday, October 5, 2026, 
 - Added reliable local model warmup retries and setup status polling so starting Ollama after FastAPI no longer leaves the setup screen stuck.
 - Added local setup instructions and the ignored mentor architecture guide for the Python request flow.
 - Verified the walkthrough, setup, model-ready state, streamed debate response, and recap in the browser. Python compilation and the optimized frontend build both pass.
+- Split the local demo implementation into eleven focused commits, from setup and documentation through backend, frontend, design, and readiness polish.
 
 ## In progress
 
 - Start the October 12 showcase phase: implement learner authentication and persistence, then argument analysis and coaching modules in dependency order. Keep the free local Ollama path working while adding bring-your-own-key deployment configuration.
-- Rebuild this checkpoint as a reviewable sequence of focused commits: docs, Python package, request schema, prompt design, Ollama adapter, API routes, web scaffold, browser stream client, demo screens, visual system, and model-readiness polish.
 
 ## Next
 

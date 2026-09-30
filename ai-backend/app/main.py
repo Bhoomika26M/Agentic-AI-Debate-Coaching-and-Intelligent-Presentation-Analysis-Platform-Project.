@@ -19,7 +19,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    warmup = asyncio.create_task(warm_model())
+    async def warm_until_loaded() -> None:
+        while not await is_loaded():
+            await warm_model()
+            if not await is_loaded():
+                await asyncio.sleep(5)
+
+    warmup = asyncio.create_task(warm_until_loaded())
     yield
     warmup.cancel()
 
