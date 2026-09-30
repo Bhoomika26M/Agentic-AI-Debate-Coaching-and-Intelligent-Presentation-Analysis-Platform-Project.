@@ -27,6 +27,10 @@ Deliver a polished, locally runnable AI debate demo by Monday, October 5, 2026, 
 - Added local setup instructions and the ignored mentor architecture guide for the Python request flow.
 - Verified the walkthrough, setup, model-ready state, streamed debate response, and recap in the browser. Python compilation and the optimized frontend build both pass.
 - Split the local demo implementation into eleven focused commits, from setup and documentation through backend, frontend, design, and readiness polish.
+- Configured a deployment API origin with HTTPS validation; browser API requests omit cookies and keep secrets out of Vite-exposed variables.
+- Added Vercel and Render static frontend configurations with CSP, security headers, and immutable hashed-asset caching.
+- Hardened FastAPI with explicit origin and host allowlists, no-store/security response headers, bounded request schemas, and a configurable concurrent-stream cap.
+- Rebuilt the frontend with a production API origin, compiled Python, validated Vercel JSON, and checked whitespace. Public backend deployment remains gated on authentication and BYOK.
 
 ## In progress
 

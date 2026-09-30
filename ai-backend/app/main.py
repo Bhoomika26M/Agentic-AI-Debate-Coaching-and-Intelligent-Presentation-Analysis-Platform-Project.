@@ -7,14 +7,18 @@ from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import StreamingResponse
 from httpx import HTTPError
+from starlette.requests import Request
 
 from .ollama_client import OLLAMA_MODEL, is_available, is_loaded, stream_chat, warm_model
 from .prompts import build_messages
 from .schemas import DebateRequest
 
 logger = logging.getLogger(__name__)
+MAX_ACTIVE_STREAMS = max(1, int(os.getenv("MAX_ACTIVE_STREAMS", "2")))
+stream_slots = asyncio.Semaphore(MAX_ACTIVE_STREAMS)
 
 
 @asynccontextmanager
@@ -31,13 +35,36 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Debate Coach AI", version="0.1.0", lifespan=lifespan)
-origins = os.getenv("WEB_ORIGIN", "http://127.0.0.1:5173").split(",")
+origins = [
+    origin.strip()
+    for origin in os.getenv("WEB_ORIGIN", "http://127.0.0.1:5173").split(",")
+    if origin.strip()
+]
+if not origins or "*" in origins:
+    raise ValueError("WEB_ORIGIN must contain explicit frontend origins.")
+allowed_hosts = os.getenv(
+    "ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0"
+).split(",")
+allowed_hosts = [host.strip() for host in allowed_hosts if host.strip()]
+if not allowed_hosts or "*" in allowed_hosts:
+    raise ValueError("ALLOWED_HOSTS must contain explicit host names.")
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in origins],
+    allow_origins=origins,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Cache-Control", "no-store")
+    return response
 
 
 @app.get("/api/health")
@@ -59,6 +86,14 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
             status_code=503,
             detail=f"Ollama or model {OLLAMA_MODEL} is unavailable. Start Ollama and pull the model.",
         )
+    if stream_slots.locked():
+        raise HTTPException(
+            status_code=429,
+            detail="The local opponent is busy. Please retry in a moment.",
+            headers={"Retry-After": "5"},
+        )
+
+    await stream_slots.acquire()
 
     async def events() -> AsyncIterator[str]:
         try:
@@ -69,6 +104,8 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
             message = "The opponent could not finish this turn. Please try again."
             yield f"data: {json.dumps({'error': message})}\n\n"
             logger.exception("Ollama streaming failed: %s", error)
+        finally:
+            stream_slots.release()
 
     return StreamingResponse(
         events(),
