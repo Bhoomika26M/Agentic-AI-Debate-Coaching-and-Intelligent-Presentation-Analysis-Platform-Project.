@@ -1,3 +1,5 @@
+import { apiUrl } from "../config";
+
 export type Speaker = "learner" | "opponent";
 
 export type DebateMessage = {
@@ -15,7 +17,7 @@ export type DebateOptions = {
 };
 
 export async function checkBackend() {
-  const response = await fetch("/api/health");
+  const response = await fetch(apiUrl("/api/health"), { credentials: "omit" });
   if (!response.ok) throw new Error("The debate service is unavailable.");
   return (await response.json()) as {
     status: string;
@@ -32,9 +34,10 @@ export async function streamOpponentReply(
   onDelta: (delta: string) => void,
   signal: AbortSignal,
 ) {
-  const response = await fetch("/api/debate/stream", {
+  const response = await fetch(apiUrl("/api/debate/stream"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "omit",
     body: JSON.stringify({
       ...options,
       history: history.map(({ speaker, content }) => ({ speaker, content })),
