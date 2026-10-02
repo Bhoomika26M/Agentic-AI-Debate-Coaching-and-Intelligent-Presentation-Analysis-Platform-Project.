@@ -2,19 +2,21 @@ import asyncio
 import json
 import logging
 import os
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import StreamingResponse
 from httpx import HTTPError
 from starlette.requests import Request
 
+from .analysis import analyze_transcript
+from .auth import authenticate_request
 from .ollama_client import OLLAMA_MODEL, is_available, is_loaded, stream_chat, warm_model
 from .prompts import build_messages
-from .schemas import DebateRequest
+from .schemas import AnalysisReport, AnalysisRequest, DebateRequest
 
 logger = logging.getLogger(__name__)
 MAX_ACTIVE_STREAMS = max(1, int(os.getenv("MAX_ACTIVE_STREAMS", "2")))
@@ -79,12 +81,15 @@ async def health() -> dict[str, str | bool]:
     }
 
 
-@app.post("/api/debate/stream")
+@app.post("/api/debate/stream", dependencies=[Depends(authenticate_request)])
 async def debate_stream(request: DebateRequest) -> StreamingResponse:
     if not await is_available():
         raise HTTPException(
             status_code=503,
-            detail=f"Ollama or model {OLLAMA_MODEL} is unavailable. Start Ollama and pull the model.",
+            detail=(
+                f"Ollama or model {OLLAMA_MODEL} is unavailable. "
+                "Start Ollama and pull the model."
+            ),
         )
     if stream_slots.locked():
         raise HTTPException(
@@ -112,3 +117,38 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post(
+    "/api/debate/analyze",
+    dependencies=[Depends(authenticate_request)],
+    response_model=AnalysisReport,
+)
+async def debate_analysis(request: AnalysisRequest) -> AnalysisReport:
+    if not await is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="The local model is unavailable. Start Ollama and retry.",
+        )
+    if stream_slots.locked():
+        raise HTTPException(
+            status_code=429,
+            detail="The local model is busy. Please retry in a moment.",
+        )
+    await stream_slots.acquire()
+    try:
+        return (await analyze_transcript(request)).model_dump()
+    except HTTPError as error:
+        logger.exception("Ollama transcript analysis failed: %s", error)
+        raise HTTPException(
+            status_code=503,
+            detail="The local model could not finish analysis.",
+        ) from error
+    except (ValueError, json.JSONDecodeError) as error:
+        logger.exception("Ollama returned an invalid analysis: %s", error)
+        raise HTTPException(
+            status_code=502,
+            detail="The local model returned an incomplete coaching review. Try the review again.",
+        ) from error
+    finally:
+        stream_slots.release()
