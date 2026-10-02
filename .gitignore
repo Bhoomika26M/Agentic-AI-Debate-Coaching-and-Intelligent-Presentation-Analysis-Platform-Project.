@@ -1,6 +1,6 @@
 # Local references and personal architecture notes
 .references/
-ARCHITECTURE_WORKING.md
+personal-guide/
 
 # Secrets and local environments
 .env
@@ -22,3 +22,9 @@ dist/
 build/
 .next/
 out/
+
+DESIGN.md
+.agents/
+.aws/
+.codex/
+.impeccable/

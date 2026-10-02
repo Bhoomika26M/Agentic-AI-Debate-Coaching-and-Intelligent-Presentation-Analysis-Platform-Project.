@@ -4,18 +4,15 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
+  BookOpenText,
   Check,
   Clock3,
   CornerDownLeft,
-  Fingerprint,
-  Gavel,
   LoaderCircle,
   LockKeyhole,
-  MessageSquareText,
   Radio,
   RotateCcw,
   Send,
-  ShieldAlert,
   Sparkles,
   Swords,
   TimerReset,
@@ -97,7 +94,7 @@ function Header({ onHome, onStart }: { onHome: () => void; onStart: () => void }
   return (
     <header className="site-header">
       <button className="brand" onClick={onHome} aria-label="Verdict home">
-        <span className="brand-mark"><Gavel size={17} strokeWidth={2.2} /></span>
+        <span className="brand-mark"><BookOpenText size={17} strokeWidth={2} /></span>
         <span>VERDICT<span className="brand-period">.</span></span>
       </button>
       <nav className="desktop-nav" aria-label="Main navigation">
@@ -107,7 +104,7 @@ function Header({ onHome, onStart }: { onHome: () => void; onStart: () => void }
         <span className="local-indicator"><i /> Local demo</span>
       </nav>
       <button className="header-cta" onClick={onStart}>
-        Step inside <ArrowUpRight size={15} />
+        Open the prompt book <ArrowUpRight size={15} />
       </button>
     </header>
   );
@@ -143,6 +140,8 @@ export default function App() {
   const [backendMessage, setBackendMessage] = useState("");
   const [sessionId, setSessionId] = useState(0);
   const [startedAt, setStartedAt] = useState(0);
+  const [cueSequence, setCueSequence] = useState(0);
+  const [cueVisible, setCueVisible] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -156,6 +155,13 @@ export default function App() {
     (count, message) => count + message.content.trim().split(/\s+/).filter(Boolean).length,
     0,
   );
+  const modelStatusLabel = backendState === "ready"
+    ? "READY"
+    : backendState === "warming"
+      ? "WARMING"
+      : backendState === "offline"
+        ? "OFFLINE"
+        : "CHECKING";
 
   async function refreshBackend() {
     try {
@@ -201,6 +207,8 @@ export default function App() {
       difficulty,
     };
     const replyId = crypto.randomUUID();
+    setCueSequence((current) => current + 1);
+    setCueVisible(true);
     const controller = new AbortController();
     abortRef.current = controller;
     setBackendMessage("");
@@ -245,6 +253,12 @@ export default function App() {
       abortRef.current = null;
     }
   }
+
+  useEffect(() => {
+    if (!cueVisible) return;
+    const cueTimer = window.setTimeout(() => setCueVisible(false), 1050);
+    return () => window.clearTimeout(cueTimer);
+  }, [cueSequence, cueVisible]);
 
   useEffect(() => {
     if (view === "arena" && sessionId > 0 && messages.length === 0) {
@@ -306,7 +320,7 @@ export default function App() {
   const elapsed = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
 
   return (
-    <div className={`app-shell ${view === "arena" || view === "verdict" ? "app-shell-room" : ""}`}>
+    <div className={`app-shell ${view === "setup" ? "app-shell-setup" : ""} ${view === "arena" || view === "verdict" ? "app-shell-room" : ""}`}>
       {view !== "arena" && view !== "verdict" && (
         <Header onHome={returnHome} onStart={() => setView("setup")} />
       )}
@@ -315,82 +329,77 @@ export default function App() {
         {view === "landing" && (
           <motion.main key="landing" className="landing" {...pageMotion}>
             <section className="hero-section">
-              <div className="hero-noise" />
               <div className="hero-copy">
-                <p className="eyebrow"><span className="eyebrow-line" /> THE FLOOR IS YOURS</p>
-                <h1>Your argument<br />is <span className="hero-accent">on the record.</span></h1>
+                <h1>The next line<br />is <span className="hero-accent">yours.</span></h1>
                 <p className="hero-intro">
-                  A debate coach with a point of view. Bring a claim. Meet a mind that pushes back.
-                  Leave with a sharper case.
+                  Step into a live debate rehearsal. Make your case, meet a distinct opponent, and find your next line under pressure.
                 </p>
                 <div className="hero-actions">
                   <button className="button button-primary" onClick={() => setView("setup")}>
-                    Enter the chamber <ArrowUpRight size={17} />
+                    Open the prompt book <ArrowUpRight size={17} />
                   </button>
                   <a className="text-link" href="#how-it-works">See how it works <ArrowDownRight size={16} /></a>
                 </div>
-                <div className="hero-footnote"><LockKeyhole size={13} /> Local model. Your words stay on your machine.</div>
+                <div className="hero-footnote"><LockKeyhole size={13} /> Local model · your words stay on this machine</div>
               </div>
 
-              <div className="hero-scene" aria-label="Preview of a debate case file">
+              <div className="hero-scene" aria-label="A sample page from a live debate prompt book">
                 <div className="scene-grid" />
-                <div className="scene-vertical-label">CASE FILE / 001</div>
-                <div className="orbit orbit-a" />
-                <div className="orbit orbit-b" />
-                <div className="scene-stamp">OPEN<br />CASE</div>
+                <div className="scene-vertical-label">PROMPT BOOK / ACT I</div>
+                <span className="scene-stamp">CUE<br />01</span>
                 <motion.div
                   className="case-preview"
-                  initial={{ opacity: 0, rotate: 5, y: 20 }}
-                  animate={{ opacity: 1, rotate: -3, y: 0 }}
+                  initial={{ opacity: 0, rotate: 1, y: 18 }}
+                  animate={{ opacity: 1, rotate: 0, y: 0 }}
                   transition={{ delay: 0.18, duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
                 >
-                  <div className="case-topline"><span>THE PROPOSITION</span><span>001 — OPEN</span></div>
+                  <div className="case-topline"><span>VERDICT · REHEARSAL COPY</span><span>ACT I / CUE 01</span></div>
                   <div className="case-art">
-                    <div className="case-ring ring-one" />
-                    <div className="case-ring ring-two" />
-                    <div className="case-cutout"><span>?</span></div>
-                    <div className="case-redbar" />
-                    <span className="case-art-caption">EVERY CLAIM<br />HAS A COUNTER.</span>
+                    <div className="prompt-page">
+                      <div className="prompt-page-top"><span>THE MOTION</span><span>OPENING / 01</span></div>
+                      <span className="prompt-entrance">OPPONENT ENTERS</span>
+                      <h2>Should social<br />platforms verify<br />every user?</h2>
+                      <div className="prompt-stage-direction">[ The room goes quiet. Your opening begins. ]</div>
+                      <div className="prompt-rule" />
+                      <div className="prompt-page-bottom"><span>YOUR SIDE / FOR</span><span>THE FLOOR IS YOURS</span></div>
+                    </div>
                   </div>
-                  <div className="case-title-row">
-                    <div><span className="case-label">TODAY'S QUESTION</span><h2>Who gets<br />the final word?</h2></div>
-                    <ArrowUpRight size={24} />
+                  <div className="cue-preview-row">
+                    <span className="cue-preview-mark"><BookOpenText size={15} /></span>
+                    <div><span className="case-label">LIVE CUE / 01</span><b>Your opening argument</b></div>
+                    <span className="cue-preview-state"><i /> READY</span>
                   </div>
-                  <div className="case-bottomline"><span>ONE-ON-ONE / AI</span><span>YOUR MOVE</span></div>
+                  <div className="case-bottomline"><span>STREAMED EXCHANGE</span><span>LOCAL MODEL / {modelStatusLabel}</span></div>
                 </motion.div>
-                <div className="scene-note"><span className="note-arrow">↗</span><span>NOT A CHAT.<br />A CHALLENGE.</span></div>
+                <div className="scene-note"><span className="note-arrow">↗</span><span>LIVE DEBATE<br />IN THREE ACTS</span></div>
               </div>
             </section>
 
             <section className="intro-strip">
-              <div className="intro-small">PRACTICE WITH PURPOSE</div>
-              <p>Good arguments aren't born ready.<br /><span>They're tested.</span></p>
+              <div className="intro-small">A ROOM THAT ANSWERS BACK</div>
+              <p>Every turn changes the scene.<br /><span>Your words stay at centre stage.</span></p>
               <div className="strip-arrow"><ArrowDownRight size={21} /></div>
             </section>
 
             <section className="format-section" id="how-it-works">
               <div className="section-heading">
-                <p className="eyebrow eyebrow-dark"><span className="eyebrow-line" /> INSIDE THE CHAMBER</p>
-                <h2>Think on your feet.<br /><span>Keep your footing.</span></h2>
-                <p className="section-subtitle">No scripts. No safe answers. Just a sharp opponent, a live clock, and your next move.</p>
+                <h2>One motion.<br /><span>Three beats.</span></h2>
+                <p className="section-subtitle">A guided rehearsal with a live opponent, a clock you choose, and your own argument on the page.</p>
               </div>
-              <div className="format-grid">
-                <motion.article className="format-card card-claim" whileHover={{ y: -7 }} transition={{ duration: 0.25 }}>
-                  <div className="format-card-top"><span>01 / MAKE A CASE</span><Fingerprint size={18} /></div>
-                  <div className="claim-visual"><span className="claim-line" /><span className="claim-dot" /><span className="claim-line short" /></div>
-                  <h3>Start with a<br />position.</h3>
+              <div className="format-grid rehearsal-cues">
+                <motion.article className="format-card card-claim" whileHover={{ y: -3 }} transition={{ duration: 0.25 }}>
+                  <div className="format-card-top"><span>ENTRANCE CUE</span><span className="cue-mark">01</span></div>
+                  <h3>Take a side.</h3>
                   <p>Pick a side, choose a motion, and say what you actually think.</p>
                 </motion.article>
-                <motion.article className="format-card card-reply" whileHover={{ y: -7 }} transition={{ duration: 0.25 }}>
-                  <div className="format-card-top"><span>02 / TAKE THE FLOOR</span><MessageSquareText size={18} /></div>
-                  <div className="reply-visual"><span className="reply-pulse"><i /><i /><i /></span><span>OPPONENT IS THINKING</span></div>
-                  <h3>Meet your<br />counterpoint.</h3>
+                <motion.article className="format-card card-reply" whileHover={{ y: -3 }} transition={{ duration: 0.25 }}>
+                  <div className="format-card-top"><span>RESPONSE CUE</span><span className="cue-mark">02</span></div>
+                  <h3>Hold the floor.</h3>
                   <p>A distinct AI persona listens, challenges, and answers in real time.</p>
                 </motion.article>
-                <motion.article className="format-card card-verdict" whileHover={{ y: -7 }} transition={{ duration: 0.25 }}>
-                  <div className="format-card-top"><span>03 / LEAVE SHARPER</span><ShieldAlert size={18} /></div>
-                  <div className="verdict-visual"><span>CLAIM</span><ArrowRight size={18} /><span>COUNTER</span><ArrowRight size={18} /><b>CLARITY</b></div>
-                  <h3>Find the<br />weak point.</h3>
+                <motion.article className="format-card card-verdict" whileHover={{ y: -3 }} transition={{ duration: 0.25 }}>
+                  <div className="format-card-top"><span>FINAL CUE</span><span className="cue-mark">03</span></div>
+                  <h3>Read the room.</h3>
                   <p>Review the exchange and take a clearer argument into your next room.</p>
                 </motion.article>
               </div>
@@ -398,8 +407,7 @@ export default function App() {
 
             <section className="opponents-section" id="opponents">
               <div className="opponents-copy">
-                <p className="eyebrow"><span className="eyebrow-line" /> PICK YOUR PRESSURE</p>
-                <h2>Three minds.<br />No easy <span>outs.</span></h2>
+                <h2>Choose your<br /><span>scene partner.</span></h2>
                 <p>Each opponent sees the same motion differently. Choose who you want across the table.</p>
                 <button className="button button-outline" onClick={() => setView("setup")}>
                   Choose your opponent <ArrowUpRight size={16} />
@@ -428,13 +436,12 @@ export default function App() {
             <section className="closing-section">
               <span className="closing-orbit" />
               <div className="closing-content">
-                <p className="eyebrow"><span className="eyebrow-line" /> THE NEXT MOVE IS YOURS</p>
-                <h2>Walk in with a claim.<br /><span>Walk out with a case.</span></h2>
+                <h2>Ready for your<br /><span>opening cue?</span></h2>
                 <button className="button button-dark" onClick={() => setView("setup")}>
-                  Step into the chamber <ArrowUpRight size={17} />
+                  Open the prompt book <ArrowUpRight size={17} />
                 </button>
               </div>
-              <div className="closing-aside">A PRACTICE ROOM<br />THAT TALKS BACK.</div>
+              <div className="closing-aside">ACT I / MAKE YOUR CASE<br />ACT II / MEET THE COUNTERPOINT<br />ACT III / TAKE IT WITH YOU</div>
             </section>
             <footer className="site-footer"><span>VERDICT<span className="brand-period">.</span></span><span>THINK CLEAR. SPEAK SHARP.</span><span>LOCAL AI PRACTICE ROOM</span></footer>
           </motion.main>
@@ -447,14 +454,13 @@ export default function App() {
               <StatusTag state={backendState} />
             </div>
             <div className="setup-heading">
-              <p className="eyebrow eyebrow-dark"><span className="eyebrow-line" /> BUILD YOUR CASE</p>
-              <h1>Set the room.<br /><span>Pick your pressure.</span></h1>
-              <p>Your opponent is ready when you are. Set a motion and choose the mind across the table.</p>
+              <h1>Set the scene.<br /><span>Choose your side.</span></h1>
+              <p>Pick a motion, choose your scene partner, and set the pace for this rehearsal.</p>
             </div>
 
             <div className="setup-layout">
               <section className="setup-panel motion-panel">
-                <div className="panel-heading"><span className="panel-count">01</span><div><h2>The motion</h2><p>What do you want to put on trial?</p></div></div>
+                <div className="panel-heading"><span className="panel-count">A</span><div><h2>Your motion</h2><p>What do you want to make a case for?</p></div></div>
                 <div className="topic-list">
                   {topics.map((topic, index) => (
                     <button
@@ -467,7 +473,7 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-                <label className="custom-topic-label" htmlFor="custom-topic">OR WRITE YOUR OWN</label>
+                <label className="custom-topic-label" htmlFor="custom-topic">OR WRITE A CUSTOM MOTION</label>
                 <input
                   id="custom-topic"
                   className="custom-topic-input"
@@ -487,7 +493,7 @@ export default function App() {
               </section>
 
               <section className="setup-panel opponent-panel">
-                <div className="panel-heading"><span className="panel-count">02</span><div><h2>Across the table</h2><p>Choose the lens that tests you best.</p></div></div>
+                <div className="panel-heading"><span className="panel-count">B</span><div><h2>Across the room</h2><p>Choose the voice that tests you best.</p></div></div>
                 <div className="persona-list">
                   {personas.map((person) => (
                     <button
@@ -503,7 +509,7 @@ export default function App() {
                 </div>
 
                 <div className="setting-block">
-                  <div className="setting-line"><span className="setting-label">INTENSITY</span><span className="setting-value">{difficultyOptions.find((option) => option.value === difficulty)?.label}</span></div>
+                  <div className="setting-line"><span className="setting-label">REHEARSAL PRESSURE</span><span className="setting-value">{difficultyOptions.find((option) => option.value === difficulty)?.label}</span></div>
                   <div className="difficulty-options">
                     {difficultyOptions.map((option, index) => (
                       <button className={difficulty === option.value ? "selected" : ""} key={option.value} onClick={() => setDifficulty(option.value)}>
@@ -524,7 +530,7 @@ export default function App() {
             <div className="setup-bottom">
               <div className="local-note"><LockKeyhole size={14} /><span>Your first debate stays on this device. No account needed for the demo.</span></div>
               <button className="button button-dark setup-submit" onClick={startSession} disabled={!activeTopic.trim()}>
-                Open the room <ArrowRight size={17} />
+                Call the first cue <ArrowRight size={17} />
               </button>
             </div>
             {backendState === "offline" && (
@@ -539,9 +545,9 @@ export default function App() {
         {view === "arena" && (
           <motion.main key="arena" className="arena-page" {...pageMotion}>
             <header className="arena-header">
-              <button className="arena-brand" onClick={returnHome} aria-label="Return home"><span className="brand-mark"><Gavel size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button>
-              <div className="arena-session"><span>LIVE PRACTICE</span><i /> <span>CASE / {String(sessionId).slice(-4).padStart(4, "0")}</span></div>
-              <div className="arena-header-actions"><span className="arena-model"><i /> LOCAL MODEL</span><button className="end-button" onClick={finishSession}>End session <X size={15} /></button></div>
+              <button className="arena-brand" onClick={returnHome} aria-label="Return home"><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button>
+              <div className="arena-session"><span>LIVE REHEARSAL</span><i /> <span>ACT / {String(sessionId).slice(-4).padStart(4, "0")}</span></div>
+              <div className="arena-header-actions"><span className={`arena-model model-${backendState}`}><i /> {backendState === "ready" ? "LOCAL MODEL READY" : backendState === "warming" ? "MODEL WARMING" : backendState === "offline" ? "MODEL OFFLINE" : "CHECKING MODEL"}</span><button className="end-button" onClick={finishSession}>End session <X size={15} /></button></div>
             </header>
 
             <div className="arena-casebar">
@@ -554,7 +560,7 @@ export default function App() {
               <aside className="arena-identity">
                 <div className="identity-card">
                   <div className={`identity-portrait tone-${activePersona.color}`}>
-                    <div className="portrait-halo" /><div className="portrait-shape" /><span>{activePersona.sigil}</span>
+                    <span className="portrait-shape">{activePersona.sigil}</span>
                     <div className="portrait-label">OPPONENT / 0{personas.findIndex((person) => person.key === persona) + 1}</div>
                   </div>
                   <div className="identity-copy"><span>ACROSS THE TABLE</span><h2>{activePersona.name}</h2><p>{activePersona.title}</p></div>
@@ -565,13 +571,30 @@ export default function App() {
               </aside>
 
               <section className="transcript-panel" aria-label="Live debate transcript">
-                <div className="transcript-heading"><div><span className="eyebrow eyebrow-dark"><span className="eyebrow-line" /> LIVE TRANSCRIPT</span><h2>The floor is open.</h2></div><span className="round-counter"><span>TURN</span> {Math.max(1, learnerTurns.length + 1).toString().padStart(2, "0")}</span></div>
+                <div className="transcript-heading"><div><span className="transcript-kicker">LIVE TRANSCRIPT</span><h2>The floor is open.</h2></div><span className="round-counter"><span>CUE</span> {Math.max(1, learnerTurns.length + 1).toString().padStart(2, "0")}</span></div>
+                <AnimatePresence initial={false}>
+                  {cueVisible && (
+                    <motion.div
+                      key={cueSequence}
+                      className="scene-transition"
+                      role="status"
+                      initial={{ opacity: 0, clipPath: "inset(0 100% 0 0)" }}
+                      animate={{ opacity: 1, clipPath: "inset(0 0 0 0)" }}
+                      exit={{ opacity: 0, y: -5 }}
+                      transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                      <span>ENTRANCE / CUE {cueSequence.toString().padStart(2, "0")}</span>
+                      <strong>{activePersona.name} takes the floor</strong>
+                      <i>RESPONSE IN PROGRESS</i>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 {backendMessage && (
                   <div className="inline-notice" role="status"><span>{backendMessage}</span>{backendState === "offline" && <button onClick={() => void refreshBackend()}>Retry connection</button>}</div>
                 )}
                 <div className="transcript-scroll">
                   {messages.length === 0 && (
-                    <div className="empty-transcript"><span className="empty-marker"><Sparkles size={17} /></span><p>The room is listening. Your opponent is preparing an opening statement.</p></div>
+                    <div className="empty-transcript"><span className="empty-marker"><BookOpenText size={17} /></span><p>The room is set. Your opponent is preparing an opening statement.</p></div>
                   )}
                   {messages.map((message, index) => (
                     <motion.article
@@ -588,7 +611,7 @@ export default function App() {
                         <span>TURN {Math.ceil((index + 1) / 2).toString().padStart(2, "0")}</span>
                       </div>
                       <p>{message.content}{message.pending && <span className="stream-cursor" />}</p>
-                      {message.pending && !message.content && <div className="thinking-label"><LoaderCircle size={14} /> FORMULATING A RESPONSE</div>}
+                      {message.pending && !message.content && <div className="thinking-label"><LoaderCircle size={14} /> PREPARING A RESPONSE</div>}
                     </motion.article>
                   ))}
                   <div ref={bottomRef} />
@@ -607,12 +630,12 @@ export default function App() {
               </section>
 
               <aside className="room-notes">
-                <div className="room-note-heading"><span>THE RECORD</span><span className="record-dot" /></div>
+                <div className="room-note-heading"><span>THE PROMPT BOOK</span><span className="record-dot" /></div>
                 <div className="record-card"><div className="record-number">{learnerTurns.length.toString().padStart(2, "0")}</div><span>YOUR TURNS</span></div>
-                <div className="record-card"><div className="record-number">{totalWords.toString().padStart(2, "0")}</div><span>WORDS ON RECORD</span></div>
+                <div className="record-card"><div className="record-number">{totalWords.toString().padStart(2, "0")}</div><span>YOUR WORDS</span></div>
                 <div className="room-divider" />
-                <div className="live-note"><span className="live-note-mark"><Swords size={15} /></span><b>NO SCRIPT.</b><p>Your opponent responds to the argument you make, not a preset sequence.</p></div>
-                <div className="room-status"><span>MODEL STATUS</span><b><i /> CONNECTED LOCALLY</b></div>
+                <div className="live-note"><span className="live-note-mark"><Swords size={15} /></span><b>YOUR WORDS SET THE SCENE.</b><p>Your opponent responds to the argument you make, not a preset sequence.</p></div>
+                <div className="room-status"><span>MODEL STATUS</span><b className={`model-${backendState}`}><i /> {backendState === "ready" ? "CONNECTED LOCALLY" : backendState === "warming" ? "WARMING LOCALLY" : backendState === "offline" ? "OFFLINE" : "CHECKING"}</b></div>
               </aside>
             </div>
             <div className="arena-bottomline"><span>VERDICT / PRACTICE ROOM</span><span>YOUR ARGUMENT STAYS LOCAL</span><span>SESSION LENGTH {duration} MIN</span></div>
@@ -621,20 +644,20 @@ export default function App() {
 
         {view === "verdict" && (
           <motion.main key="verdict" className="verdict-page" {...pageMotion}>
-            <header className="verdict-header"><button className="arena-brand" onClick={returnHome}><span className="brand-mark"><Gavel size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button><span>SESSION CLOSED / LOCAL DEMO</span></header>
+            <header className="verdict-header"><button className="arena-brand" onClick={returnHome}><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button><span>REHEARSAL COMPLETE / LOCAL DEMO</span></header>
             <section className="verdict-content">
-              <div className="verdict-overline"><span className="verdict-seal"><Gavel size={24} /></span><span>THE SESSION IS IN.</span></div>
-              <h1>Make the next<br /><span>case stronger.</span></h1>
-              <p className="verdict-summary">You took on <b>{activePersona.name}</b> over the motion: <b>“{activeTopic}”</b></p>
+              <div className="verdict-overline"><span className="verdict-seal"><BookOpenText size={22} /></span><span>THE LAST CUE IS CALLED.</span></div>
+              <h1>Keep the next<br /><span>line in reach.</span></h1>
+              <p className="verdict-summary">You rehearsed with <b>{activePersona.name}</b> on the motion: <b>“{activeTopic}”</b></p>
               <div className="verdict-stats">
                 <div><span>YOUR TURNS</span><b>{learnerTurns.length.toString().padStart(2, "0")}</b></div>
-                <div><span>WORDS ON RECORD</span><b>{totalWords.toString().padStart(2, "0")}</b></div>
+                <div><span>YOUR WORDS</span><b>{totalWords.toString().padStart(2, "0")}</b></div>
                 <div><span>TIME IN ROOM</span><b>{formatTime(Math.min(elapsed, duration * 60))}</b></div>
               </div>
               <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>This preview records the exchange locally. Argument analysis, fallacy coaching, and session history are coming in the full learner showcase.</p></div>
               <div className="verdict-actions">
-                <button className="button button-dark" onClick={() => { setSecondsLeft(duration * 60); setStartedAt(Date.now()); setView("arena"); }}><RotateCcw size={16} /> Review the room</button>
-                <button className="button button-light" onClick={() => setView("setup")}>Start another case <ArrowUpRight size={16} /></button>
+                <button className="button button-dark" onClick={() => { setSecondsLeft(duration * 60); setStartedAt(Date.now()); setView("arena"); }}><RotateCcw size={16} /> Return to the room</button>
+                <button className="button button-light" onClick={() => setView("setup")}>Start a new rehearsal <ArrowUpRight size={16} /></button>
               </div>
             </section>
             <div className="verdict-footer"><span>VERDICT / CASE CLOSED</span><span>LOCAL AI PRACTICE ROOM</span></div>
