@@ -75,3 +75,54 @@ class AnalysisReport(BaseModel):
     strengths: list[str] = Field(min_length=1, max_length=3)
     next_steps: list[str] = Field(min_length=1, max_length=3)
     counterarguments: list[Counterargument] = Field(min_length=5, max_length=5)
+
+
+class PresentationSegment(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+    start: float = Field(ge=0, le=3600)
+    end: float = Field(ge=0, le=3600)
+
+
+class DeliveryEvent(BaseModel):
+    kind: Literal["rushed", "hesitant", "flat", "tense"]
+    start: float = Field(ge=0, le=3600)
+    end: float = Field(ge=0, le=3600)
+    label: str = Field(min_length=1, max_length=60)
+    detail: str = Field(min_length=1, max_length=280)
+
+
+class DeliverySignals(BaseModel):
+    wpm: float = Field(ge=0, le=400)
+    words: int = Field(ge=0, le=20000)
+    duration_sec: float = Field(ge=0, le=3600)
+    filler_count: int = Field(ge=0)
+    filler_rate_per_100w: float = Field(ge=0)
+    pause_count: int = Field(ge=0)
+    longest_pause_sec: float = Field(ge=0)
+    repetition_count: int = Field(ge=0)
+    revision_count: int = Field(ge=0)
+    prolongation_count: int = Field(ge=0)
+    events: list[DeliveryEvent] = Field(max_length=8)
+
+
+class PresentationRequest(BaseModel):
+    topic: str | None = Field(default=None, max_length=240)
+    segments: list[PresentationSegment] = Field(min_length=1, max_length=60)
+    signals: DeliverySignals
+
+
+class DrillCard(BaseModel):
+    start: float = Field(ge=0, le=3600)
+    end: float = Field(ge=0, le=3600)
+    pattern: Literal["rushed", "hesitant", "flat", "tense"]
+    what_happened: str = Field(min_length=1, max_length=280)
+    try_this: str = Field(min_length=1, max_length=280)
+    example: str = Field(min_length=1, max_length=280)
+
+
+class PresentationReport(BaseModel):
+    transcript: str = Field(min_length=1, max_length=8000)
+    communication_score: int = Field(ge=1, le=5)
+    strengths: list[str] = Field(min_length=1, max_length=2)
+    drills: list[DrillCard] = Field(min_length=1, max_length=4)
+    next_line: str = Field(min_length=1, max_length=280)
