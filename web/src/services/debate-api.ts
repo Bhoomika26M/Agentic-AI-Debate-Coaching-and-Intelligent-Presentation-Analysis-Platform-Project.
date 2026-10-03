@@ -16,6 +16,38 @@ export type DebateOptions = {
   difficulty: "warm-up" | "challenge" | "cross-examination";
 };
 
+export type AnalysisReport = {
+  ratings: Record<"clarity" | "relevance" | "evidence_strength" | "logical_consistency" | "persuasiveness", { score: number; note: string }>;
+  fallacies: { label: string; quote: string; explanation: string; revision: string }[];
+  strengths: string[];
+  next_steps: string[];
+  counterarguments: { kind: string; response: string; question: string }[];
+};
+
+export async function analyzeDebate(
+  options: DebateOptions,
+  turns: DebateMessage[],
+  accessToken?: string,
+) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const response = await fetch(apiUrl("/api/debate/analyze"), {
+    method: "POST",
+    headers,
+    credentials: "omit",
+    body: JSON.stringify({
+      topic: options.topic,
+      learner_position: options.learner_position,
+      turns: turns.filter((turn) => !turn.pending).map(({ speaker, content }) => ({ speaker, content })),
+    }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.detail ?? "The coach could not review this transcript.");
+  }
+  return (await response.json()) as AnalysisReport;
+}
+
 export async function checkBackend() {
   const response = await fetch(apiUrl("/api/health"), { credentials: "omit" });
   if (!response.ok) throw new Error("The debate service is unavailable.");
@@ -31,12 +63,16 @@ export async function streamOpponentReply(
   options: DebateOptions,
   history: DebateMessage[],
   learnerArgument: string | null,
+  accessToken: string | undefined,
   onDelta: (delta: string) => void,
   signal: AbortSignal,
 ) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
   const response = await fetch(apiUrl("/api/debate/stream"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     credentials: "omit",
     body: JSON.stringify({
       ...options,

@@ -22,11 +22,18 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   checkBackend,
   streamOpponentReply,
+  analyzeDebate,
+  type AnalysisReport,
   type DebateMessage,
   type DebateOptions,
 } from "./services/debate-api";
+import { createDebateRecord, finishDebateRecord, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn } from "./services/debate-records";
+import { AccountView } from "./features/auth/AccountView";
+import { AuthView } from "./features/auth/AuthView";
+import { useAuth } from "./features/auth/AuthProvider";
+import { supabaseConfigured } from "./features/auth/supabase";
 
-type View = "landing" | "setup" | "arena" | "verdict";
+type View = "landing" | "setup" | "arena" | "verdict" | "auth" | "account";
 type PersonaKey = DebateOptions["persona"];
 type BackendState = "checking" | "warming" | "ready" | "offline";
 
@@ -90,32 +97,53 @@ function formatTime(seconds: number) {
   return `${minutes}:${remainder}`;
 }
 
-function Header({ onHome, onStart }: { onHome: () => void; onStart: () => void }) {
+function Header({
+  onHome,
+  onStart,
+  onAccount,
+  accountLabel,
+  showNav = true,
+}: {
+  onHome: () => void;
+  onStart: () => void;
+  onAccount: () => void;
+  accountLabel: string;
+  showNav?: boolean;
+}) {
   return (
     <header className="site-header">
-      <button className="brand" onClick={onHome} aria-label="Verdict home">
-        <span className="brand-mark"><BookOpenText size={17} strokeWidth={2} /></span>
-        <span>VERDICT<span className="brand-period">.</span></span>
-      </button>
-      <nav className="desktop-nav" aria-label="Main navigation">
-        <a href="#how-it-works">The format</a>
-        <a href="#opponents">Opponents</a>
-        <span className="nav-divider" />
-        <span className="local-indicator"><i /> Local demo</span>
-      </nav>
-      <button className="header-cta" onClick={onStart}>
-        Open the prompt book <ArrowUpRight size={15} />
-      </button>
+      <div className="site-header-inner">
+        <button className="brand" onClick={onHome} aria-label="Verdict home">
+          <span className="brand-mark"><BookOpenText size={17} strokeWidth={2} /></span>
+          <span>VERDICT<span className="brand-period">.</span></span>
+        </button>
+        <div className="header-actions">
+          {showNav && (
+            <nav className="desktop-nav" aria-label="Main navigation">
+              <a href="#how-it-works">The format</a>
+              <a href="#opponents">Opponents</a>
+              <span className="nav-divider" aria-hidden="true" />
+              <span className="local-indicator"><i aria-hidden="true" /> Guest practice open</span>
+            </nav>
+          )}
+          <button className="header-account-link" onClick={onAccount}>{accountLabel}</button>
+          <button className="header-cta" onClick={onStart}>
+            <span className="cta-full">Open the prompt book</span>
+            <span className="cta-short">Start</span>
+            <ArrowUpRight size={15} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
     </header>
   );
 }
 
 function StatusTag({ state }: { state: BackendState }) {
   const labels: Record<BackendState, string> = {
-    checking: "CHECKING LOCAL MODEL",
-    warming: "WARMING LOCAL MODEL",
-    ready: "LOCAL MODEL READY",
-    offline: "MODEL NEEDS A NUDGE",
+    checking: "CHECKING AI OPPONENT",
+    warming: "WARMING AI OPPONENT",
+    ready: "AI OPPONENT READY",
+    offline: "AI OPPONENT NEEDS A NUDGE",
   };
   return (
     <span className={`status-tag is-${state}`}>
@@ -125,6 +153,7 @@ function StatusTag({ state }: { state: BackendState }) {
 }
 
 export default function App() {
+  const { session, user, signOut } = useAuth();
   const [view, setView] = useState<View>("landing");
   const [topicChoice, setTopicChoice] = useState(topics[0]);
   const [customTopic, setCustomTopic] = useState("");
@@ -142,8 +171,15 @@ export default function App() {
   const [startedAt, setStartedAt] = useState(0);
   const [cueSequence, setCueSequence] = useState(0);
   const [cueVisible, setCueVisible] = useState(false);
+  const [recordId, setRecordId] = useState<string | null>(null);
+  const [recordNotice, setRecordNotice] = useState("");
+  const [startingSession, setStartingSession] = useState(false);
+  const [analysis, setAnalysis] = useState<AnalysisReport | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const savedTurnIds = useRef(new Set<string>());
 
   const activePersona = useMemo(
     () => personas.find((candidate) => candidate.key === persona) ?? personas[0],
@@ -171,14 +207,14 @@ export default function App() {
       );
       setBackendMessage(
         health.model_loaded
-          ? `Connected to ${health.model}. Your debate stays on this machine.`
+          ? `Connected to ${health.model}. Your rehearsal runs in this session.`
           : health.model_available
             ? `Warming ${health.model} for your first turn.`
             : `Start Ollama and pull ${health.model} to open the debate room.`,
       );
     } catch {
       setBackendState("offline");
-      setBackendMessage("Start the Python service and Ollama to connect your local opponent.");
+      setBackendMessage("Start the Python service and Ollama to connect your AI opponent.");
     }
   }
 
@@ -223,6 +259,7 @@ export default function App() {
         options,
         history,
         learnerArgument,
+        session?.access_token,
         (delta) => {
           setMessages((current) =>
             current.map((message) =>
@@ -273,25 +310,90 @@ export default function App() {
   }, [view]);
 
   useEffect(() => {
-    if (view === "arena" && secondsLeft === 0) setView("verdict");
+    if (view === "arena" && secondsLeft === 0) finishSession();
   }, [view, secondsLeft]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
-  function startSession() {
+  useEffect(() => {
+    if (!recordId) return;
+    messages.forEach((message, index) => {
+      if (message.pending || !message.content.trim() || savedTurnIds.current.has(message.id)) return;
+      savedTurnIds.current.add(message.id);
+      void saveDebateTurn(recordId, { ...message, turn_index: index })
+        .catch(() => {
+          savedTurnIds.current.delete(message.id);
+          setRecordNotice("This turn is still on screen, but it did not sync to your account. Check the connection before ending the rehearsal.");
+        });
+    });
+  }, [messages, recordId]);
+
+  async function startSession() {
+    if (startingSession) return;
+    setStartingSession(true);
+    setRecordNotice("");
+    setAnalysis(null);
+    setAnalysisError("");
     setMessages([]);
     setDraft("");
     setSecondsLeft(duration * 60);
     setStartedAt(Date.now());
+    savedTurnIds.current = new Set();
+    let nextRecordId: string | null = null;
+    if (user && supabaseConfigured) {
+      try {
+        nextRecordId = await createDebateRecord({
+          topic: activeTopic,
+          learner_position: position,
+          persona,
+          difficulty,
+        }, duration);
+      } catch {
+        setRecordNotice("The debate can continue, but this session could not be saved to your account. Check your Supabase setup.");
+      }
+    }
+    setRecordId(nextRecordId);
     setSessionId((current) => current + 1);
     setView("arena");
+    setStartingSession(false);
+  }
+
+  async function reviewDebate() {
+    if (analysisLoading || learnerTurns.length === 0) return;
+    setAnalysisLoading(true);
+    setAnalysisError("");
+    try {
+      const report = await analyzeDebate({
+        topic: activeTopic,
+        learner_position: position,
+        persona,
+        difficulty,
+      }, messages, session?.access_token);
+      setAnalysis(report);
+      if (recordId) {
+        try {
+          await saveDebateAnalysis(recordId, report);
+        } catch {
+          setAnalysisError("The review is ready, but could not be saved to your learner archive.");
+        }
+      }
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : "The coach could not review this transcript.");
+    } finally {
+      setAnalysisLoading(false);
+    }
   }
 
   function finishSession() {
     abortRef.current?.abort();
     setStreaming(false);
+    if (recordId) {
+      void finishDebateRecord(recordId).catch(() => {
+        setRecordNotice("The transcript is saved, but the rehearsal could not be marked complete. It will remain in your archive.");
+      });
+    }
     setView("verdict");
   }
 
@@ -315,6 +417,30 @@ export default function App() {
     setView("landing");
     setMessages([]);
     setSessionId(0);
+    setRecordId(null);
+    setRecordNotice("");
+  }
+
+  function openAccount() {
+    setView(user ? "account" : "auth");
+  }
+
+  async function handleSignOut() {
+    await signOut();
+    setView("landing");
+  }
+
+  async function resumeSession() {
+    if (recordId) {
+      try {
+        await resumeDebateRecord(recordId);
+      } catch {
+        setRecordNotice("Could not update the saved session status. You can keep debating — this transcript stays in the browser.");
+      }
+    }
+    setSecondsLeft(duration * 60);
+    setStartedAt(Date.now());
+    setView("arena");
   }
 
   const elapsed = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
@@ -322,10 +448,31 @@ export default function App() {
   return (
     <div className={`app-shell ${view === "setup" ? "app-shell-setup" : ""} ${view === "arena" || view === "verdict" ? "app-shell-room" : ""}`}>
       {view !== "arena" && view !== "verdict" && (
-        <Header onHome={returnHome} onStart={() => setView("setup")} />
+        <Header
+          onHome={returnHome}
+          onStart={() => setView("setup")}
+          onAccount={openAccount}
+          accountLabel={user ? "Learner space" : "Sign in"}
+          showNav={view === "landing"}
+        />
       )}
 
       <AnimatePresence mode="wait">
+        {view === "auth" && (
+          <motion.div key="auth" className="app-auth-view" {...pageMotion}>
+            <AuthView
+              onContinueAsGuest={() => setView("setup")}
+              onAuthenticated={() => setView("landing")}
+            />
+          </motion.div>
+        )}
+
+        {view === "account" && (
+          <motion.div key="account" className="app-shell-room" {...pageMotion}>
+            <AccountView onStart={() => setView("setup")} onSignOut={handleSignOut} />
+          </motion.div>
+        )}
+
         {view === "landing" && (
           <motion.main key="landing" className="landing" {...pageMotion}>
             <section className="hero-section">
@@ -340,7 +487,7 @@ export default function App() {
                   </button>
                   <a className="text-link" href="#how-it-works">See how it works <ArrowDownRight size={16} /></a>
                 </div>
-                <div className="hero-footnote"><LockKeyhole size={13} /> Local model · your words stay on this machine</div>
+                <div className="hero-footnote"><LockKeyhole size={13} /> Guest practice open · sign in only to save your work</div>
               </div>
 
               <div className="hero-scene" aria-label="A sample page from a live debate prompt book">
@@ -369,7 +516,7 @@ export default function App() {
                     <div><span className="case-label">LIVE CUE / 01</span><b>Your opening argument</b></div>
                     <span className="cue-preview-state"><i /> READY</span>
                   </div>
-                  <div className="case-bottomline"><span>STREAMED EXCHANGE</span><span>LOCAL MODEL / {modelStatusLabel}</span></div>
+                  <div className="case-bottomline"><span>STREAMED EXCHANGE</span><span>AI OPPONENT / {modelStatusLabel}</span></div>
                 </motion.div>
                 <div className="scene-note"><span className="note-arrow">↗</span><span>LIVE DEBATE<br />IN THREE ACTS</span></div>
               </div>
@@ -415,19 +562,22 @@ export default function App() {
               </div>
               <div className="opponent-stack">
                 {personas.map((person, index) => (
-                  <motion.div
+                  <motion.button
+                    type="button"
                     className={`opponent-tile tone-${person.color}`}
                     key={person.key}
                     initial={{ opacity: 0, x: 30 }}
                     whileInView={{ opacity: 1, x: 0 }}
                     viewport={{ once: true, amount: 0.35 }}
                     transition={{ delay: index * 0.1, duration: 0.45 }}
+                    onClick={() => { setPersona(person.key); setView("setup"); }}
+                    aria-label={`Choose ${person.name} — ${person.title}`}
                   >
-                    <span className="tile-sigil">{person.sigil}</span>
+                    <span className="tile-sigil" aria-hidden="true">{person.sigil}</span>
                     <span className="tile-copy"><b>{person.name}</b><small>{person.title}</small></span>
-                    <span className="tile-index">0{index + 1}</span>
-                    <span className="tile-slash" />
-                  </motion.div>
+                    <span className="tile-index" aria-hidden="true">0{index + 1}</span>
+                    <span className="tile-slash" aria-hidden="true" />
+                  </motion.button>
                 ))}
                 <div className="opponent-stack-caption">AN OPPONENT FOR EVERY BLIND SPOT</div>
               </div>
@@ -443,7 +593,7 @@ export default function App() {
               </div>
               <div className="closing-aside">ACT I / MAKE YOUR CASE<br />ACT II / MEET THE COUNTERPOINT<br />ACT III / TAKE IT WITH YOU</div>
             </section>
-            <footer className="site-footer"><span>VERDICT<span className="brand-period">.</span></span><span>THINK CLEAR. SPEAK SHARP.</span><span>LOCAL AI PRACTICE ROOM</span></footer>
+            <footer className="site-footer"><span>VERDICT<span className="brand-period">.</span></span><span>THINK CLEAR. SPEAK SHARP.</span><span>AI PRACTICE ROOM</span></footer>
           </motion.main>
         )}
 
@@ -528,14 +678,14 @@ export default function App() {
             </div>
 
             <div className="setup-bottom">
-              <div className="local-note"><LockKeyhole size={14} /><span>Your first debate stays on this device. No account needed for the demo.</span></div>
-              <button className="button button-dark setup-submit" onClick={startSession} disabled={!activeTopic.trim()}>
-                Call the first cue <ArrowRight size={17} />
+              <div className="local-note"><LockKeyhole size={14} /><span>Guest practice open — no account needed. Sign in to keep transcripts in your learner archive.</span></div>
+              <button className="button button-dark setup-submit" onClick={() => void startSession()} disabled={!activeTopic.trim() || startingSession}>
+                {startingSession ? "Setting the table..." : "Call the first cue"} {!startingSession && <ArrowRight size={17} />}
               </button>
             </div>
             {backendState === "offline" && (
               <div className="backend-help" role="status">
-                <div><Radio size={16} /><span>{backendMessage || "The local model is not connected yet."}</span></div>
+                <div><Radio size={16} /><span>{backendMessage || "The AI opponent is not connected yet."}</span></div>
                 <button onClick={() => void refreshBackend()}><RotateCcw size={14} /> Check again</button>
               </div>
             )}
@@ -547,7 +697,7 @@ export default function App() {
             <header className="arena-header">
               <button className="arena-brand" onClick={returnHome} aria-label="Return home"><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button>
               <div className="arena-session"><span>LIVE REHEARSAL</span><i /> <span>ACT / {String(sessionId).slice(-4).padStart(4, "0")}</span></div>
-              <div className="arena-header-actions"><span className={`arena-model model-${backendState}`}><i /> {backendState === "ready" ? "LOCAL MODEL READY" : backendState === "warming" ? "MODEL WARMING" : backendState === "offline" ? "MODEL OFFLINE" : "CHECKING MODEL"}</span><button className="end-button" onClick={finishSession}>End session <X size={15} /></button></div>
+              <div className="arena-header-actions"><span className={`arena-model model-${backendState}`}><i /> {backendState === "ready" ? "AI OPPONENT READY" : backendState === "warming" ? "AI OPPONENT WARMING" : backendState === "offline" ? "AI OPPONENT OFFLINE" : "CHECKING OPPONENT"}</span><button className="end-button" onClick={finishSession}>End session <X size={15} /></button></div>
             </header>
 
             <div className="arena-casebar">
@@ -592,6 +742,7 @@ export default function App() {
                 {backendMessage && (
                   <div className="inline-notice" role="status"><span>{backendMessage}</span>{backendState === "offline" && <button onClick={() => void refreshBackend()}>Retry connection</button>}</div>
                 )}
+                {recordNotice && <div className="inline-notice" role="status">{recordNotice}</div>}
                 <div className="transcript-scroll">
                   {messages.length === 0 && (
                     <div className="empty-transcript"><span className="empty-marker"><BookOpenText size={17} /></span><p>The room is set. Your opponent is preparing an opening statement.</p></div>
@@ -622,6 +773,7 @@ export default function App() {
                     value={draft}
                     onChange={(event) => setDraft(event.target.value.slice(0, 1000))}
                     placeholder={learnerTurns.length === 0 ? "State your opening case..." : "Answer the point. Make it count."}
+                    aria-label="Your argument"
                     rows={3}
                     disabled={streaming || secondsLeft === 0}
                   />
@@ -635,16 +787,16 @@ export default function App() {
                 <div className="record-card"><div className="record-number">{totalWords.toString().padStart(2, "0")}</div><span>YOUR WORDS</span></div>
                 <div className="room-divider" />
                 <div className="live-note"><span className="live-note-mark"><Swords size={15} /></span><b>YOUR WORDS SET THE SCENE.</b><p>Your opponent responds to the argument you make, not a preset sequence.</p></div>
-                <div className="room-status"><span>MODEL STATUS</span><b className={`model-${backendState}`}><i /> {backendState === "ready" ? "CONNECTED LOCALLY" : backendState === "warming" ? "WARMING LOCALLY" : backendState === "offline" ? "OFFLINE" : "CHECKING"}</b></div>
+                <div className="room-status"><span>OPPONENT STATUS</span><b className={`model-${backendState}`}><i /> {backendState === "ready" ? "CONNECTED" : backendState === "warming" ? "WARMING" : backendState === "offline" ? "OFFLINE" : "CHECKING"}</b></div>
               </aside>
             </div>
-            <div className="arena-bottomline"><span>VERDICT / PRACTICE ROOM</span><span>YOUR ARGUMENT STAYS LOCAL</span><span>SESSION LENGTH {duration} MIN</span></div>
+            <div className="arena-bottomline"><span>VERDICT / PRACTICE ROOM</span><span>AI OPPONENT STREAMED LIVE</span><span>SESSION LENGTH {duration} MIN</span></div>
           </motion.main>
         )}
 
         {view === "verdict" && (
           <motion.main key="verdict" className="verdict-page" {...pageMotion}>
-            <header className="verdict-header"><button className="arena-brand" onClick={returnHome}><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button><span>REHEARSAL COMPLETE / LOCAL DEMO</span></header>
+            <header className="verdict-header"><button className="arena-brand" onClick={returnHome}><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button><span>REHEARSAL COMPLETE / CASE REVIEW</span></header>
             <section className="verdict-content">
               <div className="verdict-overline"><span className="verdict-seal"><BookOpenText size={22} /></span><span>THE LAST CUE IS CALLED.</span></div>
               <h1>Keep the next<br /><span>line in reach.</span></h1>
@@ -654,13 +806,51 @@ export default function App() {
                 <div><span>YOUR WORDS</span><b>{totalWords.toString().padStart(2, "0")}</b></div>
                 <div><span>TIME IN ROOM</span><b>{formatTime(Math.min(elapsed, duration * 60))}</b></div>
               </div>
-              <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>This preview records the exchange locally. Argument analysis, fallacy coaching, and session history are coming in the full learner showcase.</p></div>
+              <section className="analysis-chamber" aria-labelledby="analysis-heading">
+                <div className="analysis-chamber-head">
+                  <div><span>ACT IV / THE CASE REVIEW</span><h2 id="analysis-heading">Read the argument.<br /><em>Sharpen the next one.</em></h2></div>
+                  {!analysis && <button className="button button-dark" onClick={() => void reviewDebate()} disabled={analysisLoading || learnerTurns.length === 0}>
+                    {analysisLoading ? <><LoaderCircle className="spin" size={15} /> Reading your case</> : <><Sparkles size={15} /> Analyze my arguments</>}
+                  </button>}
+                </div>
+                {!analysis && <p className="analysis-intro">A text-based coaching review of clarity, evidence, reasoning, and persuasion. It runs on the Ollama model and does not assess your voice.</p>}
+                {analysisError && <div className="analysis-error" role="alert">{analysisError}</div>}
+                {analysis && <>
+                  <div className="analysis-rubric">
+                    {([
+                      ["clarity", "Clarity"],
+                      ["relevance", "Relevance"],
+                      ["evidence_strength", "Evidence"],
+                      ["logical_consistency", "Logic"],
+                      ["persuasiveness", "Persuasion"],
+                    ] as const).map(([key, label]) => (
+                      <article className="analysis-rating" key={key}>
+                        <span>{label}</span><b>{analysis.ratings[key].score}<small> / 5</small></b><p>{analysis.ratings[key].note}</p>
+                      </article>
+                    ))}
+                  </div>
+                  <div className="analysis-coaching-grid">
+                    <section className="analysis-coaching-card"><span>WHAT LANDED</span>{analysis.strengths.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
+                    <section className="analysis-coaching-card"><span>YOUR NEXT MOVE</span>{analysis.next_steps.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
+                  </div>
+                  <section className="analysis-fallacies"><div className="analysis-section-label">LOGIC WATCH / {analysis.fallacies.length.toString().padStart(2, "0")}</div>
+                    {analysis.fallacies.length === 0
+                      ? <p>No clear examples of the listed fallacies appeared. Keep checking claims against their evidence.</p>
+                      : analysis.fallacies.map((item, index) => <article key={`${item.label}-${index}`}><b>{item.label}</b><blockquote>“{item.quote}”</blockquote><p>{item.explanation}</p><small>TRY THIS: {item.revision}</small></article>)}
+                  </section>
+                  <section className="analysis-counterpoints"><div className="analysis-section-label">FIVE WAYS TO TEST THE CASE</div><div className="counterpoint-grid">
+                    {analysis.counterarguments.map((item) => <article key={item.kind}><span>{item.kind.toUpperCase()} COUNTERPOINT</span><p>{item.response}</p><small>ASK: {item.question}</small></article>)}
+                  </div></section>
+                  <p className="analysis-limit">Coaching estimate from an AI model, based on this transcript only. Scores are not objective measures. Check each observation against what you meant to say.</p>
+                </>}
+              </section>
+              <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>{user ? "Your transcript and any completed argument review are kept in your learner archive." : "Your transcript and review stay in this browser session. Sign in before your next rehearsal to keep its transcript in your learner archive."}</p></div>
               <div className="verdict-actions">
-                <button className="button button-dark" onClick={() => { setSecondsLeft(duration * 60); setStartedAt(Date.now()); setView("arena"); }}><RotateCcw size={16} /> Return to the room</button>
+                <button className="button button-dark" onClick={() => void resumeSession()}><RotateCcw size={16} /> Return to the room</button>
                 <button className="button button-light" onClick={() => setView("setup")}>Start a new rehearsal <ArrowUpRight size={16} /></button>
               </div>
             </section>
-            <div className="verdict-footer"><span>VERDICT / CASE CLOSED</span><span>LOCAL AI PRACTICE ROOM</span></div>
+            <div className="verdict-footer"><span>VERDICT / CASE CLOSED</span><span>AI PRACTICE ROOM</span></div>
           </motion.main>
         )}
       </AnimatePresence>
