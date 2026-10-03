@@ -62,5 +62,6 @@ Deliver a polished, locally runnable AI debate demo by Monday, October 5, 2026, 
 
 ## Next
 
-- Add presentation feedback, explainable scores, recommendations, learner progress, reports, and milestones by October 12.
+- Add post-hoc delivery review (record + upload, transcript with timestamps, pace/fillers/pauses, tutor drills for rushed/hesitant/flat/tense-voice) in verdict Act V and a standalone room by October 12, then explainable scores, recommendations, learner progress, reports, and milestones.
+- Keep categorical emotion recognition local-only opt-in; hosted uses delivery proxies only.
 - Prepare free-tier deployment with explicit per-user AI key handling and no paid fallback.

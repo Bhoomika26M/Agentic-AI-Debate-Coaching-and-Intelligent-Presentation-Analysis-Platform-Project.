@@ -55,6 +55,10 @@ SUPABASE_URL=
 SUPABASE_JWKS_URL=
 SUPABASE_JWT_ISSUER=
 REQUIRE_AUTH=false
+STT_MODEL=tiny
+MAX_AUDIO_MB=10
+MAX_AUDIO_SEC=180
+ENABLE_SER=false
 ```
 
 Rules:
@@ -264,12 +268,14 @@ curl -X POST http://127.0.0.1:8000/api/debate/analyze \
 - CORS/host errors: `WEB_ORIGIN` must exactly match the frontend origin; `ALLOWED_HOSTS` must include the API hostname.
 - Blank page after `npm run build` in production: `VITE_API_BASE_URL` must be set to the HTTPS API origin. It must be origin-only, no path/query, no credentials.
 - CSP errors: frontend sends restrictive CSP with `connect-src 'self' https:`; self-hosted fonts only.
+- `Transcription is unavailable`: install optional `faster-whisper` locally (`pip install faster-whisper`) or set `STT_MODEL=tiny|base`. Audio over 10MB / 180s is rejected before transcription.
+- Categorical emotion labels never appear hosted: `ENABLE_SER` is local-only; hosted delivery review uses energy/pace/pause proxies only.
 
 ## Deployment checklist
 
 - Frontend: Vercel project rooted at `web/`, or Render static site via root `render.yaml`. Both apply CSP, security headers, and immutable caching for `/assets/*`.
 - Set in the frontend host: `VITE_API_BASE_URL` (HTTPS API origin, public but not secret), `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`.
 - Set on the Python host: `WEB_ORIGIN` (exact deployed frontend origin), `ALLOWED_HOSTS` (API hostname), `SUPABASE_URL` (+ optional explicit JWKS/issuer), `REQUIRE_AUTH=true`.
-- Keep `REQUIRE_AUTH=true` once Supabase JWKS is configured; leave `false` only for guest testing.
-- Never put a Supabase service-role key or model-provider secret in `VITE_` vars or browser code.
+- Keep `REQUIRE_AUTH=true` once Supabase JWKS is configured; leave `false` only for guest testing. Keep `ENABLE_SER=false` hosted; categorical emotion stays local-only.
+- Never put a Supabase service-role key or model-provider secret in `VITE_` vars or browser code. Audio is discarded by default; retention needs an explicit learner opt-in.
 - Transcript analysis still runs on Ollama in this phase, so the API needs a local Ollama runtime. Do not expose a guest-mode API as a public service; the public path needs authenticated bring-your-own-key handling, which is still planned.

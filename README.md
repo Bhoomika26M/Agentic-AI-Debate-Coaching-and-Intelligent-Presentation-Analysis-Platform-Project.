@@ -58,6 +58,8 @@ Keep email confirmation enabled in Supabase Auth. Set the password policy to at 
 
 For local backend requests, authentication stays optional so the guest demo remains usable. Configure `SUPABASE_URL` when the local frontend is connected to learner accounts so the Python API can verify access tokens. To require learner accounts in a hosted backend, set `REQUIRE_AUTH=true` with that same project URL. The API verifies Supabase access tokens against the project's JWKS; use an asymmetric signing key so the JWKS endpoint is available. Never put a Supabase service-role key or model-provider secret in frontend variables.
 
+Delivery review (October 12 slice) is post-hoc record + upload with transcript timestamps and tutor drills for rushed/hesitant/flat/tense-voice. Local transcription uses optional `faster-whisper` (`STT_MODEL=tiny|base`); hosted uses the learner-supplied provider key transiently. Audio is discarded by default (10MB / 180s caps) unless the learner explicitly opts into retention. Categorical emotion recognition stays local-only opt-in via `ENABLE_SER=true`; hosted uses delivery proxies only.
+
 ## Frontend deployment configuration
 
 The frontend is a React 19 + TypeScript single-page application built to static assets by Vite. It can be deployed as a Vercel project rooted at `web/` or as the static site in the root `render.yaml` blueprint. Both configurations apply a restrictive Content Security Policy and security response headers.

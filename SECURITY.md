@@ -19,5 +19,7 @@
 
 - Require authenticated learner access and authorize every persisted session by owner.
 - Add the Python BYOK provider adapter. Keep user keys transient, redact them from logs, and never persist them by default.
+- Cap delivery audio at 10MB / 180s, validate type before transcription, and discard bytes by default unless the learner explicitly opts into retention.
+- Keep categorical emotion recognition local-only opt-in (`ENABLE_SER=true`); hosted delivery review uses prosody proxies only, labeled as estimates.
 - Add distributed rate limiting and abuse monitoring if multiple API instances are deployed.
 - Test the final CSP against the selected API origin and OAuth callback origins.
