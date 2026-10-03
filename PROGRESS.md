@@ -48,9 +48,19 @@ Deliver a polished, locally runnable AI debate demo by Monday, October 5, 2026, 
 - Wrote the visual system guide and Impeccable sidecar. The required finish detector identified two padding-based hover transitions; changed those hover shifts to transforms to avoid animating layout.
 - The final confirmation passed: the selected direction, four-view journey, dynamic model status, learner-only word labels, streamed cue behavior, and 320px layouts match the product brief. The production build passes after the final motion refinement.
 - Removed temporary Impeccable chooser logs and payloads; kept the reusable surface brief, project design tokens, and design-system sidecar.
+- Recorded the account surface contract at `.impeccable/surfaces/web-src-features-auth-authview-tsx.md`, then built the responsive Prompt-book account screen with email/password validation, password visibility, Google OAuth, verification feedback, provider-safe configuration handling, and a guest route.
+- Added Supabase client/session plumbing, an owner-scoped debate schema with explicit grants and RLS policies, and optional Python JWT verification for authenticated deployments.
+- Connected authenticated debate creation, streamed turn persistence, session completion/resume, and a learner archive with transcript viewing. Guest sessions are preserved when account configuration is absent or persistence fails.
+- Added deploy-time Supabase public variables for Render, kept OAuth secrets out of the client, updated setup guidance, and tightened CSP to match the self-hosted font assets.
+- Implemented the argument-intelligence slice: the Python service reviews a transcript against five named rubric criteria, checks eight documented fallacy types against exact transcript text, and generates the five planned counterpoint styles; the recap presents evidence cards, saves owner-scoped reviews, and states the text-only limits.
+- Hardened the analysis contract: incomplete model replies are retried with a repair turn (up to three attempts) instead of reaching the learner as a partial scorecard, and a report that stays incomplete ends in a clear error instead of a partial review.
+- Verified the analysis slice end-to-end: a deterministic repair-loop check (omitted rating, then invalid JSON, then complete report) and a live `/api/debate/analyze` call against qwen3.5:4b returned all five ratings, all five counterargument kinds, and grounded coaching. Python compilation, the frontend production build, and `git diff --check` pass.
+
+## In progress
+
+- Account provider sign-in and saved-archive flows are implemented and compile, but still need the project's own free Supabase credentials before they can be exercised end-to-end. The guest demo is unaffected.
 
 ## Next
 
-- Add Supabase learner sign-up/sign-in with validation and Google OAuth.
-- Add transcript persistence, argument/fallacy/rebuttal analysis, presentation feedback, scores, recommendations, learner dashboard, reports, and in-app notifications.
+- Add presentation feedback, explainable scores, recommendations, learner progress, reports, and milestones by October 12.
 - Prepare free-tier deployment with explicit per-user AI key handling and no paid fallback.
