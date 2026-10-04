@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, Mic, RotateCcw, Sparkles, Square, Upload } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
+import { MicCueArt } from "../../components/CueArt";
 import { analyzePresentation, type PresentationResult } from "../../services/presentation-api";
 import { savePresentationFeedback } from "../../services/presentation-records";
 import "./presentation.css";
@@ -152,6 +153,7 @@ export function PresentationRoom({ topic, sessionId, compact }: { topic?: string
           </button>
         </div>
         <p className="present-hint">Record up to 3:00 or upload webm/wav/mp3 under 10MB. Audio is discarded by default.</p>
+        {!file && !result && !recording && <MicCueArt label="Record or upload a take to begin" />}
         {previewUrl && <audio ref={audioRef} className="present-audio" controls src={previewUrl} />}
         {error && <div className="analysis-error" role="alert">{error}</div>}
         {notice && <div className="inline-notice" role="status">{notice}</div>}

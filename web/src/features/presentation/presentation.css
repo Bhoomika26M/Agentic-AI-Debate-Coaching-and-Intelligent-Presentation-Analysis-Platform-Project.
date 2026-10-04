@@ -3,6 +3,7 @@
 .present-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
 .present-upload { cursor: pointer; }
 .present-hint { color: #5c554b; font-size: 10px; line-height: 1.5; }
+.present-controls .cue-art { width: 120px; height: auto; color: #514a40; }
 .present-audio { width: 100%; }
 .present-signals { margin: 14px 0; display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid #c7baa4; border-bottom: 1px solid #c7baa4; }
 .present-signals div { padding: 10px; }

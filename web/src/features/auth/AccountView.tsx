@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowUpRight, BookOpenText, LoaderCircle, RotateCcw, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BookOpenText, LoaderCircle, RotateCcw } from "lucide-react";
+import { EmptyCueArt } from "../../components/CueArt";
+import { MarkdownText } from "../../components/Markdown";
 import { listDebateRecords, loadDebateAnalysis, loadDebateRecord, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
 import type { AnalysisReport } from "../../services/debate-api";
 import { useAuth } from "./AuthProvider";
@@ -94,7 +96,7 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
           {loading && <div className="archive-loading"><LoaderCircle className="spin" size={18} /> Gathering your rehearsals</div>}
           {!loading && !error && records.length === 0 && (
             <div className="archive-empty">
-              <ShieldCheck size={19} />
+              <EmptyCueArt label="No saved rehearsals yet" />
               <div><b>Your record starts with the next debate.</b><p>Sign in before a rehearsal and its transcript will appear here.</p></div>
               <button className="button button-dark" onClick={onStart}>Open the prompt book <ArrowUpRight size={15} /></button>
             </div>
@@ -128,7 +130,7 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
               {selected.turns.map((turn) => (
                 <article className={`record-turn ${turn.speaker}`} key={turn.id}>
                   <span>{turn.speaker === "learner" ? "YOUR CASE" : personaNames[selected.session.persona].toUpperCase()}</span>
-                  <p>{turn.content}</p>
+                  <p><MarkdownText text={turn.content} compact /></p>
                 </article>
               ))}
               {selected.turns.length === 0 && <p className="record-detail-empty">This rehearsal has no saved turns.</p>}

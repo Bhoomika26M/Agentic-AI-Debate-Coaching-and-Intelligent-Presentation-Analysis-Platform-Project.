@@ -30,6 +30,9 @@ import {
 import { createDebateRecord, finishDebateRecord, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn } from "./services/debate-records";
 import { useAuth } from "./features/auth/AuthProvider";
 import { supabaseConfigured } from "./features/auth/supabase";
+import { OpponentEmblem } from "./components/OpponentEmblem";
+import { EmptyCueArt } from "./components/CueArt";
+import { MarkdownText } from "./components/Markdown";
 
 const AccountView = lazy(() => import("./features/auth/AccountView").then((m) => ({ default: m.AccountView })));
 const AuthView = lazy(() => import("./features/auth/AuthView").then((m) => ({ default: m.AuthView })));
@@ -51,7 +54,6 @@ const personas: {
   name: string;
   title: string;
   line: string;
-  sigil: string;
   color: string;
 }[] = [
   {
@@ -59,7 +61,6 @@ const personas: {
     name: "The Strategist",
     title: "Reads the room",
     line: "Looks past the headline to the consequences underneath.",
-    sigil: "S",
     color: "mint",
   },
   {
@@ -67,7 +68,6 @@ const personas: {
     name: "The Skeptic",
     title: "Follows the proof",
     line: "Finds the assumption hiding between your points.",
-    sigil: "?",
     color: "coral",
   },
   {
@@ -75,7 +75,6 @@ const personas: {
     name: "The Diplomat",
     title: "Sees every side",
     line: "Tests your case against the people it affects.",
-    sigil: "D",
     color: "violet",
   },
 ];
@@ -572,23 +571,33 @@ export default function App() {
                 <h2>One motion.<br /><span>Three beats.</span></h2>
                 <p className="section-subtitle">A guided rehearsal with a live opponent, a clock you choose, and your own argument on the page.</p>
               </div>
-              <div className="format-grid rehearsal-cues">
-                <motion.article className="format-card card-claim" whileHover={{ y: -3 }} transition={{ duration: 0.25 }}>
-                  <div className="format-card-top"><span>ENTRANCE CUE</span><span className="cue-mark">01</span></div>
-                  <h3>Take a side.</h3>
-                  <p>Pick a side, choose a motion, and say what you actually think.</p>
+              <div className="cue-ledger" role="list" aria-label="How a rehearsal runs">
+                <motion.article className="cue-row" role="listitem" whileHover={{ x: 4 }} transition={{ duration: 0.22 }}>
+                  <span className="cue-row-index" aria-hidden="true">01</span>
+                  <div className="cue-row-main">
+                    <h3>Take a side.</h3>
+                    <p>Pick a motion, choose for or against, and open in your own words. The room goes quiet — the floor is yours.</p>
+                  </div>
+                  <span className="cue-row-tag">ENTRANCE CUE</span>
                 </motion.article>
-                <motion.article className="format-card card-reply" whileHover={{ y: -3 }} transition={{ duration: 0.25 }}>
-                  <div className="format-card-top"><span>RESPONSE CUE</span><span className="cue-mark">02</span></div>
-                  <h3>Hold the floor.</h3>
-                  <p>A distinct AI persona listens, challenges, and answers in real time.</p>
+                <motion.article className="cue-row" role="listitem" whileHover={{ x: 4 }} transition={{ duration: 0.22 }}>
+                  <span className="cue-row-index" aria-hidden="true">02</span>
+                  <div className="cue-row-main">
+                    <h3>Hold the floor.</h3>
+                    <p>A distinct opponent listens, probes the weak joint, and answers in real time. One claim at a time — the cue ribbon marks every reply.</p>
+                  </div>
+                  <span className="cue-row-tag">RESPONSE CUE</span>
                 </motion.article>
-                <motion.article className="format-card card-verdict" whileHover={{ y: -3 }} transition={{ duration: 0.25 }}>
-                  <div className="format-card-top"><span>FINAL CUE</span><span className="cue-mark">03</span></div>
-                  <h3>Read the room.</h3>
-                  <p>Review the exchange and take a clearer argument into your next room.</p>
+                <motion.article className="cue-row" role="listitem" whileHover={{ x: 4 }} transition={{ duration: 0.22 }}>
+                  <span className="cue-row-index" aria-hidden="true">03</span>
+                  <div className="cue-row-main">
+                    <h3>Read the room.</h3>
+                    <p>Close the session and keep the transcript. Review the exchange and carry a sharper line into the next room.</p>
+                  </div>
+                  <span className="cue-row-tag">FINAL CUE</span>
                 </motion.article>
               </div>
+              <div className="ledger-tape" aria-hidden="true"><span>YOUR TURN</span><i /><span>OPPONENT CUE</span><i /><span>YOUR TURN</span><b>STREAMED LIVE</b></div>
             </section>
 
             <section className="opponents-section" id="opponents">
@@ -612,8 +621,8 @@ export default function App() {
                     onClick={() => { setPersona(person.key); setView("setup"); }}
                     aria-label={`Choose ${person.name} — ${person.title}`}
                   >
-                    <span className="tile-sigil" aria-hidden="true">{person.sigil}</span>
-                    <span className="tile-copy"><b>{person.name}</b><small>{person.title}</small></span>
+                    <span className="tile-sigil" aria-hidden="true"><OpponentEmblem persona={person.key} label={`${person.name} emblem`} /></span>
+                    <span className="tile-copy"><b>{person.name}</b><small>{person.title} — {person.line}</small></span>
                     <span className="tile-index" aria-hidden="true">0{index + 1}</span>
                     <span className="tile-slash" aria-hidden="true" />
                   </motion.button>
@@ -699,8 +708,8 @@ export default function App() {
                       className={`persona-option tone-${person.color} ${persona === person.key ? "selected" : ""}`}
                       onClick={() => setPersona(person.key)}
                     >
-                      <span className="persona-sigil">{person.sigil}</span>
-                      <span className="persona-copy"><b>{person.name}</b><small>{person.line}</small></span>
+                      <span className="persona-sigil"><OpponentEmblem persona={person.key} label={`${person.name} emblem`} /></span>
+                      <span className="persona-copy"><b>{person.name} <em>· {person.title}</em></b><small>{person.line}</small></span>
                       <span className="persona-radio">{persona === person.key && <i />}</span>
                     </button>
                   ))}
@@ -766,10 +775,9 @@ export default function App() {
               <aside className="arena-identity">
                 <div className="identity-card">
                   <div className={`identity-portrait tone-${activePersona.color}`}>
-                    <span className="portrait-shape">{activePersona.sigil}</span>
-                    <div className="portrait-label">OPPONENT / 0{personas.findIndex((person) => person.key === persona) + 1}</div>
+                    <span className="portrait-shape"><OpponentEmblem persona={persona} label={`${activePersona.name} emblem`} /></span>
                   </div>
-                  <div className="identity-copy"><span>ACROSS THE TABLE</span><h2>{activePersona.name}</h2><p>{activePersona.title}</p></div>
+                  <div className="identity-copy"><span>ACROSS THE TABLE</span><h2>{activePersona.name}</h2><p>{activePersona.line}</p></div>
                   <div className="identity-trait"><span>DEBATE STYLE</span><b>{persona === "skeptic" ? "EVIDENCE FIRST" : persona === "strategist" ? "LONG GAME" : "WIDER LENS"}</b></div>
                 </div>
                 <div className="arena-side-note"><span>YOUR POSITION</span><b>{position === "for" ? "IN FAVOUR" : "AGAINST"}</b><p>Stay with your case. Change your mind only when the argument earns it.</p></div>
@@ -804,7 +812,7 @@ export default function App() {
                 {recordNotice && <div className="inline-notice" role="status">{recordNotice}</div>}
                 <div className="transcript-scroll">
                   {messages.length === 0 && (
-                    <div className="empty-transcript"><span className="empty-marker"><BookOpenText size={17} /></span><p>The room is set. Your opponent is preparing an opening statement.</p></div>
+                    <div className="empty-transcript"><span className="empty-marker"><EmptyCueArt label="Opponent preparing an opening statement" /></span><p>The room is set. Your opponent is preparing an opening statement.</p></div>
                   )}
                   {messages.map((message, index) => (
                     <motion.article
@@ -816,32 +824,47 @@ export default function App() {
                     >
                       <div className="message-meta">
                         <span className={`message-speaker ${message.speaker}`}>
+                          {message.speaker === "opponent" && (
+                            <span className={`message-emblem tone-${activePersona.color}`} aria-hidden="true">
+                              <OpponentEmblem persona={persona} label={`${activePersona.name} emblem`} />
+                            </span>
+                          )}
                           {message.speaker === "learner" ? "YOUR CASE" : activePersona.name.toUpperCase()}
                         </span>
                         <span>TURN {Math.ceil((index + 1) / 2).toString().padStart(2, "0")}</span>
                       </div>
-                      <p>{message.content}{message.pending && <span className="stream-cursor" />}</p>
+                      <div className="message-body"><MarkdownText text={message.content} />{message.pending && <span className="stream-cursor" />}</div>
                       {message.pending && !message.content && <div className="thinking-label"><LoaderCircle size={14} /> PREPARING A RESPONSE</div>}
                     </motion.article>
                   ))}
                   <div ref={bottomRef} />
                 </div>
                 <form className="argument-composer" onSubmit={(event) => void submitArgument(event)}>
-                  <div className="composer-topline"><span><CornerDownLeft size={13} /> YOUR TURN</span><span>{draft.length} / 1000</span></div>
+                  <div className="composer-topline"><span><CornerDownLeft size={13} /> YOUR TURN</span><span>{draft.length} / 1000 · ENTER TO SEND</span></div>
                   <textarea
                     value={draft}
                     onChange={(event) => setDraft(event.target.value.slice(0, 1000))}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        event.currentTarget.closest("form")?.requestSubmit();
+                      }
+                    }}
                     placeholder={learnerTurns.length === 0 ? "State your opening case..." : "Answer the point. Make it count."}
-                    aria-label="Your argument"
+                    aria-label="Your argument. Press Enter to send, Shift plus Enter for a new line."
                     rows={3}
                     disabled={streaming || secondsLeft === 0}
                   />
-                  <div className="composer-bottom"><span>One claim at a time — aim for 1–2 sentences. The room is listening.</span><button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">{streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />} <span>{streaming ? "Opponent has the floor" : "Make your case"}</span></button></div>
+                  <div className="composer-bottom"><span>One claim at a time — aim for 1–2 sentences. Enter sends · Shift + Enter adds a line.</span><button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">{streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />} <span>{streaming ? "Opponent has the floor" : "Make your case"}</span></button></div>
                 </form>
               </section>
 
               <aside className="room-notes">
                 <div className="room-note-heading"><span>THE PROMPT BOOK</span><span className="record-dot" /></div>
+                <div className={`room-opponent tone-${activePersona.color}`}>
+                  <span className="room-opponent-mark" aria-hidden="true"><OpponentEmblem persona={persona} label={`${activePersona.name} emblem`} /></span>
+                  <span className="room-opponent-copy"><b>{activePersona.name}</b><small>{activePersona.title}</small></span>
+                </div>
                 <div className="record-card"><div className="record-number">{learnerTurns.length.toString().padStart(2, "0")}</div><span>YOUR TURNS</span></div>
                 <div className="record-card"><div className="record-number">{totalWords.toString().padStart(2, "0")}</div><span>YOUR WORDS</span></div>
                 <div className="room-divider" />
