@@ -126,3 +126,11 @@ class PresentationReport(BaseModel):
     strengths: list[str] = Field(min_length=1, max_length=2)
     drills: list[DrillCard] = Field(min_length=1, max_length=4)
     next_line: str = Field(min_length=1, max_length=280)
+
+
+class PresentationResponse(BaseModel):
+    transcript: str = Field(min_length=1, max_length=8000)
+    segments: list[PresentationSegment] = Field(min_length=1, max_length=60)
+    signals: DeliverySignals
+    report: PresentationReport
+    retained: bool = False

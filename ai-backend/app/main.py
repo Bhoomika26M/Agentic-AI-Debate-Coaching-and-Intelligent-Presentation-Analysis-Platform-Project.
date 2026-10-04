@@ -5,7 +5,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import StreamingResponse
@@ -14,9 +14,25 @@ from starlette.requests import Request
 
 from .analysis import analyze_transcript
 from .auth import authenticate_request
+from .delivery import analyze_delivery
 from .ollama_client import OLLAMA_MODEL, is_available, is_loaded, stream_chat, warm_model
+from .presentation import IncompletePresentationError, coach_delivery
 from .prompts import build_messages
-from .schemas import AnalysisReport, AnalysisRequest, DebateRequest
+from .schemas import (
+    AnalysisReport,
+    AnalysisRequest,
+    DebateRequest,
+    DeliverySignals,
+    PresentationRequest,
+    PresentationResponse,
+    PresentationSegment,
+)
+from .speech import (
+    MAX_AUDIO_MB,
+    AudioValidationError,
+    TranscriptionUnavailableError,
+    transcribe_audio,
+)
 
 logger = logging.getLogger(__name__)
 MAX_ACTIVE_STREAMS = max(1, int(os.getenv("MAX_ACTIVE_STREAMS", "2")))
@@ -150,5 +166,44 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisReport:
             status_code=502,
             detail="The local model returned an incomplete coaching review. Try the review again.",
         ) from error
+    finally:
+        stream_slots.release()
+
+
+@app.post(
+    "/api/presentation/analyze",
+    dependencies=[Depends(authenticate_request)],
+    response_model=PresentationResponse,
+)
+async def presentation_analysis(
+    audio: UploadFile = File(...),
+    topic: str | None = Form(default=None, max_length=240),
+) -> PresentationResponse:
+    if stream_slots.locked():
+        raise HTTPException(
+            status_code=429,
+            detail="The local model is busy. Please retry in a moment.",
+        )
+    await stream_slots.acquire()
+    try:
+        data = await audio.read(MAX_AUDIO_MB * 1024 * 1024 + 1)
+        try:
+            segments_raw = await transcribe_audio(data, audio.filename or "talk.webm", audio.content_type or "audio/webm")
+        except AudioValidationError as error:
+            raise HTTPException(status_code=413, detail=str(error)) from error
+        except TranscriptionUnavailableError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        signals = DeliverySignals.model_validate(analyze_delivery(segments_raw))
+        segments = [PresentationSegment.model_validate(s) for s in segments_raw]
+        transcript = " ".join(s.text for s in segments)
+        request = PresentationRequest(topic=topic or None, segments=segments, signals=signals)
+        try:
+            report = await coach_delivery(request)
+        except IncompletePresentationError as error:
+            raise HTTPException(status_code=502, detail="The local model returned an incomplete delivery review. Try again.") from error
+        return PresentationResponse(transcript=transcript, segments=segments, signals=signals, report=report, retained=False)
+    except HTTPError as error:
+        logger.exception("Ollama delivery coaching failed: %s", error)
+        raise HTTPException(status_code=503, detail="The local model could not finish delivery review.") from error
     finally:
         stream_slots.release()
