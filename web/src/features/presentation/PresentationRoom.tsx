@@ -29,23 +29,59 @@ export function PresentationRoom({ topic, sessionId, compact }: { topic?: string
   const timerRef = useRef(0);
 
   useEffect(() => () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
     window.clearInterval(timerRef.current);
     recorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+  }, []);
+
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
   }, [previewUrl]);
 
   function pick(next: File | null) {
     setError(""); setNotice(""); setResult(null);
+    if (next) {
+      const okType = /audio\/(webm|wav|x-wav|mp3|mpeg)/.test(next.type) || /\.(webm|wav|mp3)$/i.test(next.name);
+      if (!okType) {
+        setError("Use webm, wav, or mp3 audio.");
+        return;
+      }
+      if (next.size === 0) {
+        setError("That file is empty. Choose another recording.");
+        return;
+      }
+      if (next.size > 10 * 1024 * 1024) {
+        setError("Audio is over 10MB. Trim under 3 minutes.");
+        return;
+      }
+    }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(next ? URL.createObjectURL(next) : "");
     setFile(next);
   }
 
+  function pickMimeType() {
+    const candidates = ["audio/webm", "audio/mp4", ""];
+    for (const mime of candidates) {
+      if (!mime) return "";
+      try {
+        if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(mime)) return mime;
+      } catch {
+        continue;
+      }
+    }
+    return "";
+  }
+
   async function startRecording() {
     setError(""); setNotice(""); setResult(null);
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("Recording is not available in this browser. Upload a file instead.");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      const mime = pickMimeType();
+      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       chunksRef.current = [];
       recorder.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
       recorder.onstop = () => {
@@ -101,7 +137,7 @@ export function PresentationRoom({ topic, sessionId, compact }: { topic?: string
   }
 
   return (
-    <section className={`present-room ${compact ? "present-compact" : ""}`} aria-label="Delivery review">
+    <section className={`present-room ${compact ? "present-compact" : ""}`} role="region" aria-label="Delivery review">
       <div className="present-controls">
         <div className="present-buttons">
           {recording
@@ -109,7 +145,7 @@ export function PresentationRoom({ topic, sessionId, compact }: { topic?: string
             : <button className="button button-dark" onClick={() => void startRecording()}><Mic size={15} /> Record</button>}
           <label className="button button-light present-upload">
             <Upload size={15} /> Upload
-            <input type="file" accept="audio/webm,audio/wav,audio/mp3,audio/mpeg" hidden onChange={(e) => pick(e.target.files?.[0] ?? null)} />
+            <input type="file" accept="audio/webm,audio/wav,audio/mp3,audio/mpeg" className="visually-hidden" aria-label="Upload audio file" onChange={(e) => { pick(e.target.files?.[0] ?? null); e.target.value = ""; }} />
           </label>
           <button className="button button-dark" onClick={() => void analyze()} disabled={!file || loading || recording}>
             {loading ? <><LoaderCircle className="spin" size={15} /> Reviewing delivery</> : <><Sparkles size={15} /> Review delivery</>}
@@ -127,9 +163,13 @@ export function PresentationRoom({ topic, sessionId, compact }: { topic?: string
           <div><span>PAUSES</span><b>{result.signals.pause_count}</b></div>
           <div><span>DELIVERY</span><b>{result.report.communication_score} / 5</b></div>
         </div>
+        {result.transcript && <p className="present-transcript">{result.transcript}</p>}
+        {result.signals.events.length === 0 && (
+          <p className="present-empty" role="status">Steady take — no flagged patches. Try a faster or longer passage to surface more coaching.</p>
+        )}
         <div className="present-events">
           {result.signals.events.map((e, i) => (
-            <button key={`${e.start}-${i}`} className={`present-event kind-${e.kind}`} onClick={() => seek(e.start)}>
+            <button key={`${e.start}-${i}`} className={`present-event kind-${e.kind}`} onClick={() => seek(e.start)} aria-label={`Replay ${formatStamp(e.start)} to ${formatStamp(e.end)}, ${e.label}`}>
               <span>{formatStamp(e.start)}–{formatStamp(e.end)} · {e.label.toUpperCase()}</span>
               <p>{e.detail}</p>
             </button>
@@ -138,14 +178,14 @@ export function PresentationRoom({ topic, sessionId, compact }: { topic?: string
         <div className="present-drills">
           {result.report.drills.map((d, i) => (
             <article key={i}>
-              <button onClick={() => seek(d.start)}>{formatStamp(d.start)}–{formatStamp(d.end)} · {d.pattern.toUpperCase()} — replay</button>
+              <button onClick={() => seek(d.start)} aria-label={`Replay drill ${i + 1} at ${formatStamp(d.start)}`}>{formatStamp(d.start)}–{formatStamp(d.end)} · {d.pattern.toUpperCase()} — replay</button>
               <p>{d.what_happened}</p>
               <small>TRY THIS: {d.try_this}</small>
               <p className="present-example">SAY: {d.example}</p>
             </article>
           ))}
         </div>
-        <p className="analysis-limit">Coaching estimate from an AI model, based on this recording only. Delivery states are observable patterns, not diagnoses.</p>
+        <p className="analysis-limit">Coaching estimate from an AI model, based on this recording only. Delivery states are observable patterns, not diagnoses. Audio discarded after review{result.retained ? "" : " — not retained"}.</p>
         <button className="button button-light" onClick={() => { pick(null); setRecSecs(0); }}><RotateCcw size={15} /> Try another take</button>
       </>}
     </section>

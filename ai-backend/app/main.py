@@ -42,10 +42,13 @@ stream_slots = asyncio.Semaphore(MAX_ACTIVE_STREAMS)
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     async def warm_until_loaded() -> None:
-        while not await is_loaded():
+        for _ in range(20):
+            if await is_loaded():
+                return
             await warm_model()
-            if not await is_loaded():
-                await asyncio.sleep(5)
+            if await is_loaded():
+                return
+            await asyncio.sleep(5)
 
     warmup = asyncio.create_task(warm_until_loaded())
     yield
@@ -177,8 +180,9 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisReport:
 )
 async def presentation_analysis(
     audio: UploadFile = File(...),
-    topic: str | None = Form(default=None, max_length=240),
+    topic: str | None = Form(default=None, min_length=3, max_length=240),
 ) -> PresentationResponse:
+    # Persistence stays in the browser via Supabase RLS; Python holds audio in memory only and discards it.
     if stream_slots.locked():
         raise HTTPException(
             status_code=429,
@@ -196,12 +200,14 @@ async def presentation_analysis(
         signals = DeliverySignals.model_validate(analyze_delivery(segments_raw))
         segments = [PresentationSegment.model_validate(s) for s in segments_raw]
         transcript = " ".join(s.text for s in segments)
-        request = PresentationRequest(topic=topic or None, segments=segments, signals=signals)
+        request = PresentationRequest(topic=(topic or None), segments=segments, signals=signals)
         try:
             report = await coach_delivery(request)
         except IncompletePresentationError as error:
             raise HTTPException(status_code=502, detail="The local model returned an incomplete delivery review. Try again.") from error
-        return PresentationResponse(transcript=transcript, segments=segments, signals=signals, report=report, retained=False)
+        # SER stays local-only and needs decoded PCM; compressed upload bytes are not
+        # passed to the classifier here, so hosted responses keep proxy-only signals.
+        return PresentationResponse(transcript=transcript, segments=segments, signals=signals, report=report, retained=False, ser_reflection=[])
     except HTTPError as error:
         logger.exception("Ollama delivery coaching failed: %s", error)
         raise HTTPException(status_code=503, detail="The local model could not finish delivery review.") from error

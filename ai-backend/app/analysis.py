@@ -54,6 +54,11 @@ def _build_messages(request: AnalysisRequest) -> list[dict[str, str]]:
             "and Policy, each with one challenge question.",
             "Do not invent facts, sources, statistics, or quotations. Phrase uncertainty plainly.",
         ]
+        + (
+            [f"Opponent persona: {request.persona}. Difficulty: {request.difficulty}."]
+            if request.persona or request.difficulty
+            else []
+        )
     )
     prompt = {
         "topic": request.topic,

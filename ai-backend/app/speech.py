@@ -24,11 +24,25 @@ class TranscriptionUnavailableError(RuntimeError):
     """Raised when no transcription path is configured."""
 
 
+def _sniff_kind(data: bytes) -> str | None:
+    if data[:4] == b"\x1a\x45\xdf\xa3":
+        return "webm"
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return "wav"
+    if data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
+        return "mp3"
+    if data[:4] == b"ftyp":
+        return "mp4"
+    return None
+
+
 def validate_audio(filename: str, content_type: str, data: bytes) -> None:
     if not data:
         raise AudioValidationError("No audio was received.")
     if content_type not in ALLOWED_AUDIO_TYPES:
         raise AudioValidationError("Use webm, wav, or mp3 audio.")
+    if _sniff_kind(data) not in ("webm", "wav", "mp3", "mp4"):
+        raise AudioValidationError("That file does not look like audio. Upload webm, wav, or mp3.")
     limit = MAX_AUDIO_MB * 1024 * 1024
     if len(data) > limit:
         raise AudioValidationError(f"Audio is over {MAX_AUDIO_MB}MB. Trim under 3 minutes.")

@@ -38,6 +38,7 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
   }, []);
 
   async function openRecord(recordId: string) {
+    if (loadingRecord) return;
     setLoadingRecord(recordId);
     setError("");
     try {
@@ -48,6 +49,15 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
     } finally {
       setLoadingRecord("");
     }
+  }
+
+  function reload() {
+    setError("");
+    setLoading(true);
+    void listDebateRecords()
+      .then((data) => setRecords(data))
+      .catch(() => setError("Your archive is not connected yet. Apply the Supabase database migration, then retry."))
+      .finally(() => setLoading(false));
   }
 
   async function signOut() {
@@ -90,7 +100,13 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
             </div>
           )}
           {records.map((record) => (
-            <button className={`archive-row ${selected?.session.id === record.id ? "selected" : ""}`} key={record.id} onClick={() => void openRecord(record.id)}>
+            <button
+              className={`archive-row ${selected?.session.id === record.id ? "selected" : ""}`}
+              key={record.id}
+              onClick={() => void openRecord(record.id)}
+              disabled={loadingRecord !== ""}
+              aria-current={selected?.session.id === record.id}
+            >
               <span className="archive-date">{formatDate(record.started_at)}</span>
               <span className="archive-topic">{record.topic}</span>
               <span className="archive-meta">{personaNames[record.persona]} · {record.duration_minutes} min · {record.status === "completed" ? "Complete" : "In progress"}</span>
@@ -98,11 +114,11 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
             </button>
           ))}
 
-          {error && <div className="archive-error" role="alert">{error}</div>}
+          {error && <div className="archive-error" role="alert">{error} <button className="button button-light" onClick={reload}>Retry</button></div>}
         </section>
 
         {selected && (
-          <section className="record-detail" aria-label="Saved debate transcript">
+          <section className="record-detail" role="region" aria-label="Saved debate transcript">
             <div className="record-detail-head">
               <div><span>THE MOTION</span><h2>{selected.session.topic}</h2></div>
               <button onClick={() => setSelected(null)} aria-label="Close transcript"><ArrowLeft size={16} /></button>

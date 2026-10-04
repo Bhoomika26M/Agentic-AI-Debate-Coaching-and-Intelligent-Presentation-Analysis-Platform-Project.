@@ -38,7 +38,9 @@ export async function analyzeDebate(
     body: JSON.stringify({
       topic: options.topic,
       learner_position: options.learner_position,
-      turns: turns.filter((turn) => !turn.pending).map(({ speaker, content }) => ({ speaker, content })),
+      turns: turns.filter((turn) => !turn.pending && turn.content.trim()).map(({ speaker, content }) => ({ speaker, content })),
+      persona: options.persona,
+      difficulty: options.difficulty,
     }),
   });
   if (!response.ok) {
@@ -76,7 +78,7 @@ export async function streamOpponentReply(
     credentials: "omit",
     body: JSON.stringify({
       ...options,
-      history: history.map(({ speaker, content }) => ({ speaker, content })),
+      history: history.filter((m) => !m.pending && m.content.trim()).map(({ speaker, content }) => ({ speaker, content })),
       learner_argument: learnerArgument,
     }),
     signal,
@@ -108,7 +110,12 @@ export async function streamOpponentReply(
 
       if (data === "[DONE]") return;
       if (data) {
-        const payload = JSON.parse(data) as { delta?: string; error?: string };
+        let payload: { delta?: string; error?: string };
+        try {
+          payload = JSON.parse(data) as { delta?: string; error?: string };
+        } catch {
+          continue;
+        }
         if (payload.error) throw new Error(payload.error);
         if (payload.delta) onDelta(payload.delta);
       }

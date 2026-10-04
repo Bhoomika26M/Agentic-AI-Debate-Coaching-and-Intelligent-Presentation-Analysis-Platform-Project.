@@ -24,6 +24,8 @@ def _load_model():
     return _model
 
 
+# Local-only stub: loads the classifier to prove availability, but per-window
+# scores stay unwired until PCM decode lands. Callers must treat output as reflection-only.
 def analyze_emotion_windows(
     pcm16: bytes, sample_rate: int, windows: list[tuple[float, float]]
 ) -> list[dict]:

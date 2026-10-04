@@ -26,6 +26,8 @@ class AnalysisRequest(BaseModel):
     topic: str = Field(min_length=3, max_length=240)
     learner_position: Literal["for", "against"]
     turns: list[AnalysisTurn] = Field(min_length=1, max_length=40)
+    persona: Literal["strategist", "skeptic", "diplomat"] | None = None
+    difficulty: Literal["warm-up", "challenge", "cross-examination"] | None = None
 
     @model_validator(mode="after")
     def requires_learner_turn(self):
@@ -134,3 +136,4 @@ class PresentationResponse(BaseModel):
     signals: DeliverySignals
     report: PresentationReport
     retained: bool = False
+    ser_reflection: list[dict] = Field(default_factory=list, max_length=8)

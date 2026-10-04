@@ -2,7 +2,7 @@
 name = "debate-ai-backend"
 version = "0.1.0"
 description = "Python inference service for the debate coaching demo"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "fastapi>=0.115,<1.0",
     "httpx>=0.27,<1.0",
@@ -11,6 +11,10 @@ dependencies = [
     "python-multipart>=0.0.18,<1.0",
     "uvicorn[standard]>=0.30,<1.0",
 ]
+
+[project.optional-dependencies]
+stt = ["faster-whisper>=1.0,<2.0"]
+ser = ["speechbrain>=1.0,<2.0"]
 
 [tool.ruff]
 line-length = 100

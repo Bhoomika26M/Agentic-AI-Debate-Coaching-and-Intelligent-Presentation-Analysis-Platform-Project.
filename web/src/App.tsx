@@ -18,7 +18,7 @@ import {
   TimerReset,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   checkBackend,
   streamOpponentReply,
@@ -28,11 +28,12 @@ import {
   type DebateOptions,
 } from "./services/debate-api";
 import { createDebateRecord, finishDebateRecord, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn } from "./services/debate-records";
-import { AccountView } from "./features/auth/AccountView";
-import { AuthView } from "./features/auth/AuthView";
 import { useAuth } from "./features/auth/AuthProvider";
 import { supabaseConfigured } from "./features/auth/supabase";
-import { PresentationRoom } from "./features/presentation/PresentationRoom";
+
+const AccountView = lazy(() => import("./features/auth/AccountView").then((m) => ({ default: m.AccountView })));
+const AuthView = lazy(() => import("./features/auth/AuthView").then((m) => ({ default: m.AuthView })));
+const PresentationRoom = lazy(() => import("./features/presentation/PresentationRoom").then((m) => ({ default: m.PresentationRoom })));
 
 type View = "landing" | "setup" | "arena" | "verdict" | "auth" | "account" | "present";
 type PersonaKey = DebateOptions["persona"];
@@ -135,6 +136,12 @@ function Header({
           </button>
         </div>
       </div>
+      {showNav && (
+        <nav className="mobile-nav" aria-label="Main navigation">
+          <a href="#how-it-works">The format</a>
+          <a href="#opponents">Opponents</a>
+        </nav>
+      )}
     </header>
   );
 }
@@ -153,9 +160,16 @@ function StatusTag({ state }: { state: BackendState }) {
   );
 }
 
+const HASH_VIEWS: View[] = ["landing", "setup", "present", "auth", "account"];
+
+function viewFromHash(): View {
+  const hash = window.location.hash.replace("#/", "").replace("#", "");
+  return (HASH_VIEWS as string[]).includes(hash) ? (hash as View) : "landing";
+}
+
 export default function App() {
-  const { session, user, signOut } = useAuth();
-  const [view, setView] = useState<View>("landing");
+  const { session, user, signOut, loading: authLoading } = useAuth();
+  const [view, setView] = useState<View>(() => viewFromHash());
   const [topicChoice, setTopicChoice] = useState(topics[0]);
   const [customTopic, setCustomTopic] = useState("");
   const [position, setPosition] = useState<"for" | "against">("for");
@@ -178,6 +192,8 @@ export default function App() {
   const [analysis, setAnalysis] = useState<AnalysisReport | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
+  const [helpNotice, setHelpNotice] = useState("");
+  const pollAttempts = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const savedTurnIds = useRef(new Set<string>());
@@ -203,6 +219,7 @@ export default function App() {
   async function refreshBackend() {
     try {
       const health = await checkBackend();
+      pollAttempts.current = 0;
       setBackendState(
         health.model_loaded ? "ready" : health.model_available ? "warming" : "offline",
       );
@@ -214,6 +231,7 @@ export default function App() {
             : `Start Ollama and pull ${health.model} to open the debate room.`,
       );
     } catch {
+      pollAttempts.current += 1;
       setBackendState("offline");
       setBackendMessage("Start the Python service and Ollama to connect your AI opponent.");
     }
@@ -221,15 +239,25 @@ export default function App() {
 
   useEffect(() => {
     void refreshBackend();
+    const initial = viewFromHash();
+    if (initial !== view) setView(initial);
+    const onHash = () => {
+      const next = viewFromHash();
+      setView((current) => (current === next ? current : next));
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
   useEffect(() => {
-    if (backendState === "ready") return;
+    if (backendState === "ready" || pollAttempts.current >= 12) return;
     const poll = window.setInterval(() => void refreshBackend(), 2500);
     return () => window.clearInterval(poll);
   }, [backendState]);
 
   useEffect(() => {
+    const hash = view === "landing" ? "#/" : `#/${view}`;
+    if (window.location.hash !== hash) window.history.replaceState(null, "", hash);
     window.scrollTo(0, 0);
   }, [view]);
 
@@ -311,8 +339,11 @@ export default function App() {
   }, [view]);
 
   useEffect(() => {
-    if (view === "arena" && secondsLeft === 0) finishSession();
-  }, [view, secondsLeft]);
+    if (view === "arena" && secondsLeft === 0 && !streaming) {
+      setRecordNotice("Time — wrapping up with the reply on screen.");
+      finishSession();
+    }
+  }, [view, secondsLeft, streaming]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -423,6 +454,7 @@ export default function App() {
   }
 
   function openAccount() {
+    if (authLoading) return;
     setView(user ? "account" : "auth");
   }
 
@@ -439,7 +471,7 @@ export default function App() {
         setRecordNotice("Could not update the saved session status. You can keep debating — this transcript stays in the browser.");
       }
     }
-    setSecondsLeft(duration * 60);
+    setSecondsLeft((current) => (current > 0 ? current : duration * 60));
     setStartedAt(Date.now());
     setView("arena");
   }
@@ -453,7 +485,7 @@ export default function App() {
           onHome={returnHome}
           onStart={() => setView("setup")}
           onAccount={openAccount}
-          accountLabel={user ? "Learner space" : "Sign in"}
+          accountLabel={authLoading ? "…" : user ? "Learner space" : "Sign in"}
           showNav={view === "landing"}
         />
       )}
@@ -461,16 +493,22 @@ export default function App() {
       <AnimatePresence mode="wait">
         {view === "auth" && (
           <motion.div key="auth" className="app-auth-view" {...pageMotion}>
-            <AuthView
-              onContinueAsGuest={() => setView("setup")}
-              onAuthenticated={() => setView("landing")}
-            />
+            <Suspense fallback={<div className="inline-notice" role="status">Loading account access…</div>}>
+              <AuthView
+                onContinueAsGuest={() => setView("setup")}
+                onAuthenticated={() => setView("landing")}
+              />
+            </Suspense>
           </motion.div>
         )}
 
         {view === "account" && (
           <motion.div key="account" className="app-shell-room" {...pageMotion}>
-            <AccountView onStart={() => setView("setup")} onSignOut={handleSignOut} />
+            <Suspense fallback={<div className="inline-notice" role="status">Loading your archive…</div>}>
+              {authLoading
+                ? <div className="inline-notice" role="status">Checking your sign-in…</div>
+                : <AccountView onStart={() => setView("setup")} onSignOut={handleSignOut} />}
+            </Suspense>
           </motion.div>
         )}
 
@@ -491,7 +529,7 @@ export default function App() {
                 <div className="hero-footnote"><LockKeyhole size={13} /> Guest practice open · sign in only to save your work</div>
               </div>
 
-              <div className="hero-scene" aria-label="A sample page from a live debate prompt book">
+              <div className="hero-scene" role="img" aria-label="A sample page from a live debate prompt book">
                 <div className="scene-grid" />
                 <div className="scene-vertical-label">PROMPT BOOK / ACT I</div>
                 <span className="scene-stamp">CUE<br />01</span>
@@ -615,10 +653,13 @@ export default function App() {
             <div className="setup-layout">
               <section className="setup-panel motion-panel">
                 <div className="panel-heading"><span className="panel-count">A</span><div><h2>Your motion</h2><p>What do you want to make a case for?</p></div></div>
-                <div className="topic-list">
+                <div className="topic-list" role="radiogroup" aria-label="Choose a motion">
                   {topics.map((topic, index) => (
                     <button
                       key={topic}
+                      role="radio"
+                      aria-checked={topicChoice === topic && !customTopic}
+                      aria-pressed={topicChoice === topic && !customTopic}
                       className={`topic-option ${topicChoice === topic && !customTopic ? "selected" : ""}`}
                       onClick={() => { setTopicChoice(topic); setCustomTopic(""); }}
                     >
@@ -635,23 +676,26 @@ export default function App() {
                   onChange={(event) => setCustomTopic(event.target.value)}
                   onFocus={() => setTopicChoice("")}
                   maxLength={240}
-                  placeholder="Should we trust an algorithm with..."
+                  placeholder="Should we trust an algorithm with hiring?"
                 />
                 <div className="position-row">
                   <span className="setting-label">I'M ARGUING</span>
-                  <div className="segmented-control">
-                    <button className={position === "for" ? "active" : ""} onClick={() => setPosition("for")}>FOR</button>
-                    <button className={position === "against" ? "active" : ""} onClick={() => setPosition("against")}>AGAINST</button>
+                  <div className="segmented-control" role="group" aria-label="Your side">
+                    <button aria-pressed={position === "for"} className={position === "for" ? "active" : ""} onClick={() => setPosition("for")}>FOR</button>
+                    <button aria-pressed={position === "against"} className={position === "against" ? "active" : ""} onClick={() => setPosition("against")}>AGAINST</button>
                   </div>
                 </div>
               </section>
 
               <section className="setup-panel opponent-panel">
                 <div className="panel-heading"><span className="panel-count">B</span><div><h2>Across the room</h2><p>Choose the voice that tests you best.</p></div></div>
-                <div className="persona-list">
+                <div className="persona-list" role="radiogroup" aria-label="Choose your opponent">
                   {personas.map((person) => (
                     <button
                       key={person.key}
+                      role="radio"
+                      aria-checked={persona === person.key}
+                      aria-pressed={persona === person.key}
                       className={`persona-option tone-${person.color} ${persona === person.key ? "selected" : ""}`}
                       onClick={() => setPersona(person.key)}
                     >
@@ -664,9 +708,14 @@ export default function App() {
 
                 <div className="setting-block">
                   <div className="setting-line"><span className="setting-label">REHEARSAL PRESSURE</span><span className="setting-value">{difficultyOptions.find((option) => option.value === difficulty)?.label}</span></div>
-                  <div className="difficulty-options">
+                  <div className="difficulty-options" role="radiogroup" aria-label="Rehearsal pressure">
                     {difficultyOptions.map((option, index) => (
-                      <button className={difficulty === option.value ? "selected" : ""} key={option.value} onClick={() => setDifficulty(option.value)}>
+                      <button
+                        role="radio"
+                        aria-checked={difficulty === option.value}
+                        aria-pressed={difficulty === option.value}
+                        title={option.value === "cross-examination" ? "Cross-examination" : option.label}
+                        className={difficulty === option.value ? "selected" : ""} key={option.value} onClick={() => setDifficulty(option.value)}>
                         <span>0{index + 1}</span><b>{option.label}</b><small>{option.detail}</small>
                       </button>
                     ))}
@@ -687,6 +736,9 @@ export default function App() {
                 {startingSession ? "Setting the table..." : "Call the first cue"} {!startingSession && <ArrowRight size={17} />}
               </button>
             </div>
+            {!activeTopic.trim() && (
+              <p className="setup-hint" role="status">Choose a motion above or write a custom one to begin.</p>
+            )}
             {backendState === "offline" && (
               <div className="backend-help" role="status">
                 <div><Radio size={16} /><span>{backendMessage || "The AI opponent is not connected yet."}</span></div>
@@ -707,7 +759,7 @@ export default function App() {
             <div className="arena-casebar">
               <div><span className="casebar-label">THE MOTION</span><h1>{activeTopic}</h1></div>
               <div className="casebar-side"><span>YOU SPEAK</span><b>{position.toUpperCase()}</b></div>
-              <div className={`arena-clock ${secondsLeft < 60 ? "clock-urgent" : ""}`}><TimerReset size={17} /><span>{formatTime(secondsLeft)}</span></div>
+              <div className={`arena-clock ${secondsLeft < 60 ? "clock-urgent" : ""}`}><TimerReset size={17} /><span>{formatTime(secondsLeft)}</span>{secondsLeft < 60 && secondsLeft > 0 && <span className="clock-warning">Final minute</span>}</div>
             </div>
 
             <div className="arena-grid">
@@ -721,10 +773,10 @@ export default function App() {
                   <div className="identity-trait"><span>DEBATE STYLE</span><b>{persona === "skeptic" ? "EVIDENCE FIRST" : persona === "strategist" ? "LONG GAME" : "WIDER LENS"}</b></div>
                 </div>
                 <div className="arena-side-note"><span>YOUR POSITION</span><b>{position === "for" ? "IN FAVOUR" : "AGAINST"}</b><p>Stay with your case. Change your mind only when the argument earns it.</p></div>
-                <button className="arena-help" onClick={() => setBackendMessage("Write one clear claim. The opponent will answer that point directly.")}><Sparkles size={14} /> How to make a strong turn</button>
+                <button className="arena-help" onClick={() => setHelpNotice("Write one clear claim. The opponent will answer that point directly.")}><Sparkles size={14} /> How to make a strong turn</button>
               </aside>
 
-              <section className="transcript-panel" aria-label="Live debate transcript">
+              <section className="transcript-panel" role="region" aria-label="Live debate transcript">
                 <div className="transcript-heading"><div><span className="transcript-kicker">LIVE TRANSCRIPT</span><h2>The floor is open.</h2></div><span className="round-counter"><span>CUE</span> {Math.max(1, learnerTurns.length + 1).toString().padStart(2, "0")}</span></div>
                 <AnimatePresence initial={false}>
                   {cueVisible && (
@@ -743,6 +795,9 @@ export default function App() {
                     </motion.div>
                   )}
                 </AnimatePresence>
+                {helpNotice && (
+                  <div className="inline-notice" role="status"><span>{helpNotice}</span><button onClick={() => setHelpNotice("")}>Dismiss</button></div>
+                )}
                 {backendMessage && (
                   <div className="inline-notice" role="status"><span>{backendMessage}</span>{backendState === "offline" && <button onClick={() => void refreshBackend()}>Retry connection</button>}</div>
                 )}
@@ -781,7 +836,7 @@ export default function App() {
                     rows={3}
                     disabled={streaming || secondsLeft === 0}
                   />
-                  <div className="composer-bottom"><span>One claim at a time. The room is listening.</span><button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">{streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />} <span>{streaming ? "Opponent has the floor" : "Make your case"}</span></button></div>
+                  <div className="composer-bottom"><span>One claim at a time — aim for 1–2 sentences. The room is listening.</span><button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">{streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />} <span>{streaming ? "Opponent has the floor" : "Make your case"}</span></button></div>
                 </form>
               </section>
 
@@ -852,8 +907,10 @@ export default function App() {
                 <div className="analysis-chamber-head">
                   <div><span>ACT V / DELIVERY REVIEW</span><h2 id="delivery-heading">Hear the delivery.<br /><em>Steady the next one.</em></h2></div>
                 </div>
-                <p className="analysis-intro">Record or upload a closing take. Delivery states are observable patterns with timestamps, not diagnoses.</p>
-                <PresentationRoom topic={activeTopic} sessionId={recordId} compact />
+                <p className="analysis-intro">Record or upload a closing take. Delivery states are observable patterns with timestamps, not diagnoses. Audio is discarded after review.</p>
+                <Suspense fallback={<div className="inline-notice" role="status">Loading delivery review…</div>}>
+                  <PresentationRoom topic={activeTopic} sessionId={recordId} compact />
+                </Suspense>
               </section>
               <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>{user ? "Your transcript and any completed argument review are kept in your learner archive." : "Your transcript and review stay in this browser session. Sign in before your next rehearsal to keep its transcript in your learner archive."}</p></div>
               <div className="verdict-actions">
@@ -872,8 +929,10 @@ export default function App() {
             <section className="verdict-content">
               <div className="verdict-overline"><span className="verdict-seal"><BookOpenText size={22} /></span><span>THE MIC IS YOURS.</span></div>
               <h1>Steady the<br /><span>next take.</span></h1>
-              <p className="verdict-summary">Record or upload without a debate. Review pace, pauses, and tutor drills with timestamps.</p>
-              <PresentationRoom />
+              <p className="verdict-summary">Record or upload without a debate. Review pace, pauses, and tutor drills with timestamps. Audio is discarded after review.</p>
+              <Suspense fallback={<div className="inline-notice" role="status">Loading delivery room…</div>}>
+                <PresentationRoom />
+              </Suspense>
               <div className="verdict-actions">
                 <button className="button button-dark" onClick={() => setView("setup")}><ArrowLeft size={16} /> Back to debate setup</button>
               </div>

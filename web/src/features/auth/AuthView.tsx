@@ -136,6 +136,32 @@ export function AuthView({
     setConfirmation("");
   }
 
+  async function sendReset() {
+    setError("");
+    setNotice("");
+    const parsed = emailSchema.safeParse(email);
+    if (!parsed.success) {
+      setFieldErrors({ email: parsed.error.issues[0].message });
+      return;
+    }
+    if (!supabase) {
+      setError("Account access is not connected yet. You can still continue as a guest.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(parsed.data, {
+        redirectTo: window.location.origin,
+      });
+      if (resetError) throw resetError;
+      setNotice("Check your inbox for a password reset link, then sign in with the new password.");
+    } catch (authError) {
+      setError(getAuthMessage(authError instanceof Error ? authError.message : "unknown"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <main className="auth-page">
       <section className="auth-welcome">
@@ -226,6 +252,11 @@ export function AuthView({
             {submitting ? "Connecting..." : mode === "sign-in" ? "Sign in to Verdict" : "Create learner account"}
             {!submitting && <ArrowRight size={16} />}
           </button>
+          {mode === "sign-in" && (
+            <button className="auth-guest-link" type="button" onClick={() => void sendReset()} disabled={submitting}>
+              Forgot your password? Send a reset link
+            </button>
+          )}
         </form>
 
         <p className="auth-privacy">Your password is handled by Supabase Auth. Verdict never sees or stores it.</p>
