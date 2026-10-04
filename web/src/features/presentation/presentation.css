@@ -1,0 +1,21 @@
+.present-room { margin-top: 18px; padding: 18px; border: 1px solid #c7baa4; background: var(--paper-light); }
+.present-controls { display: grid; gap: 10px; }
+.present-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+.present-upload { cursor: pointer; }
+.present-hint { color: #5c554b; font-size: 10px; line-height: 1.5; }
+.present-audio { width: 100%; }
+.present-signals { margin: 14px 0; display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid #c7baa4; border-bottom: 1px solid #c7baa4; }
+.present-signals div { padding: 10px; }
+.present-signals span { color: #5c554b; font: 8px var(--mono); letter-spacing: .08em; }
+.present-signals b { display: block; margin-top: 4px; font: 500 18px var(--serif); }
+.present-events { display: grid; gap: 8px; }
+.present-event { padding: 10px 12px; border: 1px solid #d8cdbb; background: #f8f2e5; text-align: left; cursor: pointer; }
+.present-event span { font: 8px var(--mono); letter-spacing: .06em; }
+.present-event p { margin: 6px 0 0; font-size: 12px; line-height: 1.5; }
+.present-drills { margin-top: 12px; display: grid; gap: 10px; }
+.present-drills article { padding: 12px; border: 1px solid #ded3c1; background: #f2ecdf; }
+.present-drills button { border: 0; padding: 0; background: none; color: var(--cue); font: 9px var(--mono); cursor: pointer; text-align: left; }
+.present-drills p { margin: 8px 0 0; font-size: 13px; line-height: 1.6; }
+.present-drills small { display: block; margin-top: 8px; font-size: 10px; }
+.present-example { font-style: italic; }
+@media (max-width: 760px) { .present-signals { grid-template-columns: repeat(2, 1fr); } }

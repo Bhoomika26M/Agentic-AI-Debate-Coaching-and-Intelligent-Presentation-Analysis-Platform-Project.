@@ -32,8 +32,9 @@ import { AccountView } from "./features/auth/AccountView";
 import { AuthView } from "./features/auth/AuthView";
 import { useAuth } from "./features/auth/AuthProvider";
 import { supabaseConfigured } from "./features/auth/supabase";
+import { PresentationRoom } from "./features/presentation/PresentationRoom";
 
-type View = "landing" | "setup" | "arena" | "verdict" | "auth" | "account";
+type View = "landing" | "setup" | "arena" | "verdict" | "auth" | "account" | "present";
 type PersonaKey = DebateOptions["persona"];
 type BackendState = "checking" | "warming" | "ready" | "offline";
 
@@ -446,7 +447,7 @@ export default function App() {
   const elapsed = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
 
   return (
-    <div className={`app-shell ${view === "setup" ? "app-shell-setup" : ""} ${view === "arena" || view === "verdict" ? "app-shell-room" : ""}`}>
+    <div className={`app-shell ${view === "setup" ? "app-shell-setup" : ""} ${view === "arena" || view === "verdict" || view === "present" ? "app-shell-room" : ""}`}>
       {view !== "arena" && view !== "verdict" && (
         <Header
           onHome={returnHome}
@@ -589,6 +590,9 @@ export default function App() {
                 <h2>Ready for your<br /><span>opening cue?</span></h2>
                 <button className="button button-dark" onClick={() => setView("setup")}>
                   Open the prompt book <ArrowUpRight size={17} />
+                </button>
+                <button className="button button-light" onClick={() => setView("present")}>
+                  Practice delivery solo <ArrowUpRight size={16} />
                 </button>
               </div>
               <div className="closing-aside">ACT I / MAKE YOUR CASE<br />ACT II / MEET THE COUNTERPOINT<br />ACT III / TAKE IT WITH YOU</div>
@@ -844,13 +848,37 @@ export default function App() {
                   <p className="analysis-limit">Coaching estimate from an AI model, based on this transcript only. Scores are not objective measures. Check each observation against what you meant to say.</p>
                 </>}
               </section>
+              <section className="analysis-chamber" aria-labelledby="delivery-heading">
+                <div className="analysis-chamber-head">
+                  <div><span>ACT V / DELIVERY REVIEW</span><h2 id="delivery-heading">Hear the delivery.<br /><em>Steady the next one.</em></h2></div>
+                </div>
+                <p className="analysis-intro">Record or upload a closing take. Delivery states are observable patterns with timestamps, not diagnoses.</p>
+                <PresentationRoom topic={activeTopic} sessionId={recordId} compact />
+              </section>
               <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>{user ? "Your transcript and any completed argument review are kept in your learner archive." : "Your transcript and review stay in this browser session. Sign in before your next rehearsal to keep its transcript in your learner archive."}</p></div>
               <div className="verdict-actions">
                 <button className="button button-dark" onClick={() => void resumeSession()}><RotateCcw size={16} /> Return to the room</button>
+                <button className="button button-light" onClick={() => setView("present")}>Practice delivery solo <ArrowUpRight size={16} /></button>
                 <button className="button button-light" onClick={() => setView("setup")}>Start a new rehearsal <ArrowUpRight size={16} /></button>
               </div>
             </section>
             <div className="verdict-footer"><span>VERDICT / CASE CLOSED</span><span>AI PRACTICE ROOM</span></div>
+          </motion.main>
+        )}
+
+        {view === "present" && (
+          <motion.main key="present" className="verdict-page" {...pageMotion}>
+            <header className="verdict-header"><button className="arena-brand" onClick={returnHome}><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button><span>DELIVERY ROOM / SOLO PRACTICE</span></header>
+            <section className="verdict-content">
+              <div className="verdict-overline"><span className="verdict-seal"><BookOpenText size={22} /></span><span>THE MIC IS YOURS.</span></div>
+              <h1>Steady the<br /><span>next take.</span></h1>
+              <p className="verdict-summary">Record or upload without a debate. Review pace, pauses, and tutor drills with timestamps.</p>
+              <PresentationRoom />
+              <div className="verdict-actions">
+                <button className="button button-dark" onClick={() => setView("setup")}><ArrowLeft size={16} /> Back to debate setup</button>
+              </div>
+            </section>
+            <div className="verdict-footer"><span>VERDICT / DELIVERY ROOM</span><span>AI PRACTICE ROOM</span></div>
           </motion.main>
         )}
       </AnimatePresence>
