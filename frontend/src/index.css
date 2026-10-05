@@ -1,0 +1,359 @@
+:root {
+  --ink: #1c2b3a;
+  --ink-soft: #4a5a6a;
+  --paper: #f3f1ea;
+  --panel: #ffffff;
+  --line: #d9d4c6;
+  --accent: #a13d2f;
+  --accent-soft: #f2ddd6;
+  --gold: #b8860b;
+  --good: #2f6d4f;
+  --good-soft: #dcefe3;
+  --bad: #a13d2f;
+  --bad-soft: #f6dfd9;
+  --radius: 3px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.sans {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+}
+
+a { color: inherit; }
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Masthead ---------- */
+.masthead {
+  border-bottom: 3px double var(--ink);
+  padding: 1.1rem 1.5rem 0.9rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.masthead h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: 0.01em;
+  font-weight: 700;
+}
+
+.masthead .kicker {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  color: var(--ink-soft);
+  margin-bottom: 0.15rem;
+}
+
+.masthead nav {
+  display: flex;
+  gap: 1.1rem;
+  align-items: center;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.92rem;
+}
+
+.masthead nav button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-soft);
+  font: inherit;
+  padding: 0.2rem 0;
+  border-bottom: 2px solid transparent;
+}
+
+.masthead nav button.active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+.masthead .user-chip {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+/* ---------- Layout ---------- */
+.content {
+  flex: 1;
+  max-width: 920px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 1.75rem;
+}
+
+@media (max-width: 760px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.4rem 1.5rem;
+}
+
+.panel + .panel {
+  margin-top: 1.25rem;
+}
+
+.section-title {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+  margin: 0 0 0.9rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.5rem;
+}
+
+/* ---------- Forms ---------- */
+label {
+  display: block;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  margin: 0.9rem 0 0.3rem;
+}
+
+input, select, textarea {
+  width: 100%;
+  font-family: Georgia, serif;
+  font-size: 1rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+textarea {
+  min-height: 140px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+button.primary {
+  margin-top: 1.2rem;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  padding: 0.65rem 1.3rem;
+  border-radius: var(--radius);
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+button.primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+button.secondary {
+  background: none;
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.error-text {
+  color: var(--accent);
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.85rem;
+  margin-top: 0.6rem;
+}
+
+/* ---------- Score bars ---------- */
+.score-row {
+  display: grid;
+  grid-template-columns: 9rem 1fr 2.5rem;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.5rem 0;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.85rem;
+}
+
+.score-track {
+  height: 8px;
+  background: var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.score-fill {
+  height: 100%;
+  background: var(--ink);
+}
+
+.score-fill.good { background: var(--good); }
+.score-fill.mid { background: var(--gold); }
+.score-fill.bad { background: var(--bad); }
+
+.score-value {
+  text-align: right;
+  color: var(--ink-soft);
+}
+
+.overall-score {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.overall-score .num {
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.overall-score .label {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  letter-spacing: 0.05em;
+}
+
+/* ---------- Chips / cards ---------- */
+.chip {
+  display: inline-block;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  padding: 0.18rem 0.55rem;
+  border-radius: 20px;
+  margin: 0 0.35rem 0.35rem 0;
+}
+
+.chip.fallacy { background: var(--bad-soft); color: var(--bad); }
+.chip.good { background: var(--good-soft); color: var(--good); }
+.chip.neutral { background: #eee9dc; color: var(--ink-soft); }
+
+.fallacy-item, .counter-item {
+  border-left: 3px solid var(--bad);
+  padding: 0.55rem 0.8rem;
+  margin-bottom: 0.7rem;
+  background: var(--bad-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.counter-item {
+  border-left-color: var(--gold);
+  background: #faf3e2;
+}
+
+.counter-item .type-label, .fallacy-item .type-label {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.session-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 0.8rem;
+  cursor: pointer;
+  background: var(--panel);
+}
+
+.session-card:hover {
+  border-color: var(--ink);
+}
+
+.session-card h3 {
+  margin: 0 0 0.3rem;
+  font-size: 1.05rem;
+}
+
+.session-card .meta {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.claim-block {
+  border-top: 1px dashed var(--line);
+  padding-top: 0.9rem;
+  margin-top: 0.9rem;
+}
+
+.empty-state {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  padding: 1.5rem 0;
+  text-align: center;
+}
+
+.recommendation-list {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  padding-left: 1.1rem;
+}
+
+.top-nav-back {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 1rem;
+}
