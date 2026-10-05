@@ -10,7 +10,7 @@ from .models import User
 
 # PBKDF2 avoids native bcrypt version differences while remaining portable.
 pwd = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
-oauth2 = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2 = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
 
 def hash_password(value: str) -> str:

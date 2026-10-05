@@ -7,7 +7,7 @@ ArgueWell is a runnable MVP for practicing debate and presentation skills. It co
 - **Backend:** FastAPI, SQLAlchemy, Pydantic, JWT authentication
 - **Frontend:** React 18 + Vite dashboard (FastAPI serves `frontend/dist` in production)
 - **Storage:** SQLite by default; PostgreSQL-ready through `DATABASE_URL`
-- **Analysis:** Groq provider (opt-in via local environment) with deterministic fallback, plus a LangGraph-compatible simulation
+- **Analysis:** OpenRouter provider (opt-in via local environment) with deterministic fallback, plus a LangGraph-compatible simulation
 
 ## Run locally
 
@@ -47,8 +47,8 @@ For frontend development, run `cd frontend; npm install; npm run dev`; Vite prox
 All session, profile, dashboard, and report routes require a bearer token returned by the authentication endpoints.
 
 Roles are `learner`, `debate_coach`, `educator`, and `administrator`. New accounts are
-learners; only administrators can change roles. Debate turns use Groq when
-`GROQ_API_KEY` is set, otherwise the deterministic local fallback is persisted.
+learners; only administrators can change roles. All AI workflows use OpenRouter when
+`OPENROUTER_API_KEY` is set, otherwise the deterministic local fallback is persisted.
 
 ## Docker deployment
 
@@ -71,8 +71,8 @@ The backend source lives in `backend/app/`, the frontend source lives in `fronte
 
 ### AI and media behavior
 
-Set `GROQ_API_KEY` only in the local environment or deployment secret store; it is
-never committed or returned by the API. Set `GROQ_MODEL` to the Groq model identifier
+Set `OPENROUTER_API_KEY` only in the local environment or deployment secret store; it is
+never committed or returned by the API. Set `OPENROUTER_MODEL` to the model identifier
 you want to use. The provider automatically falls back to the explainable local
 analyzer if the key is absent or Groq is unavailable.
 Uploads accept supported audio/video MIME types up to `MAX_UPLOAD_SIZE_MB` and

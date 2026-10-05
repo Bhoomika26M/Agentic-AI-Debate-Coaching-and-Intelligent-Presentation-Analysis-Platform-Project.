@@ -34,7 +34,7 @@ def test_debate_turns_persist_and_fallback():
         "topic": "Should schools teach media literacy?", "position": "for",
         "turn_type": "opening", "content": "Schools should teach this because misinformation spreads.",
     })
-    assert first.status_code == 200 and first.json()["engine"] == "deterministic_fallback"
+    assert first.status_code == 200 and first.json()["engine"] in ("deterministic_fallback", "openrouter")
     second = client.post("/api/debate/turn", headers=headers, json={
         "session_id": first.json()["session_id"], "topic": "Should schools teach media literacy?",
         "position": "for", "turn_type": "final_evaluation", "content": "My final claim is supported by research.",

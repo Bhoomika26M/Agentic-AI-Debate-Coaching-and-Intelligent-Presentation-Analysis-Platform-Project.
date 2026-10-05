@@ -7,6 +7,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
     name: str = Field(min_length=1, max_length=120)
+    role: str = Field(default="learner", pattern="^(learner|debate_coach|educator|administrator)$")
 
 
 class UserLogin(BaseModel):
@@ -49,8 +50,19 @@ class SessionCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     topic: str = Field(min_length=3, max_length=500)
     position: str = Field(default="for", pattern="^(for|against)$")
+    debate_format: str = Field(default="one_on_one", pattern="^(one_on_one|parliamentary|oxford|policy|public_forum|ai_simulation)$")
+    scheduled_at: datetime | None = None
     transcript: str = Field(default="", max_length=30000)
     scoring_weights: dict[str, float] | None = None
+
+
+class SessionUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    topic: str | None = Field(default=None, min_length=3, max_length=500)
+    position: str | None = Field(default=None, pattern="^(for|against)$")
+    debate_format: str | None = Field(default=None, pattern="^(one_on_one|parliamentary|oxford|policy|public_forum|ai_simulation)$")
+    scheduled_at: datetime | None = None
+    status: str | None = Field(default=None, pattern="^(scheduled|active|completed|cancelled)$")
 
 
 class CounterargumentRequest(BaseModel):
@@ -70,6 +82,8 @@ class SessionOut(BaseModel):
     title: str
     topic: str
     position: str
+    debate_format: str
+    scheduled_at: datetime | None
     transcript: str
     status: str
     overall_score: float
@@ -89,6 +103,54 @@ class ProfileUpdate(BaseModel):
 
 class RoleUpdate(BaseModel):
     role: str = Field(pattern="^(learner|debate_coach|educator|administrator)$")
+
+
+class AssignmentCreate(BaseModel):
+    learner_id: int
+    title: str = Field(min_length=1, max_length=200)
+    assignment_type: str = Field(default="debate", pattern="^(debate|presentation|exercise)$")
+    instructions: str = Field(default="", max_length=5000)
+    due_at: datetime | None = None
+    class_id: int | None = None
+
+
+class SubmissionCreate(BaseModel):
+    submission: str = Field(min_length=1, max_length=30000)
+
+
+class EvaluationCreate(BaseModel):
+    score: float = Field(ge=0, le=100)
+    feedback: str = Field(min_length=1, max_length=5000)
+
+
+class ClassCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=2000)
+
+
+class ClassMemberCreate(BaseModel):
+    learner_id: int
+
+
+class CurriculumCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=3000)
+    module: str = Field(default="debate", max_length=100)
+    order_index: int = Field(default=0, ge=0)
+
+
+class FallacyCreate(BaseModel):
+    fallacy_type: str = Field(min_length=1, max_length=80)
+    excerpt: str = Field(default="", max_length=3000)
+    explanation: str = Field(default="", max_length=3000)
+    correction: str = Field(default="", max_length=3000)
+    session_id: int | None = None
+
+
+class CounterargumentCreate(BaseModel):
+    claim: str = Field(min_length=1, max_length=3000)
+    counter_type: str = Field(pattern="^(logical|evidence_based|ethical|practical|policy)$")
+    response: str = Field(min_length=1, max_length=5000)
 
 
 class DebateTurnRequest(BaseModel):

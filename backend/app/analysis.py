@@ -56,12 +56,21 @@ def analyze_transcript(text: str, topic: str, position: str, weights: dict | Non
     pacing = round(len(words) / max(1, len(sentences)) * 12, 1)
     clarity = min(100, max(35, 48 + min(25, len(sentences) * 3) + (10 if arguments["structure"]["has_thesis"] else 0) - len(fallacies) * 8))
     evidence_score = min(100, 40 + evidence_terms * 7 + len(arguments["evidence"]) * 4)
+    relevance = min(100, 45 + (12 if topic.lower().split()[0] in lower else 0) + len(arguments["claims"]) * 4)
     reasoning_score = min(100, 35 + reasoning_terms * 7 + len(arguments["reasons"]) * 6)
+    logical_consistency = max(20, min(100, reasoning_score - len(fallacies) * 6 + (10 if arguments["structure"]["has_thesis"] else 0)))
+    argument_quality = round(clarity * .35 + evidence_score * .3 + logical_consistency * .35, 1)
+    rebuttal_effectiveness = round(clarity * .35 + reasoning_score * .35 + evidence_score * .3, 1)
     persuasiveness = min(100, round(clarity * .4 + evidence_score * .3 + reasoning_score * .3, 1))
     delivery = max(35, min(100, 92 - fillers * 3 - (8 if pacing > 180 else 0) - (5 if pacing < 90 and words else 0)))
-    default_weights = {"clarity": .25, "evidence": .25, "persuasiveness": .25, "delivery": .25}
+    communication_skills = round(clarity * .45 + delivery * .35 + persuasiveness * .2, 1)
+    default_weights = {"argument_quality": .30, "evidence_usage": .20, "logical_consistency": .20,
+                       "rebuttal_effectiveness": .15, "communication_skills": .15}
     weights = {**default_weights, **(weights or {})}
-    total = sum(weights.get(k, 0) * v for k, v in {"clarity": clarity, "evidence": evidence_score, "persuasiveness": persuasiveness, "delivery": delivery}.items())
+    score_dimensions = {"argument_quality": argument_quality, "evidence_usage": evidence_score,
+                       "logical_consistency": logical_consistency, "rebuttal_effectiveness": rebuttal_effectiveness,
+                       "communication_skills": communication_skills}
+    total = sum(weights.get(k, 0) * v for k, v in score_dimensions.items())
     counter = [
         {"type": "steelman", "claim": f"Opposing view on {topic}", "response": f"Address the strongest {('against' if position == 'for' else 'for')} case with evidence and a specific trade-off.", "strategy": "steelman"},
         {"type": "falsifiability", "claim": "What would change your mind?", "response": "Name a measurable condition or source that could update your position.", "strategy": "falsifiability"},
@@ -72,8 +81,17 @@ def analyze_transcript(text: str, topic: str, position: str, weights: dict | Non
                        "Support each key claim with a concrete source, example, or measurable outcome."]
     if fillers: recommendations.append(f"Replace {fillers} filler words with a short pause to sound more deliberate.")
     if fallacies: recommendations.append("Reframe flagged language around claims and evidence rather than people or absolutes.")
+    confidence = max(20, min(100, delivery + (8 if reasoning_terms else 0) - len(fallacies) * 4))
+    engagement = max(20, min(100, clarity * .5 + persuasiveness * .5))
+    credibility = max(20, min(100, evidence_score * .65 + logical_consistency * .35 - len(fallacies) * 5))
+    critical_thinking = round(argument_quality * .4 + logical_consistency * .35 + relevance * .25, 1)
     return {"clarity": clarity, "evidence": evidence_score, "persuasiveness": persuasiveness, "delivery": delivery,
-            "overall_score": round(total, 1), "weights": weights, "arguments": arguments, "reasoning_score": reasoning_score,
+             "overall_score": round(total, 1), "weights": weights, "arguments": arguments, "reasoning_score": reasoning_score,
+             "argument_quality": argument_quality, "evidence_usage": evidence_score,
+             "relevance": relevance, "credibility": round(credibility, 1), "critical_thinking": critical_thinking,
+             "logical_consistency": logical_consistency, "rebuttal_effectiveness": rebuttal_effectiveness,
+             "communication_skills": communication_skills, "confidence_score": round(confidence, 1),
+             "engagement_score": round(engagement, 1), "score_dimensions": score_dimensions,
             "fallacies": fallacies, "counterarguments": counter, "recommendations": recommendations,
             "pacing_wpm": pacing, "filler_words": fillers, "word_frequency": Counter(w.lower() for w in words).most_common(8)}
 

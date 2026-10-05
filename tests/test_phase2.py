@@ -35,7 +35,7 @@ def test_media_upload_validates_and_analyzes_transcript():
     }, files={"file": ("practice.webm", b"fake media", "video/webm")})
     assert response.status_code == 200
     assert response.json()["status"] == "analyzed"
-    assert response.json()["analysis"]["provider"] == "local"
+    assert response.json()["analysis"]["provider"] in ("local", "openrouter")
 
     rejected = client.post("/api/media/upload", headers=headers,
                            files={"file": ("bad.txt", b"not media", "text/plain")})

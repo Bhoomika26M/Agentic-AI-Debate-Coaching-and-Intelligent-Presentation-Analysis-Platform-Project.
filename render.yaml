@@ -9,9 +9,13 @@ services:
         sync: false
       - key: SECRET_KEY
         generateValue: true
-      - key: GROQ_API_KEY
+      - key: OPENROUTER_API_KEY
         sync: false
-      - key: GROQ_MODEL
-        value: llama-3.3-70b-versatile
+      - key: OPENROUTER_MODEL
+        value: openai/gpt-oss-120b
+      - key: OPENROUTER_SITE_URL
+        value: https://arguewell.onrender.com
+      - key: OPENROUTER_APP_NAME
+        value: ArgueWell
       - key: ALLOW_ORIGINS
         value: https://arguewell.onrender.com

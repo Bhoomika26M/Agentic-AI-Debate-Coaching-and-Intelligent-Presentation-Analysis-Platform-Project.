@@ -29,6 +29,8 @@ class DebateSession(Base):
     title: Mapped[str] = mapped_column(String(200))
     topic: Mapped[str] = mapped_column(String(500))
     position: Mapped[str] = mapped_column(String(20), default="for")
+    debate_format: Mapped[str] = mapped_column(String(30), default="one_on_one")
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     transcript: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(30), default="completed")
     overall_score: Mapped[float] = mapped_column(Float, default=0)
@@ -79,4 +81,105 @@ class MediaAsset(Base):
     transcript: Mapped[str] = mapped_column(Text, default="")
     analysis_json: Mapped[str] = mapped_column(Text, default="{}")
     status: Mapped[str] = mapped_column(String(30), default="analyzed")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Presentation(Base):
+    __tablename__ = "presentations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    audience: Mapped[str] = mapped_column(String(100), default="general")
+    transcript: Mapped[str] = mapped_column(Text)
+    duration_seconds: Mapped[float] = mapped_column(Float, default=0)
+    analysis_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ClassGroup(Base):
+    __tablename__ = "class_groups"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    educator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ClassMember(Base):
+    __tablename__ = "class_members"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    class_id: Mapped[int] = mapped_column(ForeignKey("class_groups.id"), index=True)
+    learner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class LearningAssignment(Base):
+    __tablename__ = "learning_assignments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    learner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    class_id: Mapped[int] = mapped_column(ForeignKey("class_groups.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String(200))
+    assignment_type: Mapped[str] = mapped_column(String(40), default="debate")
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    due_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="assigned")
+    submission: Mapped[str] = mapped_column(Text, default="")
+    evaluation: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class FallacyFinding(Base):
+    __tablename__ = "fallacy_findings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("debate_sessions.id"), nullable=True)
+    fallacy_type: Mapped[str] = mapped_column(String(80))
+    excerpt: Mapped[str] = mapped_column(Text)
+    explanation: Mapped[str] = mapped_column(Text)
+    correction: Mapped[str] = mapped_column(Text)
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CounterargumentPractice(Base):
+    __tablename__ = "counterargument_practice"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    claim: Mapped[str] = mapped_column(Text)
+    counter_type: Mapped[str] = mapped_column(String(50))
+    response: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="generated")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    action: Mapped[str] = mapped_column(String(120))
+    target: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AIUsageLog(Base):
+    __tablename__ = "ai_usage_logs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)
+    provider: Mapped[str] = mapped_column(String(50))
+    model: Mapped[str] = mapped_column(String(120))
+    operation: Mapped[str] = mapped_column(String(80))
+    success: Mapped[bool] = mapped_column(Boolean, default=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CurriculumItem(Base):
+    __tablename__ = "curriculum_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    educator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    module: Mapped[str] = mapped_column(String(100), default="debate")
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
