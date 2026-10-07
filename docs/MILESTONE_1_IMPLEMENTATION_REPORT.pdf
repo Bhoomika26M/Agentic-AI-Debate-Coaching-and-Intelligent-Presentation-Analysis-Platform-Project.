@@ -1,0 +1,307 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Length 2030 >>
+stream
+q 0.09 0.42 0.41 rg 0 800 595 42 re f Q
+BT /F1 16 Tf 1 1 1 rg 48 814 Td (DebateCoach AI | Milestone 1 Implementation Report) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 770 Td (Agentic AI Debate Coach and Presentation Analysis Platform) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 746 Td (PROJECT STATUS) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 731 Td (Milestone 1 completed: core setup, authentication, profiles,) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 716 Td (role-based access control, and debate session management.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 692 Td (TECHNOLOGY) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 677 Td (Frontend: React 19, Vite, React Router, Axios) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 662 Td (Backend: Python, FastAPI, SQLAlchemy 2.0) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 647 Td (Database: PostgreSQL with SQLite local fallback) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 632 Td (Security: JWT access tokens and password hashing) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 617 Td (Verification: Backend tests pass; frontend build passes) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 593 Td (PRESENTATION SUMMARY) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 578 Td (The first milestone establishes a working foundation for an AI-powered) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 563 Td (debate coaching platform. Users can create accounts, authenticate securely,) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 548 Td (manage profiles, schedule debate sessions, save transcripts, and receive) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 533 Td (coach evaluations.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 509 Td (SCOPE NOTE) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 494 Td (Argument analysis, fallacy detection, speech analytics, AI debate simulation,) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 479 Td (and personalized AI coaching are planned for later milestones.) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 48 34 Td (DebateCoach AI | Milestone 1 Implementation Report) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 520 34 Td (1) Tj ET
+endstream
+endobj
+3 0 obj
+<< /Length 2062 >>
+stream
+q 0.09 0.42 0.41 rg 0 800 595 42 re f Q
+BT /F1 16 Tf 1 1 1 rg 48 814 Td (1. Project Objective and Scope) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 770 Td (The platform helps users improve debating, public speaking, critical thinking,) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 755 Td (and persuasive communication. Milestone 1 focuses on the core application) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 740 Td (infrastructure and complete user-to-session workflow.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 716 Td (MILESTONE 1 OBJECTIVES) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 701 Td (- Initialize the frontend and backend application structure.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 686 Td (- Create a secure authentication and authorization foundation.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 671 Td (- Support learner, coach, educator, and administrator roles.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 656 Td (- Create profile and skill-tracking fields for future coaching intelligence.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 641 Td (- Implement the debate session lifecycle from creation to evaluation.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 626 Td (- Document architecture, database entities, workflows, and tests.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 602 Td (COMPLETED AREAS) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 587 Td (Authentication: register, login, logout, JWT persistence, protected routes) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 572 Td (Profile: identity, bio, experience, topics, domains, goals, preferences) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 557 Td (Dashboard: role-aware metrics, recent sessions, quick actions, skills) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 542 Td (Sessions: create, schedule, filter, inspect, update, cancel, evaluate) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 527 Td (Coach workflow: view learners, review sessions, submit scores and feedback) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 48 34 Td (DebateCoach AI | Milestone 1 Implementation Report) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 520 34 Td (2) Tj ET
+endstream
+endobj
+4 0 obj
+<< /Length 1953 >>
+stream
+q 0.09 0.42 0.41 rg 0 800 595 42 re f Q
+BT /F1 16 Tf 1 1 1 rg 48 814 Td (2. System Architecture) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 770 Td (The application follows a layered full-stack architecture. React handles) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 755 Td (navigation, forms, dashboards, and user interactions. FastAPI exposes REST) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 740 Td (endpoints. SQLAlchemy provides persistence, while JWT dependencies protect) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 725 Td (authenticated operations.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 701 Td (ARCHITECTURE LAYERS) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 686 Td (Client       React 19 + Vite; pages, navigation, forms, dashboards) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 671 Td (API          FastAPI; validation, routing, and business rules) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 656 Td (Security     JWT and bcrypt/passlib; token and password protection) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 641 Td (Persistence  SQLAlchemy async; users, sessions, scores, feedback) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 626 Td (Storage      PostgreSQL in Docker; SQLite fallback for local development) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 602 Td (BACKEND STARTUP) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 587 Td (- FastAPI starts through backend/main.py.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 572 Td (- Database tables are created during development startup.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 557 Td (- CORS allows the Vite frontend to communicate with the API.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 542 Td (- Authentication, users, and sessions are mounted under the API prefix.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 527 Td (- PostgreSQL failure triggers fallback to debate.db.) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 48 34 Td (DebateCoach AI | Milestone 1 Implementation Report) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 520 34 Td (3) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Length 2026 >>
+stream
+q 0.09 0.42 0.41 rg 0 800 595 42 re f Q
+BT /F1 16 Tf 1 1 1 rg 48 814 Td (3. Authentication and RBAC) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 770 Td (Registration creates a user record with a securely hashed password and) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 755 Td (initialized coaching defaults. The backend returns a JWT containing the) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 740 Td (authenticated user identity and role.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 716 Td (AUTHENTICATION WORKFLOW) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 701 Td (1. User submits email and password.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 686 Td (2. API verifies the stored password hash.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 671 Td (3. JWT access token is generated and returned.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 656 Td (4. Client stores the token and requests the profile.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 641 Td (5. Axios attaches the token to future API requests.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 626 Td (6. ProtectedRoute prevents unauthenticated page access.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 602 Td (ROLE PERMISSIONS) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 587 Td (Learner    Own profile, own sessions, personal session creation) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 572 Td (Coach      Learner permissions plus student roster and evaluations) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 557 Td (Educator   Learner permissions plus student roster and evaluations) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 542 Td (Admin      Broadest access, including system-level session deletion) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 518 Td (Permissions are enforced in backend dependencies and route handlers. Frontend) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 503 Td (visibility improves usability but is not used as the security boundary.) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 48 34 Td (DebateCoach AI | Milestone 1 Implementation Report) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 520 34 Td (4) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Length 1989 >>
+stream
+q 0.09 0.42 0.41 rg 0 800 595 42 re f Q
+BT /F1 16 Tf 1 1 1 rg 48 814 Td (4. Data Model and Profile Management) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 770 Td (The database currently contains two main entities: User and DebateSession.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 755 Td (A user owns many debate sessions. JSON columns provide flexible storage for) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 740 Td (profile collections and future machine-generated metrics.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 716 Td (USER ENTITY) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 701 Td (Identity      UUID, name, email, password hash, active status) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 686 Td (Role          learner, coach, educator, or admin) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 671 Td (Preferences   topics, presentation domains, goals, coaching preferences) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 656 Td (Skills        clarity, evidence strength, logic, persuasiveness, pace, confidence) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 641 Td (Progress      total sessions, average score, win streak, presentation history) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 626 Td (Audit fields  created and updated timestamps) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 602 Td (PROFILE WORKFLOW) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 587 Td (- User selects Beginner, Intermediate, Advanced, or Expert.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 572 Td (- Topics, domains, goals, and coaching preferences are multi-select tags.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 557 Td (- Changes are sent to PUT /users/me.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 542 Td (- Updated user data refreshes React state and local storage.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 527 Td (- Skill metrics display as progress indicators for future analytics.) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 48 34 Td (DebateCoach AI | Milestone 1 Implementation Report) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 520 34 Td (5) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Length 2381 >>
+stream
+q 0.09 0.42 0.41 rg 0 800 595 42 re f Q
+BT /F1 16 Tf 1 1 1 rg 48 814 Td (5. Debate Session Workflow) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 770 Td (Debate sessions are the central Milestone 1 workflow. A learner can prepare) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 755 Td (a session, schedule it, store speech content, and receive a formal evaluation) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 740 Td (from an authorized coach, educator, or administrator.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 716 Td (SESSION LIFECYCLE) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 701 Td (Create     Topic, format, position, date, duration, rounds, and notes) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 686 Td (Scheduled  New session is stored with scheduled status) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 671 Td (Prepare    User saves a transcript or argument notes) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 656 Td (Review     Privileged role views the session and transcript) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 641 Td (Evaluate   Evaluator submits a 0-100 score and feedback) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 626 Td (Complete   Session is completed and learner average is recalculated) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 602 Td (SUPPORTED FORMATS) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 587 Td (One-on-One Debate | Parliamentary Debate | Oxford Debate) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 572 Td (Policy Debate | Public Forum Debate | AI Debate Simulation placeholder) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 548 Td (SESSION API) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 533 Td (GET    /sessions/                 List sessions) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 518 Td (POST   /sessions/                 Create a scheduled session) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 503 Td (GET    /sessions/{id}             View a session with access validation) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 488 Td (PUT    /sessions/{id}             Update transcript or session fields) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 473 Td (PUT    /sessions/{id}/evaluate   Submit evaluation and update average) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 458 Td (DELETE /sessions/{id}             Delete an authorized session) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 48 34 Td (DebateCoach AI | Milestone 1 Implementation Report) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 520 34 Td (6) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Length 2286 >>
+stream
+q 0.09 0.42 0.41 rg 0 800 595 42 re f Q
+BT /F1 16 Tf 1 1 1 rg 48 814 Td (6. Frontend Experience and UI) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 770 Td (The frontend is organized as a public landing/authentication area and a) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 755 Td (protected workspace. The visual pass preserves functionality while making) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 740 Td (the interface calmer and more consistent for an internship demonstration.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 716 Td (IMPLEMENTED SCREENS) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 701 Td (- Landing page explaining platform direction and future capabilities.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 686 Td (- Login page with credential authentication and OAuth placeholder.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 671 Td (- Two-step signup with role selection and password strength feedback.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 656 Td (- Role-aware dashboard with metrics, sessions, quick actions, and skills.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 641 Td (- Debate Sessions page with filters, modals, transcripts, and evaluation.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 626 Td (- Profile page with editable identity data, skills, preferences, and goals.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 602 Td (VISUAL DESIGN CHANGES) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 587 Td (- Replaced dark purple neon theme with a light neutral canvas.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 572 Td (- Added restrained teal accents and clearer typography.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 557 Td (- Replaced strong glows and oversized rounded surfaces with subtle borders.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 542 Td (- Added responsive layout behavior for smaller screens.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 527 Td (- Kept buttons, inputs, cards, modals, and badges consistent.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 503 Td (Development fallback: local sample sessions keep the interface demonstrable) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 488 Td (when no records exist or the API is unavailable.) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 48 34 Td (DebateCoach AI | Milestone 1 Implementation Report) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 520 34 Td (7) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Length 2467 >>
+stream
+q 0.09 0.42 0.41 rg 0 800 595 42 re f Q
+BT /F1 16 Tf 1 1 1 rg 48 814 Td (7. Testing and Roadmap) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 770 Td (The repository contains a Milestone 1 verification suite in) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 755 Td (backend/tests/test_milestone1.py. It exercises complete workflows rather) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 740 Td (than only isolated functions.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 716 Td (VERIFIED SCENARIOS) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 701 Td (- Health and root endpoints respond successfully.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 686 Td (- All four roles can register.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 671 Td (- Valid login returns a token; invalid credentials return HTTP 401.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 656 Td (- Authenticated users can retrieve and update profiles.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 641 Td (- Learners can create sessions and save transcripts.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 626 Td (- Coaches can list students and view all sessions.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 611 Td (- Coaches can evaluate sessions and update learner averages.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 596 Td (- Unauthorized learners cannot evaluate or delete another session.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 58 581 Td (- Owners can delete their own sessions.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 557 Td (VALIDATION RESULTS) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 542 Td (Backend Milestone 1 unittest suite: PASSED \(OK\)) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 527 Td (Frontend production build: PASSED \(Vite build completed\)) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 512 Td (Frontend lint: existing AuthContext warnings remain) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 488 Td (ROADMAP) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 473 Td (Milestone 1  Initialization, authentication, profiles, sessions - COMPLETED) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 458 Td (Milestone 2  Argument analysis and fallacy detection - NEXT) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 443 Td (Milestone 3  AI debate simulation and personalized coaching - PLANNED) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 428 Td (Milestone 4  Presentation analytics, reports, deployment - PLANNED) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 48 34 Td (DebateCoach AI | Milestone 1 Implementation Report) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 520 34 Td (8) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Length 2045 >>
+stream
+q 0.09 0.42 0.41 rg 0 800 595 42 re f Q
+BT /F1 16 Tf 1 1 1 rg 48 814 Td (8. Presentation Conclusion) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 770 Td (For the first milestone, I built the working foundation of the DebateCoach AI) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 755 Td (platform. The system now supports secure role-based accounts, editable learner) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 740 Td (profiles, debate session scheduling, transcript storage, and coach evaluation.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 716 Td (I also documented the architecture and verified the main workflows with) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 701 Td (automated backend tests. The next phase will connect these stable workflows) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 686 Td (to AI services for argument analysis, fallacy detection, rebuttal generation,) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 671 Td (and adaptive debate coaching.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 647 Td (KEY TAKEAWAY) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 632 Td (Milestone 1 converts the project proposal into a working, testable full-stack) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 617 Td (foundation. The data model and protected workflows are ready for intelligent) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 602 Td (analysis modules in the next milestones.) Tj ET
+BT /F1 10 Tf 0.09 0.31 0.30 rg 48 578 Td (CURRENTLY NOT IMPLEMENTED) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 563 Td (LLM extraction, fallacy detection, rebuttal generation, speech recognition,) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 548 Td (presentation analytics, real-time AI debate simulation, notifications, exports,) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 533 Td (and production monitoring are planned future work.) Tj ET
+BT /F1 9.5 Tf 0.10 0.19 0.18 rg 48 509 Td (Generated from the repository state on September 21, 2026.) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 48 34 Td (DebateCoach AI | Milestone 1 Implementation Report) Tj ET
+BT /F1 7 Tf 0.33 0.39 0.38 rg 520 34 Td (9) Tj ET
+endstream
+endobj
+11 0 obj
+<< /Type /Pages /Kids [12 0 R 13 0 R 14 0 R 15 0 R 16 0 R 17 0 R 18 0 R 19 0 R 20 0 R] /Count 9 >>
+endobj
+12 0 obj
+<< /Type /Page /Parent 11 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 2 0 R >>
+endobj
+13 0 obj
+<< /Type /Page /Parent 11 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 3 0 R >>
+endobj
+14 0 obj
+<< /Type /Page /Parent 11 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 4 0 R >>
+endobj
+15 0 obj
+<< /Type /Page /Parent 11 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 5 0 R >>
+endobj
+16 0 obj
+<< /Type /Page /Parent 11 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 6 0 R >>
+endobj
+17 0 obj
+<< /Type /Page /Parent 11 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 7 0 R >>
+endobj
+18 0 obj
+<< /Type /Page /Parent 11 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 8 0 R >>
+endobj
+19 0 obj
+<< /Type /Page /Parent 11 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 9 0 R >>
+endobj
+20 0 obj
+<< /Type /Page /Parent 11 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 10 0 R >>
+endobj
+21 0 obj
+<< /Type /Catalog /Pages 11 0 R >>
+endobj
+xref
+0 22
+0000000000 65535 f 
+0000000015 00000 n 
+0000000085 00000 n 
+0000002167 00000 n 
+0000004281 00000 n 
+0000006286 00000 n 
+0000008364 00000 n 
+0000010405 00000 n 
+0000012838 00000 n 
+0000015176 00000 n 
+0000017695 00000 n 
+0000019793 00000 n 
+0000019908 00000 n 
+0000020036 00000 n 
+0000020164 00000 n 
+0000020292 00000 n 
+0000020420 00000 n 
+0000020548 00000 n 
+0000020676 00000 n 
+0000020804 00000 n 
+0000020932 00000 n 
+0000021061 00000 n 
+trailer
+<< /Size 22 /Root 21 0 R >>
+startxref
+21112
+%%EOF

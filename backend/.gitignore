@@ -1,0 +1,18 @@
+# Environment
+.env
+*.env
+
+# SQLite & local DBs
+*.db
+*.sqlite
+*.sqlite3
+debate.db
+
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
