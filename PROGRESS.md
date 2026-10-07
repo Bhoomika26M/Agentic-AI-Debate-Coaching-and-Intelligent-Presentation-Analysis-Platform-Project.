@@ -59,6 +59,7 @@ Deliver a polished, locally runnable AI debate demo by Monday, October 5, 2026, 
 ## In progress
 
 - Account provider sign-in and saved-archive flows are implemented and compile, but still need the project's own free Supabase credentials before they can be exercised end-to-end. The guest demo is unaffected.
+- Agentic orchestration phase started: `langgraph` added with `app/agents/` (LLM client interface plus shared graph states). No behavior change yet; debate guard-responder graph comes next behind `USE_AGENTS=false`.
 
 ## Next
 
