@@ -37,6 +37,7 @@ from .speech import (
 logger = logging.getLogger(__name__)
 MAX_ACTIVE_STREAMS = max(1, int(os.getenv("MAX_ACTIVE_STREAMS", "2")))
 stream_slots = asyncio.Semaphore(MAX_ACTIVE_STREAMS)
+USE_AGENTS = os.getenv("USE_AGENTS", "false").strip().lower() == "true"
 
 
 @asynccontextmanager
@@ -121,6 +122,37 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
 
     async def events() -> AsyncIterator[str]:
         try:
+            if USE_AGENTS:
+                from .agents.debate import check_reply, respond_stream
+                from .agents.guard import route_turn
+
+                if route_turn(request.learner_argument) == "redirect":
+                    from .agents.guard import redirect_reply
+
+                    yield f"data: {json.dumps({'delta': redirect_reply(request.topic)}, ensure_ascii=False)}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+                assembled: list[str] = []
+                async for delta in respond_stream(
+                    {
+                        "topic": request.topic,
+                        "learner_position": request.learner_position,
+                        "persona": request.persona,
+                        "difficulty": request.difficulty,
+                        "history": [
+                            {"speaker": t.speaker, "content": t.content}
+                            for t in request.history
+                        ],
+                        "latest": request.learner_argument,
+                    }
+                ):
+                    assembled.append(delta)
+                    yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
+                problem = check_reply("".join(assembled), request.topic)
+                if problem is not None:
+                    logger.info("Streamed reply flagged (%s); see transcript.", problem)
+                yield "data: [DONE]\n\n"
+                return
             async for delta in stream_chat(build_messages(request)):
                 yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
@@ -197,6 +229,9 @@ async def presentation_analysis(
             raise HTTPException(status_code=413, detail=str(error)) from error
         except TranscriptionUnavailableError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
+        segments_raw = [s for s in segments_raw if str(s.get("text", "")).strip()]
+        if not segments_raw:
+            raise HTTPException(status_code=400, detail="No speech detected in that recording. Record closer to the mic and try again.")
         signals = DeliverySignals.model_validate(analyze_delivery(segments_raw))
         segments = [PresentationSegment.model_validate(s) for s in segments_raw]
         transcript = " ".join(s.text for s in segments)
@@ -211,5 +246,10 @@ async def presentation_analysis(
     except HTTPError as error:
         logger.exception("Ollama delivery coaching failed: %s", error)
         raise HTTPException(status_code=503, detail="The local model could not finish delivery review.") from error
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception("Delivery review failed unexpectedly: %s", error)
+        raise HTTPException(status_code=503, detail="Delivery review failed. Check the backend logs and try again.") from error
     finally:
         stream_slots.release()
