@@ -55,15 +55,17 @@ Deliver a polished, locally runnable AI debate demo by Monday, October 5, 2026, 
 - Implemented the argument-intelligence slice: the Python service reviews a transcript against five named rubric criteria, checks eight documented fallacy types against exact transcript text, and generates the five planned counterpoint styles; the recap presents evidence cards, saves owner-scoped reviews, and states the text-only limits.
 - Hardened the analysis contract: incomplete model replies are retried with a repair turn (up to three attempts) instead of reaching the learner as a partial scorecard, and a report that stays incomplete ends in a clear error instead of a partial review.
 - Verified the analysis slice end-to-end: a deterministic repair-loop check (omitted rating, then invalid JSON, then complete report) and a live `/api/debate/analyze` call against qwen3.5:4b returned all five ratings, all five counterargument kinds, and grounded coaching. Python compilation, the frontend production build, and `git diff --check` pass.
+- Migrated all coaching paths to LangGraph (guard-responder debate with planner briefing and Socratic challenges, fanned analysis with disclosed partials, delivery pipeline, deterministic weighted judge, contact scrubbing, cross-session memory hooks) behind verified fixture batteries and a live jailbreak rejection check. Removed the legacy direct-call paths.
+- Added learner profiles with goals and audio opt-in, a curated plus personal topic bank, private audio retention, password recovery completion, adaptive pressure, a trends dashboard with CSV and print exports, and partial review rendering. Moved full setup and per-milestone testing guides into the untracked field guide and rewrote the README around the four milestones with honest completion status.
 
 ## In progress
 
-- Account provider sign-in and saved-archive flows are implemented and compile, but still need the project's own free Supabase credentials before they can be exercised end-to-end. The guest demo is unaffected.
-- Agentic orchestration phase started: `langgraph` added with `app/agents/` (LLM client interface plus shared graph states). No behavior change yet; debate guard-responder graph comes next behind `USE_AGENTS=false`.
-- Agentic orchestration live: debate turns, argument analysis, and delivery review all run through LangGraph with per-call timings in the backend logs. The flag is retired and the legacy direct-call paths in `main.py` are removed; analysis and delivery return disclosed gaps instead of silent partials.
+- Account provider sign-in and saved-archive flows are implemented and compile, but still need the project's own free Supabase credentials before they can be exercised end-to-end. The guest demo is unaffected. The same applies to the newer profiles, topic bank, audio bucket, and progress dashboard reads.
+- Agentic orchestration live: debate turns, argument analysis, and delivery review all run through LangGraph with per-call timings in the backend logs. Follow-up tracks landed too: game-plan briefing, depth-capped Socratic challenges, cited weighted judge, contact scrubbing, and cross-session memory hooks.
 
 ## Next
 
-- Add post-hoc delivery review (record + upload, transcript with timestamps, pace/fillers/pauses, tutor drills for rushed/hesitant/flat/tense-voice) in verdict Act V and a standalone room by October 12, then explainable scores, recommendations, learner progress, reports, and milestones.
+- Exercise the Supabase-backed flows end to end with real project credentials (auth, archive, profiles, topics, audio retention, dashboard).
+- Build the recommendations engine and generated learning plans that Milestone 3 still owes; per-report coaching exists, a curriculum does not.
+- Implement hosted provider key routing (BYOK), narrow `connect-src` to the chosen API origin, and decide the final host. No Docker image and no managed backend exist yet.
 - Keep categorical emotion recognition local-only opt-in; hosted uses delivery proxies only.
-- Prepare free-tier deployment with explicit per-user AI key handling and no paid fallback.
