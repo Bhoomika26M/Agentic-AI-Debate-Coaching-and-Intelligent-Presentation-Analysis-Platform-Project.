@@ -16,6 +16,7 @@ class DebateState(TypedDict, total=False):
     latest: str | None
     route: Literal["respond", "redirect"]
     reply: str
+    brief: str | None
 
 
 class AnalysisState(TypedDict, total=False):

@@ -8,6 +8,7 @@ from ..prompts import build_messages
 from ..schemas import DebateRequest
 from .guard import redirect_reply, route_turn
 from .llm import chat, stream
+from .planner import plan_brief
 from .state import DebateState
 
 logger = logging.getLogger(__name__)
@@ -49,10 +50,28 @@ def check_reply(reply: str, topic: str) -> str | None:
     return None
 
 
+def _briefed_messages(state: DebateState, request: DebateRequest) -> list[dict[str, str]]:
+    messages = build_messages(request)
+    brief = state.get("brief")
+    if brief:
+        messages = messages + [{"role": "system", "content": brief}]
+    return messages
+
+
+async def planner_node(state: DebateState) -> DebateState:
+    history = [
+        {"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])
+    ]
+    brief = await plan_brief(history, state.get("latest"), state.get("topic", ""), state.get("persona", "skeptic"))
+    if brief:
+        logger.info("Planner briefed this turn.")
+    return {"brief": brief}
+
+
 async def respond_node(state: DebateState) -> DebateState:
     request = _to_request(state)
     content = await chat(
-        build_messages(request), temperature=0.75, num_predict=240
+        _briefed_messages(state, request), temperature=0.75, num_predict=240
     )
     problem = check_reply(content, request.topic)
     if problem is not None:
@@ -63,8 +82,15 @@ async def respond_node(state: DebateState) -> DebateState:
 
 async def respond_stream(state: DebateState) -> AsyncIterator[str]:
     request = _to_request(state)
+    history = [
+        {"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])
+    ]
+    brief = await plan_brief(history, state.get("latest"), request.topic, state.get("persona", "skeptic"))
+    messages = build_messages(request)
+    if brief:
+        messages = messages + [{"role": "system", "content": brief}]
     async for delta in stream(
-        build_messages(request), temperature=0.75, num_predict=240
+        messages, temperature=0.75, num_predict=240
     ):
         yield delta
 
@@ -73,12 +99,14 @@ def build_debate_graph():
     graph = StateGraph(DebateState)
     graph.add_node("guard", guard_node)
     graph.add_node("redirect", redirect_node)
+    graph.add_node("planner", planner_node)
     graph.add_node("respond", respond_node)
     graph.set_entry_point("guard")
     graph.add_conditional_edges(
         "guard", lambda s: s.get("route", "respond"),
-        {"respond": "respond", "redirect": "redirect"},
+        {"respond": "planner", "redirect": "redirect"},
     )
+    graph.add_edge("planner", "respond")
     graph.add_edge("respond", END)
     graph.add_edge("redirect", END)
     return graph.compile()
