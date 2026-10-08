@@ -62,7 +62,13 @@ async def planner_node(state: DebateState) -> DebateState:
     history = [
         {"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])
     ]
-    brief = await plan_brief(history, state.get("latest"), state.get("topic", ""), state.get("persona", "skeptic"))
+    brief = await plan_brief(
+        history,
+        state.get("latest"),
+        state.get("topic", ""),
+        state.get("persona", "skeptic"),
+        memory_brief=state.get("memory_brief"),
+    )
     if brief:
         logger.info("Planner briefed this turn.")
     return {"brief": brief}
@@ -85,7 +91,10 @@ async def respond_stream(state: DebateState) -> AsyncIterator[str]:
     history = [
         {"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])
     ]
-    brief = await plan_brief(history, state.get("latest"), request.topic, state.get("persona", "skeptic"))
+    brief = await plan_brief(
+        history, state.get("latest"), request.topic, state.get("persona", "skeptic"),
+        memory_brief=state.get("memory_brief"),
+    )
     messages = build_messages(request)
     if brief:
         messages = messages + [{"role": "system", "content": brief}]

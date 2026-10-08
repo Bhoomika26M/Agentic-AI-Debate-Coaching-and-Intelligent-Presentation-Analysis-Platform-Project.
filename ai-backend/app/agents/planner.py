@@ -14,7 +14,12 @@ def learner_turn_count(history: list[dict], latest: str | None) -> int:
 
 
 async def plan_brief(
-    history: list[dict], latest: str | None, topic: str, persona: str, every_n: int = EVERY_N_TURNS
+    history: list[dict],
+    latest: str | None,
+    topic: str,
+    persona: str,
+    every_n: int = EVERY_N_TURNS,
+    memory_brief: str | None = None,
 ) -> str | None:
     if learner_turn_count(history, latest) < 2:
         return None
@@ -25,6 +30,8 @@ async def plan_brief(
     )
     if latest and latest.strip():
         turns += f"\nlearner: {latest.strip()}"
+    if memory_brief and memory_brief.strip():
+        turns += f"\n{memory_brief.strip()}"
     try:
         content = await chat(
             [
