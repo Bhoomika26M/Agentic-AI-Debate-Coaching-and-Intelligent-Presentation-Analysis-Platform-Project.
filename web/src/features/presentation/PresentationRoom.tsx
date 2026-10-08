@@ -3,7 +3,8 @@ import { LoaderCircle, Mic, RotateCcw, Sparkles, Square, Upload } from "lucide-r
 import { useAuth } from "../auth/AuthProvider";
 import { MicCueArt } from "../../components/CueArt";
 import { analyzePresentation, type PresentationResult } from "../../services/presentation-api";
-import { savePresentationFeedback } from "../../services/presentation-records";
+import { savePresentationFeedback, uploadPresentationAudio } from "../../services/presentation-records";
+import { loadProfile } from "../../services/profiles";
 import "./presentation.css";
 
 const MAX_SEC = 180;
@@ -15,7 +16,7 @@ function formatStamp(seconds: number) {
 }
 
 export function PresentationRoom({ topic, sessionId, compact, onResult }: { topic?: string; sessionId?: string | null; compact?: boolean; onResult?: (result: PresentationResult | null) => void }) {
-  const { session } = useAuth();
+  const { session, user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [recording, setRecording] = useState(false);
@@ -24,6 +25,7 @@ export function PresentationRoom({ topic, sessionId, compact, onResult }: { topi
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [result, setResult] = useState<PresentationResult | null>(null);
+  const [retain, setRetain] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -37,6 +39,18 @@ export function PresentationRoom({ topic, sessionId, compact, onResult }: { topi
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
   }, [previewUrl]);
+
+  useEffect(() => {
+    if (!user) {
+      setRetain(false);
+      return;
+    }
+    let active = true;
+    void loadProfile(user.id)
+      .then((profile) => { if (active && profile) setRetain(profile.retain_audio); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [user]);
 
   function pick(next: File | null) {
     setError(""); setNotice(""); setResult(null);
@@ -124,10 +138,19 @@ export function PresentationRoom({ topic, sessionId, compact, onResult }: { topi
       const out = await analyzePresentation(file, file.name, topic, session?.access_token);
       setResult(out);
       onResult?.(out);
-      if (session) {
+      if (session && user) {
         try {
-          await savePresentationFeedback({ sessionId, topic, transcript: out.transcript, signals: out.signals, report: out.report });
-          setNotice("Saved to your learner archive.");
+          const feedbackId = await savePresentationFeedback({ sessionId, topic, transcript: out.transcript, signals: out.signals, report: out.report });
+          if (retain) {
+            try {
+              await uploadPresentationAudio(user.id, feedbackId, file);
+              setNotice("Saved to your learner archive with its recording.");
+            } catch {
+              setNotice("Saved to your learner archive, but the recording could not be kept. Audio is discarded by default.");
+            }
+          } else {
+            setNotice("Saved to your learner archive. Audio discarded.");
+          }
         } catch {
           setNotice("Review is ready, but saving failed. It stays in this browser session.");
         }
@@ -155,6 +178,17 @@ export function PresentationRoom({ topic, sessionId, compact, onResult }: { topi
           </button>
         </div>
         <p className="present-hint">Record up to 3:00 or upload webm/wav/mp3 under 10MB. Audio is discarded by default.</p>
+        {user && (
+          <label className="present-check" htmlFor={`retain-${compact ? "compact" : "full"}`}>
+            <input
+              id={`retain-${compact ? "compact" : "full"}`}
+              type="checkbox"
+              checked={retain}
+              onChange={(event) => setRetain(event.target.checked)}
+            />
+            Keep this recording in my archive
+          </label>
+        )}
         {!file && !result && !recording && <MicCueArt label="Record or upload a take to begin" />}
         {previewUrl && <audio ref={audioRef} className="present-audio" controls src={previewUrl} />}
         {error && <div className="analysis-error" role="alert">{error}</div>}

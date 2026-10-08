@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowUpRight, BookOpenText, LoaderCircle, RotateCcw } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BookOpenText, Check, LoaderCircle, RotateCcw } from "lucide-react";
 import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
 import { listDebateRecords, loadDebateAnalysis, loadDebateRecord, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
+import { loadProfile, saveProfile, type LearnerProfile } from "../../services/profiles";
 import type { AnalysisReport } from "../../services/debate-api";
 import { useAuth } from "./AuthProvider";
 import "./account.css";
@@ -28,6 +29,9 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
   const [loadingRecord, setLoadingRecord] = useState("");
   const [error, setError] = useState("");
   const [signingOut, setSigningOut] = useState(false);
+  const [profile, setProfile] = useState<LearnerProfile>({ display_name: null, experience: null, goals: null, retain_audio: false });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileNotice, setProfileNotice] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -36,6 +40,11 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
       .then((data) => { if (active) setRecords(data); })
       .catch(() => { if (active) setError("Your archive is not connected yet. Apply the Supabase database migration, then refresh this page."); })
       .finally(() => { if (active) setLoading(false); });
+    if (user) {
+      void loadProfile(user.id)
+        .then((data) => { if (active && data) setProfile(data); })
+        .catch(() => {});
+    }
     return () => { active = false; };
   }, []);
 
@@ -62,6 +71,25 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
       .finally(() => setLoading(false));
   }
 
+  async function saveLearnerProfile() {
+    if (!user || savingProfile) return;
+    setSavingProfile(true);
+    setProfileNotice("");
+    try {
+      await saveProfile(user.id, {
+        display_name: profile.display_name?.trim() || null,
+        experience: profile.experience,
+        goals: profile.goals?.trim().slice(0, 500) || null,
+        retain_audio: profile.retain_audio,
+      });
+      setProfileNotice("Profile saved.");
+    } catch {
+      setProfileNotice("Could not save your profile. Check your connection and try again.");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
   async function signOut() {
     setSigningOut(true);
     setError("");
@@ -84,6 +112,54 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
         <span className="account-seal"><BookOpenText size={21} /></span>
         <h1>Your practice,<br /><em>kept in reach.</em></h1>
         <p>{user?.email ?? "Learner account"}</p>
+      </section>
+
+      <section className="account-profile" aria-labelledby="profile-heading">
+        <div className="archive-heading">
+          <div><h2 id="profile-heading">Learner profile</h2><p>Goals shape your practice. Audio stays discarded unless you opt in.</p></div>
+        </div>
+        <label htmlFor="profile-name">Display name</label>
+        <input
+          id="profile-name"
+          type="text"
+          value={profile.display_name ?? ""}
+          onChange={(event) => setProfile((p) => ({ ...p, display_name: event.target.value.slice(0, 60) }))}
+          placeholder="What should we call you?"
+          maxLength={60}
+        />
+        <label htmlFor="profile-experience">Speaking experience</label>
+        <select
+          id="profile-experience"
+          value={profile.experience ?? ""}
+          onChange={(event) => setProfile((p) => ({ ...p, experience: (event.target.value || null) as LearnerProfile["experience"] }))}
+        >
+          <option value="">Prefer not to say</option>
+          <option value="new">New to debating</option>
+          <option value="developing">Developing</option>
+          <option value="confident">Confident</option>
+        </select>
+        <label htmlFor="profile-goals">Practice goals</label>
+        <textarea
+          id="profile-goals"
+          value={profile.goals ?? ""}
+          onChange={(event) => setProfile((p) => ({ ...p, goals: event.target.value.slice(0, 500) }))}
+          placeholder="Example: hold my nerve in cross-examination."
+          rows={2}
+          maxLength={500}
+        />
+        <label className="profile-check" htmlFor="profile-retain">
+          <input
+            id="profile-retain"
+            type="checkbox"
+            checked={profile.retain_audio}
+            onChange={(event) => setProfile((p) => ({ ...p, retain_audio: event.target.checked }))}
+          />
+          Keep my delivery recordings in my archive
+        </label>
+        <button className="button button-dark" onClick={() => void saveLearnerProfile()} disabled={savingProfile}>
+          {savingProfile ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />} Save profile
+        </button>
+        {profileNotice && <div className="inline-notice" role="status">{profileNotice}</div>}
       </section>
 
       <div className="account-layout">

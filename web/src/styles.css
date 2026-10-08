@@ -73,6 +73,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .local-indicator, .status-tag { display: inline-flex; align-items: center; gap: 8px; font: 10px var(--mono); letter-spacing: .04em; }
 .setup-hint { margin: 10px 0 0; color: #5c554b; font-size: 11px; }
+.bank-save-link { margin-top: 8px; padding: 0; border: 0; color: #8d4035; background: transparent; font-size: 11px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .clock-warning { margin-left: 8px; font: 9px var(--mono); letter-spacing: .06em; }
 .local-indicator i, .status-tag i, .arena-model i, .room-status i { width: 7px; height: 7px; display: block; border-radius: 50%; background: var(--brass); }
 .header-cta { min-height: 44px; padding: 0 14px; display: inline-flex; align-items: center; gap: 10px; border: 1px solid #65615a; color: var(--paper-light); background: transparent; font-size: 12px; cursor: pointer; transition: color .2s, background .2s, border-color .2s; white-space: nowrap; }

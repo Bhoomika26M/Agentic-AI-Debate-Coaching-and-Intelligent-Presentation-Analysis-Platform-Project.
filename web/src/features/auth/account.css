@@ -15,6 +15,13 @@
 .account-intro h1 em { color: #8d4035; font-weight: 500; }
 .account-intro > p { margin: 0; color: #5a5349; font-size: 12px; }
 .account-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr); align-items: start; gap: 30px; }
+.account-profile { margin-bottom: 30px; padding: 20px; border: 1px solid #c9bda9; background: var(--paper-light); }
+.account-profile label { display: block; margin: 12px 0 6px; color: #302b25; font-size: 11px; font-weight: 650; }
+.account-profile input[type="text"], .account-profile select, .account-profile textarea { width: 100%; padding: 10px 12px; border: 1px solid #bfb39e; color: var(--ink); background: #fffdf8; font-size: 12px; font-family: inherit; }
+.account-profile textarea { resize: vertical; }
+.account-profile .button { margin-top: 14px; }
+.profile-check, .present-check { display: flex !important; align-items: center; gap: 9px; margin-top: 14px; color: #514a40; font-size: 11px; font-weight: 400; cursor: pointer; }
+.profile-check input, .present-check input { width: 17px; height: 17px; accent-color: #8d4035; }
 .account-archive { min-width: 0; border-top: 1px solid #bdb19c; }
 .archive-heading { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #bdb19c; }
 .archive-heading h2 { margin: 0 0 5px; font: 500 21px var(--serif); }

@@ -3,7 +3,8 @@ import { supabase } from "../features/auth/supabase";
 
 export type PresentationFeedback = {
   id: string; topic: string | null; transcript: string;
-  signals: DeliverySignals; report: PresentationReport; created_at: string;
+  signals: DeliverySignals; report: PresentationReport;
+  audio_path: string | null; created_at: string;
 };
 
 function requireClient() {
@@ -28,8 +29,27 @@ export async function savePresentationFeedback(input: {
 
 export async function listPresentationFeedbacks(limit = 20) {
   const { data, error } = await requireClient().from("presentation_feedbacks")
-    .select("id, topic, transcript, signals, report, created_at")
+    .select("id, topic, transcript, signals, report, audio_path, created_at")
     .order("created_at", { ascending: false }).limit(limit);
   if (error) throw error;
   return (data ?? []) as PresentationFeedback[];
+}
+
+export async function setPresentationAudio(id: string, audioPath: string) {
+  const { error } = await requireClient().from("presentation_feedbacks")
+    .update({ audio_path: audioPath })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function uploadPresentationAudio(userId: string, feedbackId: string, file: File | Blob) {
+  const client = requireClient();
+  const path = `${userId}/${feedbackId}.webm`;
+  const { error } = await client.storage.from("presentation-audio").upload(path, file, {
+    contentType: "audio/webm",
+    upsert: true,
+  });
+  if (error) throw error;
+  await setPresentationAudio(feedbackId, path);
+  return path;
 }

@@ -31,6 +31,7 @@ import {
   type JudgeVerdict,
 } from "./services/debate-api";
 import { createDebateRecord, finishDebateRecord, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn } from "./services/debate-records";
+import { addBankTopic, listBankTopics, type BankTopic } from "./services/topics";
 import { useAuth } from "./features/auth/AuthProvider";
 import { supabaseConfigured } from "./features/auth/supabase";
 import { OpponentEmblem } from "./components/OpponentEmblem";
@@ -175,6 +176,8 @@ export default function App() {
   const [view, setView] = useState<View>(() => viewFromHash());
   const [topicChoice, setTopicChoice] = useState(topics[0]);
   const [customTopic, setCustomTopic] = useState("");
+  const [bankTopics, setBankTopics] = useState<BankTopic[]>([]);
+  const [bankNotice, setBankNotice] = useState("");
   const [position, setPosition] = useState<"for" | "against">("for");
   const [persona, setPersona] = useState<PersonaKey>("skeptic");
   const [difficulty, setDifficulty] = useState<DebateOptions["difficulty"]>("challenge");
@@ -212,6 +215,7 @@ export default function App() {
     [persona],
   );
   const activeTopic = customTopic.trim() || topicChoice;
+  const motionTitles = bankTopics.length > 0 ? bankTopics.map((t) => t.title) : topics;
   const learnerTurns = messages.filter((message) => message.speaker === "learner");
   const totalWords = learnerTurns.reduce(
     (count, message) => count + message.content.trim().split(/\s+/).filter(Boolean).length,
@@ -263,6 +267,37 @@ export default function App() {
     const poll = window.setInterval(() => void refreshBackend(), 2500);
     return () => window.clearInterval(poll);
   }, [backendState]);
+
+  useEffect(() => {
+    if (!user || !supabaseConfigured) {
+      setBankTopics([]);
+      return;
+    }
+    let active = true;
+    void listBankTopics()
+      .then((data) => {
+        if (!active) return;
+        setBankTopics(data);
+        if (data.length > 0) setTopicChoice((current) => current || data[0].title);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [user]);
+
+  async function saveMotionToBank() {
+    const title = customTopic.trim();
+    if (!user || title.length < 3) return;
+    setBankNotice("");
+    try {
+      const saved = await addBankTopic(user.id, title.slice(0, 240));
+      setBankTopics((current) => [...current, saved]);
+      setCustomTopic("");
+      setTopicChoice(saved.title);
+      setBankNotice("Motion saved to your bank.");
+    } catch {
+      setBankNotice("Could not save this motion. Check your connection and try again.");
+    }
+  }
 
   useEffect(() => {
     const hash = view === "landing" ? "#/" : `#/${view}`;
@@ -735,7 +770,7 @@ export default function App() {
               <section className="setup-panel motion-panel">
                 <div className="panel-heading"><span className="panel-count">A</span><div><h2>Your motion</h2><p>What do you want to make a case for?</p></div></div>
                 <div className="topic-list" role="radiogroup" aria-label="Choose a motion">
-                  {topics.map((topic, index) => (
+                  {motionTitles.map((topic, index) => (
                     <button
                       key={topic}
                       role="radio"
@@ -759,6 +794,12 @@ export default function App() {
                   maxLength={240}
                   placeholder="Should we trust an algorithm with hiring?"
                 />
+                {user && customTopic.trim().length >= 3 && (
+                  <button className="bank-save-link" type="button" onClick={() => void saveMotionToBank()}>
+                    Save this motion to my bank
+                  </button>
+                )}
+                {bankNotice && <p className="setup-hint" role="status">{bankNotice}</p>}
                 <div className="position-row">
                   <span className="setting-label">I'M ARGUING</span>
                   <div className="segmented-control" role="group" aria-label="Your side">
