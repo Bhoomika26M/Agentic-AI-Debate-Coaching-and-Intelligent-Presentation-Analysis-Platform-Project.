@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { useState, type FormEvent } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, BookOpenText, Eye, EyeOff, LoaderCircle, RotateCcw, ShieldCheck } from "lucide-react";
 import { supabase, supabaseConfigured } from "./supabase";
 import "./auth.css";
@@ -180,11 +181,21 @@ export function AuthView({
       <section className="auth-workspace" aria-labelledby="auth-heading">
         <div className="auth-form-head">
           <div className="auth-tabs" role="group" aria-label="Account access">
-            <button type="button" className={mode === "sign-in" ? "active" : ""} onClick={() => changeMode("sign-in")} aria-pressed={mode === "sign-in"}>Sign in</button>
-            <button type="button" className={mode === "sign-up" ? "active" : ""} onClick={() => changeMode("sign-up")} aria-pressed={mode === "sign-up"}>Create account</button>
+            <button type="button" className={mode === "sign-in" ? "active" : ""} onClick={() => changeMode("sign-in")} aria-pressed={mode === "sign-in"}>Sign in{mode === "sign-in" && <motion.span layoutId="auth-tab-ink" className="auth-tab-ink" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} />}</button>
+            <button type="button" className={mode === "sign-up" ? "active" : ""} onClick={() => changeMode("sign-up")} aria-pressed={mode === "sign-up"}>Create account{mode === "sign-up" && <motion.span layoutId="auth-tab-ink" className="auth-tab-ink" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} />}</button>
           </div>
-          <h2 id="auth-heading">{mode === "sign-in" ? "Welcome back." : "Start your record."}</h2>
-          <p>{mode === "sign-in" ? "Return to your learner account." : "Create a learner account for your debate practice."}</p>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={mode}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <h2 id="auth-heading">{mode === "sign-in" ? "Welcome back." : "Start your record."}</h2>
+              <p>{mode === "sign-in" ? "Return to your learner account." : "Create a learner account for your debate practice."}</p>
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         <button className="auth-google-button" type="button" onClick={() => void continueWithGoogle()} disabled={submitting}>
@@ -225,22 +236,32 @@ export function AuthView({
           </div>
           {fieldErrors.password && <span className="auth-field-error" id="auth-password-error">{fieldErrors.password}</span>}
 
-          {mode === "sign-up" && (
-            <>
-              <label htmlFor="auth-confirmation">Confirm password</label>
-              <input
-                id="auth-confirmation"
-                type={visiblePassword ? "text" : "password"}
-                autoComplete="new-password"
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value)}
-                aria-invalid={Boolean(fieldErrors.confirmation)}
-                aria-describedby={fieldErrors.confirmation ? "auth-confirmation-error" : undefined}
-                placeholder="Enter your password again"
-              />
-              {fieldErrors.confirmation && <span className="auth-field-error" id="auth-confirmation-error">{fieldErrors.confirmation}</span>}
-            </>
-          )}
+          <AnimatePresence initial={false}>
+            {mode === "sign-up" && (
+              <motion.div
+                key="confirm"
+                className="auth-confirm-wrap"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                style={{ overflow: "hidden" }}
+              >
+                <label htmlFor="auth-confirmation">Confirm password</label>
+                <input
+                  id="auth-confirmation"
+                  type={visiblePassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  value={confirmation}
+                  onChange={(event) => setConfirmation(event.target.value)}
+                  aria-invalid={Boolean(fieldErrors.confirmation)}
+                  aria-describedby={fieldErrors.confirmation ? "auth-confirmation-error" : undefined}
+                  placeholder="Enter your password again"
+                />
+                {fieldErrors.confirmation && <span className="auth-field-error" id="auth-confirmation-error">{fieldErrors.confirmation}</span>}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {error && <div className="auth-feedback is-error" role="alert">{error}</div>}
           {notice && <div className="auth-feedback is-success" role="status">{notice}</div>}
@@ -249,14 +270,35 @@ export function AuthView({
           )}
           <button className="auth-submit" type="submit" disabled={submitting}>
             {submitting ? <LoaderCircle className="spin" size={16} /> : null}
-            {submitting ? "Connecting..." : mode === "sign-in" ? "Sign in to Verdict" : "Create learner account"}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={submitting ? "busy" : mode}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16 }}
+              >
+                {submitting ? "Connecting..." : mode === "sign-in" ? "Sign in to Verdict" : "Create learner account"}
+              </motion.span>
+            </AnimatePresence>
             {!submitting && <ArrowRight size={16} />}
           </button>
-          {mode === "sign-in" && (
-            <button className="auth-guest-link" type="button" onClick={() => void sendReset()} disabled={submitting}>
-              Forgot your password? Send a reset link
-            </button>
-          )}
+          <AnimatePresence initial={false}>
+            {mode === "sign-in" && (
+              <motion.div
+                key="reset"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                style={{ overflow: "hidden" }}
+              >
+                <button className="auth-guest-link" type="button" onClick={() => void sendReset()} disabled={submitting}>
+                  Forgot your password? Send a reset link
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </form>
 
         <p className="auth-privacy">Your password is handled by Supabase Auth. Verdict never sees or stores it.</p>

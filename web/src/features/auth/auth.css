@@ -92,6 +92,7 @@
 }
 
 .auth-tabs button {
+  position: relative;
   min-height: 42px;
   padding: 0 9px;
   border: 0;
@@ -102,7 +103,10 @@
   cursor: pointer;
 }
 
-.auth-tabs button.active { border-bottom-color: var(--cue); color: var(--ink); font-weight: 700; }
+.auth-tabs button.active { border-bottom-color: transparent; color: var(--ink); font-weight: 700; }
+.auth-tabs button:focus-visible, .auth-password-toggle:focus-visible { outline-color: var(--cue); }
+.auth-tabs button { transition: color .2s; }
+.auth-tab-ink { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--cue); }
 .auth-tabs button:focus-visible, .auth-password-toggle:focus-visible { outline-color: var(--cue); }
 
 .auth-form-head h2 {
@@ -198,6 +202,12 @@
 .auth-password-field + .auth-form > label { margin-top: 16px; }
 
 .auth-form > label[for="auth-confirmation"] { margin-top: 16px; }
+.auth-confirm-wrap { margin-top: 16px; }
+.auth-confirm-wrap label { display: block; margin: 0 0 7px; color: #302b25; font-size: 11px; font-weight: 650; }
+.auth-confirm-wrap input { width: 100%; min-height: 45px; padding: 10px 12px; border: 1px solid #bfb39e; border-radius: 0; color: var(--ink); background: #fffdf8; font-size: 12px; caret-color: var(--cue); }
+.auth-confirm-wrap input::placeholder { color: #655c50; opacity: 1; }
+.auth-confirm-wrap input:focus { outline: 2px solid var(--cue); outline-offset: 1px; }
+.auth-confirm-wrap input[aria-invalid="true"] { border-color: #a3392e; }
 .auth-field-error { margin: 5px 0 0; color: #8c3028; font-size: 10px; line-height: 1.45; }
 
 .auth-feedback, .auth-config-note {
