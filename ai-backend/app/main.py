@@ -12,32 +12,21 @@ from fastapi.responses import StreamingResponse
 from httpx import HTTPError
 from starlette.requests import Request
 
-from .analysis import analyze_transcript
+from .agents.debate import check_reply, respond_stream
+from .agents.guard import redirect_reply, route_turn
 from .auth import authenticate_request
-from .delivery import analyze_delivery
-from .ollama_client import OLLAMA_MODEL, is_available, is_loaded, stream_chat, warm_model
-from .presentation import IncompletePresentationError, coach_delivery
-from .prompts import build_messages
+from .ollama_client import OLLAMA_MODEL, is_available, is_loaded, warm_model
 from .schemas import (
     AnalysisReport,
     AnalysisRequest,
     DebateRequest,
-    DeliverySignals,
-    PresentationRequest,
     PresentationResponse,
-    PresentationSegment,
 )
-from .speech import (
-    MAX_AUDIO_MB,
-    AudioValidationError,
-    TranscriptionUnavailableError,
-    transcribe_audio,
-)
+from .speech import MAX_AUDIO_MB
 
 logger = logging.getLogger(__name__)
 MAX_ACTIVE_STREAMS = max(1, int(os.getenv("MAX_ACTIVE_STREAMS", "2")))
 stream_slots = asyncio.Semaphore(MAX_ACTIVE_STREAMS)
-USE_AGENTS = os.getenv("USE_AGENTS", "false").strip().lower() == "true"
 
 
 @asynccontextmanager
@@ -103,6 +92,16 @@ async def health() -> dict[str, str | bool]:
 
 @app.post("/api/debate/stream", dependencies=[Depends(authenticate_request)])
 async def debate_stream(request: DebateRequest) -> StreamingResponse:
+    if route_turn(request.learner_argument) == "redirect":
+        async def redirected() -> AsyncIterator[str]:
+            yield f"data: {json.dumps({'delta': redirect_reply(request.topic)}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            redirected(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
     if not await is_available():
         raise HTTPException(
             status_code=503,
@@ -122,39 +121,25 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
 
     async def events() -> AsyncIterator[str]:
         try:
-            if USE_AGENTS:
-                from .agents.debate import check_reply, respond_stream
-                from .agents.guard import route_turn
-
-                if route_turn(request.learner_argument) == "redirect":
-                    from .agents.guard import redirect_reply
-
-                    yield f"data: {json.dumps({'delta': redirect_reply(request.topic)}, ensure_ascii=False)}\n\n"
-                    yield "data: [DONE]\n\n"
-                    return
-                assembled: list[str] = []
-                async for delta in respond_stream(
-                    {
-                        "topic": request.topic,
-                        "learner_position": request.learner_position,
-                        "persona": request.persona,
-                        "difficulty": request.difficulty,
-                        "history": [
-                            {"speaker": t.speaker, "content": t.content}
-                            for t in request.history
-                        ],
-                        "latest": request.learner_argument,
-                    }
-                ):
-                    assembled.append(delta)
-                    yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
-                problem = check_reply("".join(assembled), request.topic)
-                if problem is not None:
-                    logger.info("Streamed reply flagged (%s); see transcript.", problem)
-                yield "data: [DONE]\n\n"
-                return
-            async for delta in stream_chat(build_messages(request)):
+            assembled: list[str] = []
+            async for delta in respond_stream(
+                {
+                    "topic": request.topic,
+                    "learner_position": request.learner_position,
+                    "persona": request.persona,
+                    "difficulty": request.difficulty,
+                    "history": [
+                        {"speaker": t.speaker, "content": t.content}
+                        for t in request.history
+                    ],
+                    "latest": request.learner_argument,
+                }
+            ):
+                assembled.append(delta)
                 yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
+            problem = check_reply("".join(assembled), request.topic)
+            if problem is not None:
+                logger.info("Streamed reply flagged (%s); see transcript.", problem)
             yield "data: [DONE]\n\n"
         except (HTTPError, ValueError) as error:
             message = "The opponent could not finish this turn. Please try again."
@@ -188,13 +173,23 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisReport:
         )
     await stream_slots.acquire()
     try:
-        return (await analyze_transcript(request)).model_dump()
+        from .agents.analysis_graph import analyze_with_graph
+
+        report, gaps = await analyze_with_graph(request)
+        if report is not None and not gaps:
+            return report
+        detail = "The local model returned an incomplete coaching review. Try the review again."
+        if gaps:
+            detail = f"Incomplete coaching review ({'; '.join(gaps[:3])}). Try the review again."
+        raise HTTPException(status_code=502, detail=detail)
     except HTTPError as error:
         logger.exception("Ollama transcript analysis failed: %s", error)
         raise HTTPException(
             status_code=503,
             detail="The local model could not finish analysis.",
         ) from error
+    except HTTPException:
+        raise
     except (ValueError, json.JSONDecodeError) as error:
         logger.exception("Ollama returned an invalid analysis: %s", error)
         raise HTTPException(
@@ -222,27 +217,22 @@ async def presentation_analysis(
         )
     await stream_slots.acquire()
     try:
+        from .agents.delivery_graph import review_delivery_with_graph
+
         data = await audio.read(MAX_AUDIO_MB * 1024 * 1024 + 1)
-        try:
-            segments_raw = await transcribe_audio(data, audio.filename or "talk.webm", audio.content_type or "audio/webm")
-        except AudioValidationError as error:
-            raise HTTPException(status_code=413, detail=str(error)) from error
-        except TranscriptionUnavailableError as error:
-            raise HTTPException(status_code=503, detail=str(error)) from error
-        segments_raw = [s for s in segments_raw if str(s.get("text", "")).strip()]
-        if not segments_raw:
-            raise HTTPException(status_code=400, detail="No speech detected in that recording. Record closer to the mic and try again.")
-        signals = DeliverySignals.model_validate(analyze_delivery(segments_raw))
-        segments = [PresentationSegment.model_validate(s) for s in segments_raw]
-        transcript = " ".join(s.text for s in segments)
-        request = PresentationRequest(topic=(topic or None), segments=segments, signals=signals)
-        try:
-            report = await coach_delivery(request)
-        except IncompletePresentationError as error:
-            raise HTTPException(status_code=502, detail="The local model returned an incomplete delivery review. Try again.") from error
-        # SER stays local-only and needs decoded PCM; compressed upload bytes are not
-        # passed to the classifier here, so hosted responses keep proxy-only signals.
-        return PresentationResponse(transcript=transcript, segments=segments, signals=signals, report=report, retained=False, ser_reflection=[])
+        result, gaps = await review_delivery_with_graph(
+            data, audio.filename or "talk.webm", audio.content_type or "audio/webm", topic or None
+        )
+        if result is not None and not gaps:
+            return PresentationResponse.model_validate({**result, "ser_reflection": []})
+        detail = "; ".join(gaps[:3]) if gaps else "Delivery review failed."
+        if "over " in detail or "webm" in detail or "No audio" in detail or "filename" in detail:
+            raise HTTPException(status_code=413, detail=detail)
+        if "unavailable" in detail:
+            raise HTTPException(status_code=503, detail=detail)
+        if "No speech" in detail:
+            raise HTTPException(status_code=400, detail=detail)
+        raise HTTPException(status_code=502, detail=f"{detail} Try again.")
     except HTTPError as error:
         logger.exception("Ollama delivery coaching failed: %s", error)
         raise HTTPException(status_code=503, detail="The local model could not finish delivery review.") from error

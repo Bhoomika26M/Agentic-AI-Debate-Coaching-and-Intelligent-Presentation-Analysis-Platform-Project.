@@ -1,10 +1,14 @@
 import json
+import logging
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 
 from ..ollama_client import OLLAMA_BASE_URL, OLLAMA_MODEL, stream_chat
+
+logger = logging.getLogger(__name__)
 
 
 def _check_key(provider_key: str | None) -> None:
@@ -32,9 +36,11 @@ async def chat(
     if json_schema is not None:
         payload["format"] = json_schema
     timeout = httpx.Timeout(connect=5, read=300, write=10, pool=10)
+    started = time.perf_counter()
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
         response.raise_for_status()
+    logger.info("llm chat done in %.1fs (predict=%d).", time.perf_counter() - started, num_predict)
     return response.json().get("message", {}).get("content", "")
 
 
@@ -59,6 +65,8 @@ async def stream(
         "options": {"temperature": temperature, "num_predict": num_predict, "num_ctx": 8192},
     }
     timeout = httpx.Timeout(connect=5, read=180, write=10, pool=10)
+    started = time.perf_counter()
+    chars = 0
     async with httpx.AsyncClient(timeout=timeout) as client:
         async with client.stream("POST", f"{OLLAMA_BASE_URL}/api/chat", json=payload) as response:
             response.raise_for_status()
@@ -67,4 +75,6 @@ async def stream(
                     continue
                 content = json.loads(line).get("message", {}).get("content", "")
                 if content:
+                    chars += len(content)
                     yield content
+    logger.info("llm stream done in %.1fs (%d chars).", time.perf_counter() - started, chars)
