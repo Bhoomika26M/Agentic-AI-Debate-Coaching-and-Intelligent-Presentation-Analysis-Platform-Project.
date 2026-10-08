@@ -6,6 +6,7 @@ from ..delivery import analyze_delivery
 from ..presentation import IncompletePresentationError, coach_delivery
 from ..schemas import DeliverySignals, PresentationRequest, PresentationSegment
 from ..speech import AudioValidationError, TranscriptionUnavailableError, transcribe_audio
+from .scrub import scrub_report
 from .state import DeliveryState
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,10 @@ async def coach_node(state: DeliveryState) -> DeliveryState:
         report = await coach_delivery(request)
     except IncompletePresentationError as error:
         return {"report": None, "gaps": [f"delivery coaching incomplete: {error}"]}
-    return {"report": report.model_dump(), "gaps": []}
+    cleaned, count = scrub_report(report.model_dump())
+    if count:
+        logger.info("Scrubbed %d contact span(s) from delivery report.", count)
+    return {"report": cleaned, "gaps": []}
 
 
 def _has_segments(state: DeliveryState) -> str:

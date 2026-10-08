@@ -16,6 +16,8 @@ from .llm import chat
 from .state import AnalysisState
 
 logger = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
 BRANCH_ATTEMPTS = 2
 
 
@@ -131,6 +133,8 @@ def AnalysisState_request(state: AnalysisState) -> AnalysisRequest:
 
 
 def merge_node(state: AnalysisState) -> AnalysisState:
+    from .scrub import scrub_report
+
     merged: dict = {}
     gaps: list[str] = []
     for part in state.get("branch_reports", []):
@@ -140,10 +144,14 @@ def merge_node(state: AnalysisState) -> AnalysisState:
     if {"ratings", "strengths", "next_steps", "fallacies", "counterarguments"} <= set(merged):
         try:
             full = AnalysisReport.model_validate(merged)
-            return {"report": full.model_dump(), "gaps": gaps}
+            cleaned, count = scrub_report(full.model_dump())
+            if count:
+                logger.info("Scrubbed %d contact span(s) from analysis report.", count)
+            return {"report": cleaned, "gaps": gaps}
         except ValidationError as error:
             gaps.append(f"merge invalid: {_problem(error)}")
-    return {"report": merged or None, "gaps": gaps or ["analysis incomplete"]}
+    partial, _ = scrub_report(merged)
+    return {"report": partial or None, "gaps": gaps or ["analysis incomplete"]}
 
 
 def build_analysis_graph():
