@@ -31,6 +31,9 @@ class AnalysisState(TypedDict, total=False):
 
 class DeliveryState(TypedDict, total=False):
     topic: str | None
+    audio: bytes
+    filename: str
+    content_type: str
     segments: list[dict]
     signals: dict
     report: dict
