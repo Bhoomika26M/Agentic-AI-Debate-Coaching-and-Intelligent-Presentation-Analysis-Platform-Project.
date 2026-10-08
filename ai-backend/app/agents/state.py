@@ -29,6 +29,14 @@ class AnalysisState(TypedDict, total=False):
     branch_reports: NotRequired[Annotated[list[dict], operator.add]]
 
 
+class JudgeState(TypedDict, total=False):
+    report: dict
+    delivery: dict
+    dimensions: NotRequired[Annotated[list[dict], operator.add]]
+    verdict: dict | None
+    gaps: list[str]
+
+
 class DeliveryState(TypedDict, total=False):
     topic: str | None
     audio: bytes

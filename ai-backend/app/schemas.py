@@ -97,6 +97,20 @@ class AnalysisGaps(BaseModel):
     gaps: list[str] = Field(default_factory=list, max_length=3)
 
 
+class JudgeDimension(BaseModel):
+    key: Literal["argument", "evidence", "logical", "rebuttal", "communication"]
+    weight_pct: int = Field(ge=0, le=100)
+    score: float = Field(ge=1, le=5)
+    note: str = Field(min_length=1, max_length=280)
+    citations: list[str] = Field(default_factory=list, max_length=4)
+
+
+class JudgeVerdict(BaseModel):
+    overall: float = Field(ge=1, le=5)
+    dimensions: list[JudgeDimension] = Field(min_length=5, max_length=5)
+    gaps: list[str] = Field(default_factory=list, max_length=3)
+
+
 class PresentationSegment(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     start: float = Field(ge=0, le=3600)
