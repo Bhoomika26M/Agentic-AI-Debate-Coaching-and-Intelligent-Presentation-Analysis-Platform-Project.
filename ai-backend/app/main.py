@@ -17,7 +17,7 @@ from .agents.guard import redirect_reply, route_turn
 from .auth import authenticate_request
 from .ollama_client import OLLAMA_MODEL, is_available, is_loaded, warm_model
 from .schemas import (
-    AnalysisReport,
+    AnalysisEnvelope,
     AnalysisRequest,
     ChallengeRequest,
     ChallengeResponse,
@@ -162,9 +162,9 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
 @app.post(
     "/api/debate/analyze",
     dependencies=[Depends(authenticate_request)],
-    response_model=AnalysisReport,
+    response_model=AnalysisEnvelope,
 )
-async def debate_analysis(request: AnalysisRequest) -> AnalysisReport:
+async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
     if not await is_available():
         raise HTTPException(
             status_code=503,
@@ -180,12 +180,12 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisReport:
         from .agents.analysis_graph import analyze_with_graph
 
         report, gaps = await analyze_with_graph(request)
-        if report is not None and not gaps:
-            return report
-        detail = "The local model returned an incomplete coaching review. Try the review again."
-        if gaps:
-            detail = f"Incomplete coaching review ({'; '.join(gaps[:3])}). Try the review again."
-        raise HTTPException(status_code=502, detail=detail)
+        if report is None:
+            detail = "The local model returned an incomplete coaching review. Try the review again."
+            if gaps:
+                detail = f"Incomplete coaching review ({'; '.join(gaps[:3])}). Try the review again."
+            raise HTTPException(status_code=502, detail=detail)
+        return AnalysisEnvelope.model_validate({**report, "gaps": gaps})
     except HTTPError as error:
         logger.exception("Ollama transcript analysis failed: %s", error)
         raise HTTPException(

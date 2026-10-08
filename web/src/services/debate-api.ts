@@ -54,11 +54,12 @@ export type DebateOptions = {
 };
 
 export type AnalysisReport = {
-  ratings: Record<"clarity" | "relevance" | "evidence_strength" | "logical_consistency" | "persuasiveness", { score: number; note: string }>;
+  ratings: Record<"clarity" | "relevance" | "evidence_strength" | "logical_consistency" | "persuasiveness", { score: number; note: string }> | null;
   fallacies: { label: string; quote: string; explanation: string; revision: string }[];
   strengths: string[];
   next_steps: string[];
   counterarguments: { kind: string; response: string; question: string }[];
+  gaps: string[];
 };
 
 export async function analyzeDebate(

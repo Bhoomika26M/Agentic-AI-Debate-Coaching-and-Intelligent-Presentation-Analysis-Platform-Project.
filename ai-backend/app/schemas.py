@@ -97,6 +97,15 @@ class AnalysisGaps(BaseModel):
     gaps: list[str] = Field(default_factory=list, max_length=3)
 
 
+class AnalysisEnvelope(BaseModel):
+    ratings: RubricRatings | None = None
+    fallacies: list[FallacyFlag] = Field(default_factory=list, max_length=8)
+    strengths: list[str] = Field(default_factory=list, max_length=3)
+    next_steps: list[str] = Field(default_factory=list, max_length=3)
+    counterarguments: list[Counterargument] = Field(default_factory=list, max_length=5)
+    gaps: list[str] = Field(default_factory=list, max_length=3)
+
+
 class JudgeDimension(BaseModel):
     key: Literal["argument", "evidence", "logical", "rebuttal", "communication"]
     weight_pct: int = Field(ge=0, le=100)

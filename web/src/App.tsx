@@ -468,7 +468,10 @@ export default function App() {
   }
 
   async function scoreRehearsal() {
-    if (judgeLoading || !analysis) return;
+    if (judgeLoading || !analysis?.ratings) {
+      if (!analysis?.ratings) setJudgeError("Scoring needs the full ratings first. Run the case review again.");
+      return;
+    }
     setJudgeLoading(true);
     setJudgeError("");
     try {
@@ -1015,31 +1018,43 @@ export default function App() {
                 {!analysis && <p className="analysis-intro">A text-based coaching review of clarity, evidence, reasoning, and persuasion. It runs on the Ollama model and does not assess your voice.</p>}
                 {analysisError && <div className="analysis-error" role="alert">{analysisError}</div>}
                 {analysis && <>
-                  <div className="analysis-rubric">
-                    {([
-                      ["clarity", "Clarity"],
-                      ["relevance", "Relevance"],
-                      ["evidence_strength", "Evidence"],
-                      ["logical_consistency", "Logic"],
-                      ["persuasiveness", "Persuasion"],
-                    ] as const).map(([key, label]) => (
-                      <article className="analysis-rating" key={key}>
-                        <span>{label}</span><b>{analysis.ratings[key].score}<small> / 5</small></b><p>{analysis.ratings[key].note}</p>
-                      </article>
-                    ))}
-                  </div>
-                  <div className="analysis-coaching-grid">
-                    <section className="analysis-coaching-card"><span>WHAT LANDED</span>{analysis.strengths.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
-                    <section className="analysis-coaching-card"><span>YOUR NEXT MOVE</span>{analysis.next_steps.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
-                  </div>
+                  {(analysis.gaps ?? []).length > 0 && (
+                    <div className="inline-notice" role="status">
+                      <span>Partial review — {analysis.gaps.join(" ")} The finished sections are below; running it again may complete the rest.</span>
+                      <button onClick={() => void reviewDebate()}>Retry review</button>
+                    </div>
+                  )}
+                  {analysis.ratings && (
+                    <div className="analysis-rubric">
+                      {([
+                        ["clarity", "Clarity"],
+                        ["relevance", "Relevance"],
+                        ["evidence_strength", "Evidence"],
+                        ["logical_consistency", "Logic"],
+                        ["persuasiveness", "Persuasion"],
+                      ] as const).map(([key, label]) => (
+                        <article className="analysis-rating" key={key}>
+                          <span>{label}</span><b>{analysis.ratings?.[key]?.score ?? "–"}<small> / 5</small></b><p>{analysis.ratings?.[key]?.note}</p>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                  {(analysis.strengths.length > 0 || analysis.next_steps.length > 0) && (
+                    <div className="analysis-coaching-grid">
+                      <section className="analysis-coaching-card"><span>WHAT LANDED</span>{analysis.strengths.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
+                      <section className="analysis-coaching-card"><span>YOUR NEXT MOVE</span>{analysis.next_steps.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
+                    </div>
+                  )}
                   <section className="analysis-fallacies"><div className="analysis-section-label">LOGIC WATCH / {analysis.fallacies.length.toString().padStart(2, "0")}</div>
                     {analysis.fallacies.length === 0
                       ? <p>No clear examples of the listed fallacies appeared. Keep checking claims against their evidence.</p>
                       : analysis.fallacies.map((item, index) => <article key={`${item.label}-${index}`}><b>{item.label}</b><blockquote>“{item.quote}”</blockquote><p>{item.explanation}</p><small>TRY THIS: {item.revision}</small></article>)}
                   </section>
-                  <section className="analysis-counterpoints"><div className="analysis-section-label">FIVE WAYS TO TEST THE CASE</div><div className="counterpoint-grid">
-                    {analysis.counterarguments.map((item) => <article key={item.kind}><span>{item.kind.toUpperCase()} COUNTERPOINT</span><p>{item.response}</p><small>ASK: {item.question}</small></article>)}
-                  </div></section>
+                  {analysis.counterarguments.length > 0 && (
+                    <section className="analysis-counterpoints"><div className="analysis-section-label">FIVE WAYS TO TEST THE CASE</div><div className="counterpoint-grid">
+                      {analysis.counterarguments.map((item) => <article key={item.kind}><span>{item.kind.toUpperCase()} COUNTERPOINT</span><p>{item.response}</p><small>ASK: {item.question}</small></article>)}
+                    </div></section>
+                  )}
                   <p className="analysis-limit">Coaching estimate from an AI model, based on this transcript only. Scores are not objective measures. Check each observation against what you meant to say.</p>
                 </>}
               </section>
@@ -1055,12 +1070,12 @@ export default function App() {
               <section className="analysis-chamber judge-chamber" aria-labelledby="judge-heading">
                 <div className="analysis-chamber-head">
                   <div><span>ACT VI / THE WEIGHTED VERDICT</span><h2 id="judge-heading">Weigh the case.<br /><em>Carry the next line.</em></h2></div>
-                  {!judge && <button className="button button-dark" onClick={() => void scoreRehearsal()} disabled={judgeLoading || !analysis}>
+                  {!judge && <button className="button button-dark" onClick={() => void scoreRehearsal()} disabled={judgeLoading || !analysis?.ratings}>
                     {judgeLoading ? <><LoaderCircle className="spin" size={15} /> Scoring the rehearsal</> : <><Sparkles size={15} /> Score my rehearsal</>}
                   </button>}
                 </div>
                 <p className="analysis-intro">A deterministic scoring of this rehearsal on five weighted dimensions: argument 30, evidence 20, logic 20, rebuttal 15, communication 15. {deliveryResult ? "Includes your closing take." : "Add a closing take above to score communication; otherwise it scores neutral."}</p>
-                {!analysis && <p className="present-empty" role="status">Run the case review first — scoring builds on its ratings and counterpoints.</p>}
+                {!analysis?.ratings && <p className="present-empty" role="status">Run the case review first — scoring builds on its ratings and counterpoints.</p>}
                 {judgeError && <div className="analysis-error" role="alert">{judgeError}</div>}
                 {judge && <>
                   <div className="judge-overall">
@@ -1085,7 +1100,7 @@ export default function App() {
                   )}
                   <p className="analysis-limit">Deterministic scoring from your case review{deliveryResult ? " and closing take" : ""}. Check each note against what you meant to say.</p>
                   <div className="judge-actions">
-                    <button className="button button-light" onClick={() => void scoreRehearsal()} disabled={judgeLoading || !analysis}>
+                    <button className="button button-light" onClick={() => void scoreRehearsal()} disabled={judgeLoading || !analysis?.ratings}>
                       {judgeLoading ? <><LoaderCircle className="spin" size={15} /> Re-scoring</> : <>Re-score with current review</>}
                     </button>
                   </div>

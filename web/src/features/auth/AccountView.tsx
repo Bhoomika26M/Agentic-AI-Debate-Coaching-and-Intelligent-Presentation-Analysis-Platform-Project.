@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowUpRight, BookOpenText, Check, LoaderCircle, RotateCcw } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BookOpenText, Check, Download, LoaderCircle, Printer, RotateCcw } from "lucide-react";
 import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
 import { listDebateRecords, loadDebateAnalysis, loadDebateRecord, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
-import { loadProfile, saveProfile, type LearnerProfile } from "../../services/profiles";
 import type { AnalysisReport } from "../../services/debate-api";
+import { requestJudge } from "../../services/debate-api";
+import { listPresentationFeedbacks } from "../../services/presentation-records";
+import { loadProfile, saveProfile, type LearnerProfile } from "../../services/profiles";
 import { useAuth } from "./AuthProvider";
 import "./account.css";
 
@@ -32,6 +34,13 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
   const [profile, setProfile] = useState<LearnerProfile>({ display_name: null, experience: null, goals: null, retain_audio: false });
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState("");
+  const [tab, setTab] = useState<"archive" | "progress">("archive");
+  const [progress, setProgress] = useState<null | {
+    sessions: number; completed: number; streakDays: number; avgOverall: number | null;
+    avgDims: { key: string; score: number }[]; fillerFirst: number | null; fillerLast: number | null;
+    deliveries: number; weeks: { label: string; count: number }[];
+  }>(null);
+  const [progressLoading, setProgressLoading] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -88,6 +97,107 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
     } finally {
       setSavingProfile(false);
     }
+  }
+
+  function dayKey(value: string) {
+    return new Date(value).toISOString().slice(0, 10);
+  }
+
+  function currentStreak(days: Set<string>) {
+    let streak = 0;
+    const cursor = new Date();
+    if (!days.has(cursor.toISOString().slice(0, 10))) cursor.setDate(cursor.getDate() - 1);
+    while (days.has(cursor.toISOString().slice(0, 10))) {
+      streak += 1;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    return streak;
+  }
+
+  async function loadProgress() {
+    if (progressLoading || progress) return;
+    setProgressLoading(true);
+    try {
+      const sessions = await listDebateRecords(30);
+      const withAnalysis = await Promise.all(
+        sessions.slice(0, 12).map(async (session) => {
+          try {
+            const analysis = await loadDebateAnalysis(session.id);
+            return { session, analysis };
+          } catch {
+            return { session, analysis: null };
+          }
+        }),
+      );
+      const overalls: number[] = [];
+      const dimSums: Record<string, { total: number; count: number }> = {};
+      for (const { analysis } of withAnalysis) {
+        if (!analysis?.ratings) continue;
+        try {
+          const verdict = await requestJudge(analysis, null);
+          overalls.push(verdict.overall);
+          for (const dim of verdict.dimensions) {
+            dimSums[dim.key] = dimSums[dim.key] ?? { total: 0, count: 0 };
+            dimSums[dim.key].total += dim.score;
+            dimSums[dim.key].count += 1;
+          }
+        } catch {
+          continue;
+        }
+      }
+      let fillers: { first: number | null; last: number | null; deliveries: number } = { first: null, last: null, deliveries: 0 };
+      try {
+        const feedbacks = await listPresentationFeedbacks(20);
+        const rates = feedbacks.map((f) => f.signals.filler_rate_per_100w).filter((r) => typeof r === "number");
+        fillers = {
+          first: rates.length > 0 ? rates[rates.length - 1] : null,
+          last: rates.length > 0 ? rates[0] : null,
+          deliveries: feedbacks.length,
+        };
+      } catch {
+        /* delivery history optional */
+      }
+      const days = new Set(sessions.map((s) => dayKey(s.started_at)));
+      const weeks: { label: string; count: number }[] = [];
+      for (let i = 7; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i * 7);
+        const start = new Date(date);
+        start.setDate(start.getDate() - 6);
+        const count = sessions.filter((s) => {
+          const t = new Date(s.started_at);
+          return t >= start && t <= date;
+        }).length;
+        weeks.push({ label: `${start.getMonth() + 1}/${start.getDate()}`, count });
+      }
+      setProgress({
+        sessions: sessions.length,
+        completed: sessions.filter((s) => s.status === "completed").length,
+        streakDays: currentStreak(days),
+        avgOverall: overalls.length > 0 ? Math.round(overalls.reduce((a, b) => a + b, 0) / overalls.length * 10) / 10 : null,
+        avgDims: Object.entries(dimSums).map(([key, v]) => ({ key, score: Math.round(v.total / v.count * 10) / 10 })),
+        fillerFirst: fillers.first,
+        fillerLast: fillers.last,
+        deliveries: fillers.deliveries,
+        weeks,
+      });
+    } finally {
+      setProgressLoading(false);
+    }
+  }
+
+  function downloadCsv() {
+    const rows = [["date", "topic", "persona", "minutes", "status"]];
+    for (const record of records) {
+      rows.push([record.started_at, record.topic, record.persona, String(record.duration_minutes), record.status]);
+    }
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "verdict-sessions.csv";
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function signOut() {
@@ -162,7 +272,63 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
         {profileNotice && <div className="inline-notice" role="status">{profileNotice}</div>}
       </section>
 
-      <div className="account-layout">
+      <div className="account-tabs no-print" role="group" aria-label="Archive or progress">
+        <button type="button" className={tab === "archive" ? "active" : ""} aria-pressed={tab === "archive"} onClick={() => setTab("archive")}>Archive</button>
+        <button type="button" className={tab === "progress" ? "active" : ""} aria-pressed={tab === "progress"} onClick={() => { setTab("progress"); void loadProgress(); }}>Progress</button>
+      </div>
+
+      {tab === "progress" && (
+        <section className="account-progress" aria-labelledby="progress-heading">
+          <div className="archive-heading">
+            <div><h2 id="progress-heading">Practice trends</h2><p>Computed from your saved sessions. No new models involved.</p></div>
+            <span>{progress?.sessions.toString().padStart(2, "0") ?? "--"}</span>
+          </div>
+          {progressLoading && <div className="archive-loading"><LoaderCircle className="spin" size={18} /> Reading your trends</div>}
+          {!progressLoading && !progress && (
+            <div className="archive-empty">
+              <EmptyCueArt label="No trends yet" />
+              <div><b>Debate once to start your trends.</b><p>Scores, streaks, and filler direction appear here.</p></div>
+            </div>
+          )}
+          {progress && <>
+            <div className="progress-stats">
+              <div><span>SESSIONS</span><b>{progress.sessions}</b></div>
+              <div><span>COMPLETED</span><b>{progress.completed}</b></div>
+              <div><span>DAY STREAK</span><b>{progress.streakDays}</b></div>
+              <div><span>AVG OVERALL</span><b>{progress.avgOverall === null ? "–" : `${progress.avgOverall} / 5`}</b></div>
+              <div><span>DELIVERY TAKES</span><b>{progress.deliveries}</b></div>
+              <div><span>FILLERS / 100W</span><b>{progress.fillerFirst === null ? "–" : `${progress.fillerFirst} → ${progress.fillerLast}`}</b></div>
+            </div>
+            {progress.avgDims.length > 0 && (
+              <div className="progress-dims">
+                {progress.avgDims.map((dim) => (
+                  <div key={dim.key} className="progress-dim">
+                    <span>{dim.key.toUpperCase()}</span>
+                    <div className="progress-bar" role="img" aria-label={`${dim.key} averages ${dim.score} of 5`}>
+                      <i style={{ width: `${Math.min(100, dim.score / 5 * 100)}%` }} />
+                    </div>
+                    <b>{dim.score.toFixed(1)}</b>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="progress-weeks" role="img" aria-label="Sessions per week for the last 8 weeks">
+              {progress.weeks.map((week) => (
+                <div key={week.label} className="progress-week">
+                  <i style={{ height: `${Math.min(64, week.count * 16)}px` }} />
+                  <span>{week.label}</span>
+                </div>
+              ))}
+            </div>
+            <div className="progress-actions no-print">
+              <button className="button button-light" onClick={downloadCsv} disabled={progress.sessions === 0}><Download size={15} /> Download sessions CSV</button>
+              <button className="button button-light" onClick={() => window.print()}><Printer size={15} /> Print report</button>
+            </div>
+          </>}
+        </section>
+      )}
+
+      {tab === "archive" && <div className="account-layout">
         <section className="account-archive" aria-labelledby="archive-heading">
           <div className="archive-heading">
             <div><h2 id="archive-heading">Rehearsal archive</h2><p>Sessions saved to your learner account.</p></div>
@@ -213,13 +379,18 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
             </div>
             {selected.analysis && <section className="archive-analysis">
               <span>CASE REVIEW</span>
-              <div>{Object.entries(selected.analysis.ratings).map(([key, rating]) => <p key={key}><b>{key.replaceAll("_", " ")}</b><strong>{rating.score}/5</strong></p>)}</div>
+              {(selected.analysis.gaps ?? []).length > 0 && (
+                <p className="archive-partial">Partial review: {(selected.analysis.gaps ?? []).join(" ")}</p>
+              )}
+              {selected.analysis.ratings && (
+                <div>{Object.entries(selected.analysis.ratings).map(([key, rating]) => <p key={key}><b>{key.replaceAll("_", " ")}</b><strong>{rating.score}/5</strong></p>)}</div>
+              )}
               <span>YOUR NEXT MOVES</span>
               {selected.analysis.next_steps.map((step, index) => <p key={`${index}-${step}`}>{step}</p>)}
             </section>}
           </section>
         )}
-      </div>
+      </div>}
 
       <div className="account-private-note"><RotateCcw size={14} /> Only you can read the sessions saved in this account.</div>
     </main>
