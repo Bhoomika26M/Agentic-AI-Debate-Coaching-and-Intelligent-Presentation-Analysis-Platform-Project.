@@ -23,9 +23,11 @@ import {
   checkBackend,
   streamOpponentReply,
   analyzeDebate,
+  requestJudge,
   type AnalysisReport,
   type DebateMessage,
   type DebateOptions,
+  type JudgeVerdict,
 } from "./services/debate-api";
 import { createDebateRecord, finishDebateRecord, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn } from "./services/debate-records";
 import { useAuth } from "./features/auth/AuthProvider";
@@ -33,6 +35,7 @@ import { supabaseConfigured } from "./features/auth/supabase";
 import { OpponentEmblem } from "./components/OpponentEmblem";
 import { EmptyCueArt } from "./components/CueArt";
 import { MarkdownText } from "./components/Markdown";
+import type { PresentationResult } from "./services/presentation-api";
 
 const AccountView = lazy(() => import("./features/auth/AccountView").then((m) => ({ default: m.AccountView })));
 const AuthView = lazy(() => import("./features/auth/AuthView").then((m) => ({ default: m.AuthView })));
@@ -191,6 +194,10 @@ export default function App() {
   const [analysis, setAnalysis] = useState<AnalysisReport | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
+  const [deliveryResult, setDeliveryResult] = useState<PresentationResult | null>(null);
+  const [judge, setJudge] = useState<JudgeVerdict | null>(null);
+  const [judgeLoading, setJudgeLoading] = useState(false);
+  const [judgeError, setJudgeError] = useState("");
   const [helpNotice, setHelpNotice] = useState("");
   const pollAttempts = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -367,6 +374,9 @@ export default function App() {
     setRecordNotice("");
     setAnalysis(null);
     setAnalysisError("");
+    setDeliveryResult(null);
+    setJudge(null);
+    setJudgeError("");
     setMessages([]);
     setDraft("");
     setSecondsLeft(duration * 60);
@@ -395,6 +405,8 @@ export default function App() {
     if (analysisLoading || learnerTurns.length === 0) return;
     setAnalysisLoading(true);
     setAnalysisError("");
+    setJudge(null);
+    setJudgeError("");
     try {
       const report = await analyzeDebate({
         topic: activeTopic,
@@ -414,6 +426,20 @@ export default function App() {
       setAnalysisError(error instanceof Error ? error.message : "The coach could not review this transcript.");
     } finally {
       setAnalysisLoading(false);
+    }
+  }
+
+  async function scoreRehearsal() {
+    if (judgeLoading || !analysis) return;
+    setJudgeLoading(true);
+    setJudgeError("");
+    try {
+      const verdict = await requestJudge(analysis, deliveryResult, session?.access_token);
+      setJudge(verdict);
+    } catch (error) {
+      setJudgeError(error instanceof Error ? error.message : "The judge could not score this rehearsal. Try again.");
+    } finally {
+      setJudgeLoading(false);
     }
   }
 
@@ -932,8 +958,47 @@ export default function App() {
                 </div>
                 <p className="analysis-intro">Record or upload a closing take. Delivery states are observable patterns with timestamps, not diagnoses. Audio is discarded after review.</p>
                 <Suspense fallback={<div className="inline-notice" role="status">Loading delivery review…</div>}>
-                  <PresentationRoom topic={activeTopic} sessionId={recordId} compact />
+                  <PresentationRoom topic={activeTopic} sessionId={recordId} compact onResult={(next) => { setDeliveryResult(next); setJudge(null); setJudgeError(""); }} />
                 </Suspense>
+              </section>
+              <section className="analysis-chamber judge-chamber" aria-labelledby="judge-heading">
+                <div className="analysis-chamber-head">
+                  <div><span>ACT VI / THE WEIGHTED VERDICT</span><h2 id="judge-heading">Weigh the case.<br /><em>Carry the next line.</em></h2></div>
+                  {!judge && <button className="button button-dark" onClick={() => void scoreRehearsal()} disabled={judgeLoading || !analysis}>
+                    {judgeLoading ? <><LoaderCircle className="spin" size={15} /> Scoring the rehearsal</> : <><Sparkles size={15} /> Score my rehearsal</>}
+                  </button>}
+                </div>
+                <p className="analysis-intro">A deterministic scoring of this rehearsal on five weighted dimensions: argument 30, evidence 20, logic 20, rebuttal 15, communication 15. {deliveryResult ? "Includes your closing take." : "Add a closing take above to score communication; otherwise it scores neutral."}</p>
+                {!analysis && <p className="present-empty" role="status">Run the case review first — scoring builds on its ratings and counterpoints.</p>}
+                {judgeError && <div className="analysis-error" role="alert">{judgeError}</div>}
+                {judge && <>
+                  <div className="judge-overall">
+                    <div><span>WEIGHTED OVERALL</span><b>{judge.overall.toFixed(1)}<small> / 5</small></b></div>
+                    <p>Argument 30 · Evidence 20 · Logic 20 · Rebuttal 15 · Communication 15. Scores are coaching estimates, not objective measures.</p>
+                  </div>
+                  <div className="judge-grid">
+                    {judge.dimensions.map((dim) => (
+                      <article key={dim.key} className="judge-card">
+                        <span>{dim.key.toUpperCase()} · {dim.weight_pct}%</span>
+                        <b>{dim.score.toFixed(1)}<small> / 5</small></b>
+                        <p>{dim.note}</p>
+                        {dim.citations.length > 0 && <small className="judge-cites">{dim.citations.map((cite) => `“${cite}”`).join(" · ")}</small>}
+                      </article>
+                    ))}
+                  </div>
+                  {judge.gaps.length > 0 && (
+                    <div className="judge-gaps">
+                      <div className="analysis-section-label">DISCLOSED GAPS / {judge.gaps.length.toString().padStart(2, "0")}</div>
+                      {judge.gaps.map((gap) => <p key={gap}>{gap}</p>)}
+                    </div>
+                  )}
+                  <p className="analysis-limit">Deterministic scoring from your case review{deliveryResult ? " and closing take" : ""}. Check each note against what you meant to say.</p>
+                  <div className="judge-actions">
+                    <button className="button button-light" onClick={() => void scoreRehearsal()} disabled={judgeLoading || !analysis}>
+                      {judgeLoading ? <><LoaderCircle className="spin" size={15} /> Re-scoring</> : <>Re-score with current review</>}
+                    </button>
+                  </div>
+                </>}
               </section>
               <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>{user ? "Your transcript and any completed argument review are kept in your learner archive." : "Your transcript and review stay in this browser session. Sign in before your next rehearsal to keep its transcript in your learner archive."}</p></div>
               <div className="verdict-actions">

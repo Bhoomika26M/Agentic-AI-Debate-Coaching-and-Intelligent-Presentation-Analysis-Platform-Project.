@@ -169,3 +169,8 @@ class PresentationResponse(BaseModel):
     report: PresentationReport
     retained: bool = False
     ser_reflection: list[dict] = Field(default_factory=list, max_length=8)
+
+
+class JudgeRequest(BaseModel):
+    report: AnalysisReport
+    delivery: PresentationResponse | None = None

@@ -20,6 +20,8 @@ from .schemas import (
     AnalysisReport,
     AnalysisRequest,
     DebateRequest,
+    JudgeRequest,
+    JudgeVerdict,
     PresentationResponse,
 )
 from .speech import MAX_AUDIO_MB
@@ -198,6 +200,25 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisReport:
         ) from error
     finally:
         stream_slots.release()
+
+
+@app.post(
+    "/api/debate/judge",
+    dependencies=[Depends(authenticate_request)],
+    response_model=JudgeVerdict,
+)
+async def debate_judge(request: JudgeRequest) -> JudgeVerdict:
+    from .agents.judge import judge_with_graph
+    from .agents.scrub import scrub_report
+
+    report_dict = request.report.model_dump()
+    delivery_dict = request.delivery.model_dump() if request.delivery else {}
+    verdict_dict, gaps = await judge_with_graph(report_dict, delivery_dict)
+    if verdict_dict is None:
+        detail = "; ".join(gaps[:3]) if gaps else "Scoring failed."
+        raise HTTPException(status_code=502, detail=f"{detail} Try again.")
+    cleaned, _ = scrub_report(verdict_dict)
+    return JudgeVerdict.model_validate(cleaned)
 
 
 @app.post(

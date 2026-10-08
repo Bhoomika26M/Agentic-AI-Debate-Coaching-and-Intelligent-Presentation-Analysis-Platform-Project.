@@ -50,6 +50,40 @@ export async function analyzeDebate(
   return (await response.json()) as AnalysisReport;
 }
 
+export type JudgeDimension = {
+  key: "argument" | "evidence" | "logical" | "rebuttal" | "communication";
+  weight_pct: number;
+  score: number;
+  note: string;
+  citations: string[];
+};
+
+export type JudgeVerdict = {
+  overall: number;
+  dimensions: JudgeDimension[];
+  gaps: string[];
+};
+
+export async function requestJudge(
+  report: AnalysisReport,
+  delivery: object | null,
+  accessToken?: string,
+) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const response = await fetch(apiUrl("/api/debate/judge"), {
+    method: "POST",
+    headers,
+    credentials: "omit",
+    body: JSON.stringify({ report, delivery }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.detail ?? "The judge could not score this rehearsal.");
+  }
+  return (await response.json()) as JudgeVerdict;
+}
+
 export async function checkBackend() {
   const response = await fetch(apiUrl("/api/health"), { credentials: "omit" });
   if (!response.ok) throw new Error("The debate service is unavailable.");

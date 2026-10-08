@@ -14,7 +14,7 @@ function formatStamp(seconds: number) {
   return `${m}:${s}`;
 }
 
-export function PresentationRoom({ topic, sessionId, compact }: { topic?: string; sessionId?: string | null; compact?: boolean }) {
+export function PresentationRoom({ topic, sessionId, compact, onResult }: { topic?: string; sessionId?: string | null; compact?: boolean; onResult?: (result: PresentationResult | null) => void }) {
   const { session } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -40,6 +40,7 @@ export function PresentationRoom({ topic, sessionId, compact }: { topic?: string
 
   function pick(next: File | null) {
     setError(""); setNotice(""); setResult(null);
+    onResult?.(null);
     if (next) {
       const okType = /audio\/(webm|wav|x-wav|mp3|mpeg)/.test(next.type) || /\.(webm|wav|mp3)$/i.test(next.name);
       if (!okType) {
@@ -122,6 +123,7 @@ export function PresentationRoom({ topic, sessionId, compact }: { topic?: string
     try {
       const out = await analyzePresentation(file, file.name, topic, session?.access_token);
       setResult(out);
+      onResult?.(out);
       if (session) {
         try {
           await savePresentationFeedback({ sessionId, topic, transcript: out.transcript, signals: out.signals, report: out.report });
