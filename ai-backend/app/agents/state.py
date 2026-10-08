@@ -1,4 +1,5 @@
-from typing import Literal, TypedDict
+import operator
+from typing import Annotated, Literal, NotRequired, TypedDict
 
 
 class DebateTurnState(TypedDict):
@@ -23,8 +24,9 @@ class AnalysisState(TypedDict, total=False):
     turns: list[DebateTurnState]
     persona: str | None
     difficulty: str | None
-    report: dict
+    report: dict | None
     gaps: list[str]
+    branch_reports: NotRequired[Annotated[list[dict], operator.add]]
 
 
 class DeliveryState(TypedDict, total=False):
