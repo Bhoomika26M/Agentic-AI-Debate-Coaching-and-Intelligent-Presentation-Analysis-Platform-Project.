@@ -50,11 +50,25 @@ def check_reply(reply: str, topic: str) -> str | None:
     return None
 
 
+def _pressure_line(history: list[dict], latest: str | None) -> str | None:
+    from .planner import pressure_hint
+
+    hint = pressure_hint(history, latest)
+    if hint == "up":
+        return "The learner is cruising: raise the pressure one notch toward cross-examination."
+    if hint == "down":
+        return "The learner is stalling: ease back toward a welcoming warm-up tone."
+    return None
+
+
 def _briefed_messages(state: DebateState, request: DebateRequest) -> list[dict[str, str]]:
     messages = build_messages(request)
-    brief = state.get("brief")
-    if brief:
-        messages = messages + [{"role": "system", "content": brief}]
+    parts = [p for p in [state.get("brief"), _pressure_line(
+        [{"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])],
+        state.get("latest"),
+    )] if p]
+    if parts:
+        messages = messages + [{"role": "system", "content": " ".join(parts)}]
     return messages
 
 
@@ -96,8 +110,9 @@ async def respond_stream(state: DebateState) -> AsyncIterator[str]:
         memory_brief=state.get("memory_brief"),
     )
     messages = build_messages(request)
-    if brief:
-        messages = messages + [{"role": "system", "content": brief}]
+    parts = [p for p in [brief, _pressure_line(history, state.get("latest"))] if p]
+    if parts:
+        messages = messages + [{"role": "system", "content": " ".join(parts)}]
     async for delta in stream(
         messages, temperature=0.75, num_predict=240
     ):

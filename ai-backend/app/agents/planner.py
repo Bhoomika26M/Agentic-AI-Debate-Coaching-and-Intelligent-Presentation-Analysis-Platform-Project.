@@ -8,9 +8,28 @@ logger = logging.getLogger(__name__)
 EVERY_N_TURNS = max(1, int(os.getenv("PLANNER_EVERY_N_TURNS", "2")))
 
 
+EVIDENCE_MARKS = ("because", "study", "studies", "data", "example", "evidence", "research", "statistic")
+
+
 def learner_turn_count(history: list[dict], latest: str | None) -> int:
     count = sum(1 for t in history if t.get("speaker") == "learner")
     return count + (1 if latest and latest.strip() else 0)
+
+
+def pressure_hint(history: list[dict], latest: str | None) -> str:
+    turns = [t.get("content", "") for t in history if t.get("speaker") == "learner"]
+    if latest and latest.strip():
+        turns.append(latest.strip())
+    if not turns:
+        return "hold"
+    words = [len(t.split()) for t in turns]
+    avg = sum(words) / len(words)
+    marks = sum(t.lower().count(m) for t in turns for m in EVIDENCE_MARKS)
+    if avg >= 40 and marks >= 2 * len(turns):
+        return "up"
+    if avg < 12:
+        return "down"
+    return "hold"
 
 
 async def plan_brief(

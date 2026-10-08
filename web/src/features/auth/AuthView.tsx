@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, BookOpenText, Eye, EyeOff, LoaderCircle, RotateCcw, ShieldCheck } from "lucide-react";
 import { supabase, supabaseConfigured } from "./supabase";
@@ -43,6 +43,7 @@ export function AuthView({
   onAuthenticated: () => void;
 }) {
   const [mode, setMode] = useState<AuthMode>("sign-in");
+  const [recovering, setRecovering] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -128,6 +129,48 @@ export function AuthView({
     }
   }
 
+  useEffect(() => {
+    if (!supabase) return;
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setRecovering(true);
+        setError("");
+        setNotice("");
+      }
+    });
+    return () => {
+      data.subscription.unsubscribe();
+    };
+  }, []);
+
+  async function submitRecovery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    const passwordResult = passwordSchema.safeParse(password);
+    const nextErrors: Record<string, string> = {};
+    if (!passwordResult.success) nextErrors.password = passwordResult.error.issues[0].message;
+    if (passwordResult.success && confirmation !== password) {
+      nextErrors.confirmation = "The passwords do not match.";
+    }
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0 || !supabase) return;
+    setSubmitting(true);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) throw updateError;
+      setNotice("Password updated. Sign in with your new password.");
+      setRecovering(false);
+      setMode("sign-in");
+      setPassword("");
+      setConfirmation("");
+    } catch (authError) {
+      setError(getAuthMessage(authError instanceof Error ? authError.message : "unknown"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   function changeMode(nextMode: AuthMode) {
     setMode(nextMode);
     setError("");
@@ -179,6 +222,44 @@ export function AuthView({
       </section>
 
       <section className="auth-workspace" aria-labelledby="auth-heading">
+        {recovering ? (
+          <>
+            <div className="auth-form-head">
+              <h2 id="auth-heading">Set a new password.</h2>
+              <p>Choose a 12+ character password with uppercase, lowercase, and a number.</p>
+            </div>
+            <form className="auth-form" onSubmit={(event) => void submitRecovery(event)} noValidate>
+              <label htmlFor="auth-new-password">New password</label>
+              <input
+                id="auth-new-password"
+                type={visiblePassword ? "text" : "password"}
+                autoComplete="new-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.password)}
+                placeholder="Create a strong password"
+              />
+              {fieldErrors.password && <span className="auth-field-error">{fieldErrors.password}</span>}
+              <label htmlFor="auth-new-confirmation">Confirm new password</label>
+              <input
+                id="auth-new-confirmation"
+                type={visiblePassword ? "text" : "password"}
+                autoComplete="new-password"
+                value={confirmation}
+                onChange={(event) => setConfirmation(event.target.value)}
+                placeholder="Enter your password again"
+              />
+              {fieldErrors.confirmation && <span className="auth-field-error">{fieldErrors.confirmation}</span>}
+              {error && <div className="auth-feedback is-error" role="alert">{error}</div>}
+              {notice && <div className="auth-feedback is-success" role="status">{notice}</div>}
+              <button className="auth-submit" type="submit" disabled={submitting}>
+                {submitting ? "Updating..." : "Update password"}
+                {!submitting && <ArrowRight size={16} />}
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
         <div className="auth-form-head">
           <div className="auth-tabs" role="group" aria-label="Account access">
             <button type="button" className={mode === "sign-in" ? "active" : ""} onClick={() => changeMode("sign-in")} aria-pressed={mode === "sign-in"}>Sign in{mode === "sign-in" && <motion.span layoutId="auth-tab-ink" className="auth-tab-ink" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} />}</button>
@@ -300,6 +381,8 @@ export function AuthView({
             )}
           </AnimatePresence>
         </form>
+          </>
+        )}
 
         <p className="auth-privacy">Your password is handled by Supabase Auth. Verdict never sees or stores it.</p>
       </section>
