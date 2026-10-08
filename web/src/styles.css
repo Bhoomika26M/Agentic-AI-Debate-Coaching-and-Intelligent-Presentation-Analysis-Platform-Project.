@@ -317,6 +317,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .empty-transcript p { max-width: 38ch; color: #554e45; font: 16px/1.5 var(--serif); }
 .message-card { margin: 0 0 14px; padding: 13px 15px; border: 1px solid #ded3c1; background: #f2ecdf; }
 .message-learner { margin-left: clamp(18px, 5vw, 58px); border-color: #e0b7a8; background: #f6e8de; }
+.message-challenge { border-color: #d7a69c; background: #f7ece4; }
+.message-challenge .message-speaker { color: #8c332b; }
+.challenge-target { margin: 0 0 8px; padding-left: 10px; border-left: 2px solid var(--cue); color: #5e574d; font: italic 13px/1.55 var(--serif); }
+.challenge-button { min-height: 44px; padding: 0 14px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #a99c85; color: #29251f; background: transparent; font-size: 10px; cursor: pointer; }
+.challenge-button:hover:not(:disabled) { background: #e5d8c2; }
+.challenge-button:disabled { cursor: not-allowed; opacity: .5; }
 .message-meta { margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #5e574d; font: 10px var(--mono); letter-spacing: .06em; }
 .message-speaker { display: inline-flex; align-items: center; gap: 8px; color: #31584c; }
 .message-speaker.learner { color: #96382e; }

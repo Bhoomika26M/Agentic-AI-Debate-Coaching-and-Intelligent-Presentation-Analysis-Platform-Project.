@@ -23,6 +23,7 @@ import {
   checkBackend,
   streamOpponentReply,
   analyzeDebate,
+  requestChallenge,
   requestJudge,
   type AnalysisReport,
   type DebateMessage,
@@ -198,6 +199,8 @@ export default function App() {
   const [judge, setJudge] = useState<JudgeVerdict | null>(null);
   const [judgeLoading, setJudgeLoading] = useState(false);
   const [judgeError, setJudgeError] = useState("");
+  const [challenging, setChallenging] = useState(false);
+  const [challengeError, setChallengeError] = useState("");
   const [helpNotice, setHelpNotice] = useState("");
   const pollAttempts = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -465,7 +468,50 @@ export default function App() {
     };
     setMessages((current) => [...current, learnerMessage]);
     setDraft("");
+    setChallengeError("");
     await requestOpponentReply(messages, argument);
+  }
+
+  function challengeDepth(current: DebateMessage[] = messages) {
+    let depth = 0;
+    for (let i = current.length - 1; i >= 0; i--) {
+      if (current[i].kind === "challenge") depth += 1;
+      else break;
+    }
+    return depth;
+  }
+
+  async function requestFollowUp() {
+    const latestLearner = [...messages].reverse().find((m) => m.speaker === "learner" && !m.pending);
+    const depth = challengeDepth();
+    if (challenging || streaming || !latestLearner || depth >= 2 || secondsLeft === 0) return;
+    setChallenging(true);
+    setChallengeError("");
+    try {
+      const options: DebateOptions = {
+        topic: activeTopic,
+        learner_position: position,
+        persona,
+        difficulty,
+      };
+      const result = await requestChallenge(options, messages, latestLearner.content, depth, session?.access_token);
+      if (result.done || !result.follow_up) {
+        setChallengeError("The coach has no further follow-ups on this turn. Make your next case.");
+        return;
+      }
+      setMessages((current) => [...current, {
+        id: crypto.randomUUID(),
+        speaker: "opponent",
+        content: result.follow_up as string,
+        kind: "challenge",
+        challengeDepth: result.depth,
+        challengeTarget: result.target_sentence ?? undefined,
+      }]);
+    } catch (error) {
+      setChallengeError(error instanceof Error ? error.message : "The coach could not ask a follow-up.");
+    } finally {
+      setChallenging(false);
+    }
   }
 
   function returnHome() {
@@ -843,7 +889,7 @@ export default function App() {
                   {messages.map((message, index) => (
                     <motion.article
                       key={message.id}
-                      className={`message-card ${message.speaker === "learner" ? "message-learner" : "message-opponent"}`}
+                      className={`message-card ${message.speaker === "learner" ? "message-learner" : "message-opponent"} ${message.kind === "challenge" ? "message-challenge" : ""}`}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.28 }}
@@ -855,10 +901,13 @@ export default function App() {
                               <OpponentEmblem persona={persona} label={`${activePersona.name} emblem`} />
                             </span>
                           )}
-                          {message.speaker === "learner" ? "YOUR CASE" : activePersona.name.toUpperCase()}
+                          {message.kind === "challenge"
+                            ? `FOLLOW-UP ${message.challengeDepth ?? 1} OF 2`
+                            : message.speaker === "learner" ? "YOUR CASE" : activePersona.name.toUpperCase()}
                         </span>
                         <span>TURN {Math.ceil((index + 1) / 2).toString().padStart(2, "0")}</span>
                       </div>
+                      {message.challengeTarget && <blockquote className="challenge-target">“{message.challengeTarget}”</blockquote>}
                       <div className="message-body"><MarkdownText text={message.content} />{message.pending && <span className="stream-cursor" />}</div>
                       {message.pending && !message.content && <div className="thinking-label"><LoaderCircle size={14} /> PREPARING A RESPONSE</div>}
                     </motion.article>
@@ -881,7 +930,8 @@ export default function App() {
                     rows={3}
                     disabled={streaming || secondsLeft === 0}
                   />
-                  <div className="composer-bottom"><span>One claim at a time — aim for 1–2 sentences. Enter sends · Shift + Enter adds a line.</span><button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">{streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />} <span>{streaming ? "Opponent has the floor" : "Make your case"}</span></button></div>
+                  {challengeError && <div className="inline-notice" role="status">{challengeError}</div>}
+                  <div className="composer-bottom"><span>One claim at a time — aim for 1–2 sentences. Enter sends · Shift + Enter adds a line.</span><button className="challenge-button" type="button" onClick={() => void requestFollowUp()} disabled={challenging || streaming || learnerTurns.length === 0 || challengeDepth() >= 2 || secondsLeft === 0}>{challenging ? <LoaderCircle size={15} className="spin" /> : <Sparkles size={14} />} <span>{challengeDepth() >= 2 ? "Follow-ups done" : "Challenge me"}</span></button><button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">{streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />} <span>{streaming ? "Opponent has the floor" : "Make your case"}</span></button></div>
                 </form>
               </section>
 

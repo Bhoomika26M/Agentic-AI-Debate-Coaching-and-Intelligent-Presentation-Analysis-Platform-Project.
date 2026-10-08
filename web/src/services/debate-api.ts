@@ -7,7 +7,44 @@ export type DebateMessage = {
   speaker: Speaker;
   content: string;
   pending?: boolean;
+  kind?: "standard" | "challenge";
+  challengeDepth?: number;
+  challengeTarget?: string;
 };
+
+export type ChallengeResult = {
+  done: boolean;
+  target_sentence: string | null;
+  follow_up: string | null;
+  depth: number;
+};
+
+export async function requestChallenge(
+  options: DebateOptions,
+  turns: DebateMessage[],
+  latest: string,
+  depth: number,
+  accessToken?: string,
+) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const response = await fetch(apiUrl("/api/debate/challenge"), {
+    method: "POST",
+    headers,
+    credentials: "omit",
+    body: JSON.stringify({
+      topic: options.topic,
+      history: turns.filter((turn) => !turn.pending && turn.content.trim()).map(({ speaker, content }) => ({ speaker, content })),
+      latest,
+      depth,
+    }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.detail ?? "The coach could not ask a follow-up.");
+  }
+  return (await response.json()) as ChallengeResult;
+}
 
 export type DebateOptions = {
   topic: string;

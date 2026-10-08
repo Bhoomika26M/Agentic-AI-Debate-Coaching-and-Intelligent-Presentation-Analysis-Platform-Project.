@@ -162,6 +162,25 @@ class PresentationReport(BaseModel):
     next_line: str = Field(min_length=1, max_length=280)
 
 
+class ChallengeTurn(BaseModel):
+    speaker: Literal["learner", "opponent"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class ChallengeRequest(BaseModel):
+    topic: str = Field(min_length=3, max_length=240)
+    history: list[ChallengeTurn] = Field(default_factory=list, max_length=20)
+    latest: str = Field(min_length=1, max_length=4000)
+    depth: int = Field(ge=0, le=2)
+
+
+class ChallengeResponse(BaseModel):
+    done: bool = False
+    target_sentence: str | None = Field(default=None, max_length=400)
+    follow_up: str | None = Field(default=None, max_length=400)
+    depth: int = Field(ge=0, le=2)
+
+
 class PresentationResponse(BaseModel):
     transcript: str = Field(min_length=1, max_length=8000)
     segments: list[PresentationSegment] = Field(min_length=1, max_length=60)

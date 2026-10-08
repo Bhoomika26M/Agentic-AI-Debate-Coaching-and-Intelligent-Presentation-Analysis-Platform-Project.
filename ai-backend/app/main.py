@@ -19,6 +19,8 @@ from .ollama_client import OLLAMA_MODEL, is_available, is_loaded, warm_model
 from .schemas import (
     AnalysisReport,
     AnalysisRequest,
+    ChallengeRequest,
+    ChallengeResponse,
     DebateRequest,
     JudgeRequest,
     JudgeVerdict,
@@ -197,6 +199,52 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisReport:
         raise HTTPException(
             status_code=502,
             detail="The local model returned an incomplete coaching review. Try the review again.",
+        ) from error
+    finally:
+        stream_slots.release()
+
+
+@app.post(
+    "/api/debate/challenge",
+    dependencies=[Depends(authenticate_request)],
+    response_model=ChallengeResponse,
+)
+async def debate_challenge(request: ChallengeRequest) -> ChallengeResponse:
+    if request.depth >= 2:
+        return ChallengeResponse(done=True, depth=request.depth)
+    if not await is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="The local model is unavailable. Start Ollama and retry.",
+        )
+    if stream_slots.locked():
+        raise HTTPException(
+            status_code=429,
+            detail="The local model is busy. Please retry in a moment.",
+        )
+    await stream_slots.acquire()
+    try:
+        from .agents.challenger import challenge_turn
+
+        result = await challenge_turn(
+            [{"speaker": t.speaker, "content": t.content} for t in request.history],
+            request.latest,
+            request.topic,
+            request.depth,
+        )
+        if result is None:
+            return ChallengeResponse(done=True, depth=request.depth)
+        return ChallengeResponse(
+            done=False,
+            target_sentence=result["target_sentence"],
+            follow_up=result["follow_up"],
+            depth=result["depth"],
+        )
+    except HTTPError as error:
+        logger.exception("Ollama challenger failed: %s", error)
+        raise HTTPException(
+            status_code=503,
+            detail="The local model could not ask a follow-up.",
         ) from error
     finally:
         stream_slots.release()
