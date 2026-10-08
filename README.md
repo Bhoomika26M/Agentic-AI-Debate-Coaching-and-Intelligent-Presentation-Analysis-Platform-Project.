@@ -6,12 +6,12 @@ No account is needed to start. Open the app as a guest, finish a practice round 
 
 ## What you can do
 
-- **Rehearse live debates.** Choose a motion from your topic bank or write your own, argue for or against, pick one of three opponent personas (Strategist, Skeptic, Diplomat), set the pressure level and a 2 to 10 minute clock, then trade turns with streaming AI replies. The opponent plans against your weakest joint every other turn and can press Socratic follow-ups up to 2 deep.
+- **Rehearse live debates.** Choose a motion from your topic bank or write your own, argue for or against, pick one of three opponent personas (Strategist, Skeptic, Diplomat), set the pressure level and a 2 to 10 minute clock, then trade turns with streaming AI replies. The opponent plans against your weakest joint every other turn, eases or sharpens pressure based on how you argue, and can press Socratic follow-ups up to 2 deep.
 - **Review your arguments.** After a session, get ratings on clarity, relevance, evidence, logic, and persuasion, plus fallacy flags quoted from your exact words and five counterpoints to test your case. Partial results disclose their gaps instead of failing silently.
 - **Get a weighted verdict.** Act VI scores the rehearsal 30/20/20/15/15 across argument, evidence, logic, rebuttal, and communication, with quote and timestamp citations for every dimension.
 - **Review your delivery.** Record or upload a closing take (up to 3 minutes). Get pace, filler, and pause signals with timestamps you can replay, plus short practice drills.
 - **Track progress.** The Learner space keeps your archive, a profile with goals and audio opt-in, and a trends tab with sessions, streaks, average scores, and filler direction. Download sessions as CSV or print a report.
-- **Keep your work (optional).** Create a free account with email or Google to save transcripts and reviews in your learner archive. Guests keep everything in the browser.
+- **Keep your work (optional).** Create a free account with email or Google to save transcripts and reviews in your learner archive. Password recovery is built in. Guests keep everything in the browser.
 
 ## Technologies
 
@@ -32,6 +32,19 @@ No account is needed to start. Open the app as a guest, finish a practice round 
 6. Signed-in work persists owner scoped via Supabase row level security. The Python service never touches the database, so a leaked API token can burn compute but can never read another learner's archive.
 
 Deployed AI calls use a provider key that you supply yourself. It is passed through Python for that request only and is never stored or logged. Provider routing for hosted generation is designed but not implemented yet.
+
+## API endpoints
+
+All endpoints except health checks require a signed-in token when the backend runs with `REQUIRE_AUTH=true`. Guest mode skips verification for local testing.
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/health` | Model readiness: ready, warming, or unavailable. |
+| `POST /api/debate/stream` | Streams one opponent reply over SSE, ending with `[DONE]`. Jailbreaks get an in-character redirect with no model call. |
+| `POST /api/debate/analyze` | Returns the argument review envelope: available sections plus disclosed gaps. |
+| `POST /api/debate/challenge` | Returns one Socratic follow-up, or done at depth 2. |
+| `POST /api/debate/judge` | Returns the deterministic weighted verdict with citations. Uses no model call. |
+| `POST /api/presentation/analyze` | Accepts audio upload plus optional motion. Returns transcript segments, delivery signals, and drills. |
 
 ## Run it in 4 steps
 
@@ -106,6 +119,5 @@ If debate streaming fails, Ollama is usually down or still warming the model. Us
 - `web/src/`: landing, setup, live arena, verdict and delivery views, auth screens, API clients, styles.
 - `ai-backend/app/`: routes (`main.py`), prompt frames (`prompts.py`), Ollama client, debate analysis, speech transcription, delivery signals, presentation coaching, request schemas, auth, and the `agents/` graphs (guard, planner, challenger, memory, analysis, delivery, judge, scrub).
 - `supabase/migrations/`: debate sessions, turns, analyses, presentation feedback, profiles, topic bank, and the private audio bucket, all with owner scoped access rules.
-- `personal-guide/`: a local website that explains the codebase file by file, including setup and per milestone testing guides. It is ignored by git. Run `python3 -m http.server 4177 --directory personal-guide` and open `http://127.0.0.1:4177`.
 
 Never put secrets in `VITE_` variables. They ship inside browser files where anyone can read them.

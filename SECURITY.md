@@ -1,25 +1,29 @@
 # Security Notes
 
-## Current demo boundary
+This document describes what Verdict protects today and what must happen before public AI access. It is written for anyone reviewing or deploying the project.
 
-- The browser sends debate requests to the Python API. Prompt construction and model calls stay in Python.
-- Local demo transcripts remain in browser memory and are sent to the local Ollama service through FastAPI.
-- The demo has no account authentication or database persistence. Keep its API private to local development.
-- `VITE_API_BASE_URL` is public build-time configuration. Do not put credentials or provider keys in `VITE_` variables.
+## What is enforced now
 
-## Deployment controls
-
-- Vercel and Render static-site configuration sets a Content Security Policy, frame and MIME protections, referrer policy, HTTPS transport policy, and caching for fingerprinted assets.
-- The policy restricts scripts and resources to the app and HTTPS. Once the Python API hostname is chosen, narrow `connect-src` to that exact host in the static host config.
-- FastAPI uses explicit `WEB_ORIGIN` and `ALLOWED_HOSTS` allowlists. Wildcard hosts are rejected.
-- API responses are marked `no-store`; model streaming has a configurable per-process concurrency cap.
-- Pydantic bounds topic, turn, and history sizes before prompt construction.
+- **AI stays in Python.** The browser sends debate turns and audio to the FastAPI service. Prompt construction, model calls, transcription, and coaching all happen server side. The browser never talks to a model directly.
+- **Explicit trust boundaries.** FastAPI starts only with explicit `WEB_ORIGIN` and `ALLOWED_HOSTS` values. Wildcards are rejected at startup. CORS allows only `GET` and `POST` with `Content-Type` and `Authorization` headers, and the browser client omits cookies.
+- **Authentication with least privilege.** Supabase Auth issues the tokens; Python verifies them against the project's JWKS and never sees passwords. Guest mode (`REQUIRE_AUTH=false`) exists for local testing only.
+- **Owner scoped data.** Every database table enables row level security and grants access to `authenticated` users scoped to their own `auth.uid()`. The Python service holds no database credential at all, so a compromised API token can burn compute but cannot read another learner's archive.
+- **No-store API responses.** Debate and coaching responses carry `no-store` headers. Transcripts live in browser memory for guests and in the owner's Supabase rows for signed-in learners.
+- **Bounded inputs.** Pydantic limits topic, turn, and history sizes. Debate audio is capped at 10MB and 180 seconds, validated by content sniffing (not just MIME labels) before transcription.
+- **Conservative AI defaults.** Jailbreak and off-motion turns are pattern-routed to an in-character redirect with no model call. Learner text is wrapped as data, never instructions, in every prompt. Coaching reports are validated against strict schemas with targeted retries.
+- **Private by default.** Contact details are redacted from saved coaching reports. Recorded audio is discarded immediately unless the learner explicitly opts into retention, in which case it lands in a private per-owner storage bucket. Categorical emotion recognition is local only and opt in; hosted review uses delivery proxies labeled as estimates.
+- **Abuse surface limits.** Simultaneous model streams are capped per process (`MAX_ACTIVE_STREAMS=2`, HTTP 429 beyond it). Static hosting applies content security, framing, MIME, referrer, and caching headers.
 
 ## Required before public AI access
 
-- Require authenticated learner access and authorize every persisted session by owner.
-- Add the Python BYOK provider adapter. Keep user keys transient, redact them from logs, and never persist them by default.
-- Cap delivery audio at 10MB / 180s, validate type before transcription, and discard bytes by default unless the learner explicitly opts into retention.
-- Keep categorical emotion recognition local-only opt-in (`ENABLE_SER=true`); hosted delivery review uses prosody proxies only, labeled as estimates.
-- Add distributed rate limiting and abuse monitoring if multiple API instances are deployed.
-- Test the final CSP against the selected API origin and OAuth callback origins.
+- Set `REQUIRE_AUTH=true` with Supabase JWKS configured; never serve the guest mode API publicly.
+- Implement the hosted provider key path (designed, with transient-only handling specified; the code currently rejects provider keys). Keep user keys out of logs, persistence, and all `VITE_` browser variables.
+- Narrow `connect-src` from broad HTTPS to the exact API and Supabase origins, and retest the policy against the deployed origins and OAuth callbacks.
+- Add distributed rate limiting and abuse monitoring if more than one API instance serves traffic.
+- Exercise the full credential-backed path end to end (auth, archive, profiles, retention, dashboard) against the production Supabase project before inviting real learners.
+
+## Never do
+
+- Put service-role keys, OAuth client secrets, or model provider keys in `VITE_` variables. They ship inside browser files where anyone can read them.
+- Use a project-owned paid AI key or add paid fallback. The project runs on free tiers and learner-supplied keys only.
+- Persist provider keys, log request bodies containing keys, or retain audio without explicit opt-in.
