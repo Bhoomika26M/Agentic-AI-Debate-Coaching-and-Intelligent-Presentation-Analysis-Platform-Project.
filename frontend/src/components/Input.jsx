@@ -1,0 +1,3 @@
+export default function Input({ label, error, hint, className = '', ...props }) {
+  return <label className="block space-y-2"><span className="text-sm font-bold text-ink">{label}</span><input className={`w-full rounded-xl border bg-white px-4 py-3 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-mint focus:ring-4 focus:ring-mint/10 ${error ? 'border-red-300' : 'border-slate-200'} ${className}`} {...props} />{error ? <span className="block text-xs font-semibold text-red-600">{error}</span> : hint ? <span className="block text-xs text-slate-500">{hint}</span> : null}</label>
+}

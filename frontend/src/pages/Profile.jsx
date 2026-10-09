@@ -1,0 +1,20 @@
+import { useEffect, useState } from 'react'
+import Button from '../components/Button'
+import Card from '../components/Card'
+import ErrorMessage from '../components/ErrorMessage'
+import Input from '../components/Input'
+import Loading from '../components/Loading'
+import PageHeader from '../components/PageHeader'
+import { useAuth } from '../context/AuthContext'
+import { getApiErrorMessage } from '../services/api'
+import { getProfile, getUser, updateProfile, updateUser } from '../services/profile'
+
+const initial = { name: '', email: '', experience_level: '', preferred_debate_topics: '', presentation_domains: '', learning_goals: '', coaching_preferences: '' }
+export default function Profile() {
+  const { user } = useAuth(); const [form, setForm] = useState(initial); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState('')
+  useEffect(() => { Promise.all([getUser(), getProfile()]).then(([userResponse, profileResponse]) => setForm({ ...initial, ...userResponse.data, ...profileResponse.data })).catch((requestError) => setError(getApiErrorMessage(requestError, 'Unable to load your profile.'))).finally(() => setLoading(false)) }, [])
+  function change(field, value) { setForm((current) => ({ ...current, [field]: value })) }
+  async function save(event) { event.preventDefault(); setSaving(true); setMessage(''); setError(''); try { await Promise.all([updateUser({ name: form.name, email: form.email }), updateProfile({ experience_level: form.experience_level, preferred_debate_topics: form.preferred_debate_topics, presentation_domains: form.presentation_domains, learning_goals: form.learning_goals, coaching_preferences: form.coaching_preferences })]); setMessage('Profile updated successfully.') } catch (requestError) { setError(getApiErrorMessage(requestError, 'Unable to save your profile.')) } finally { setSaving(false) } }
+  if (loading) return <Loading label="Loading profile..." />
+  return <><PageHeader eyebrow="Personal details" title="Your profile" description="Shape the context around your practice so every session starts closer to what matters to you." />{error && <div className="mb-5"><ErrorMessage message={error} /></div>}{message && <div className="mb-5 rounded-xl border border-mint/20 bg-mint/10 p-4 text-sm font-bold text-mint">{message}</div>}<form onSubmit={save} className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]"><Card><h2 className="mb-5 font-display text-xl font-bold">Account information</h2><div className="space-y-4"><Input label="Name" value={form.name || ''} onChange={(event) => change('name', event.target.value)} /><Input label="Email" type="email" value={form.email || ''} onChange={(event) => change('email', event.target.value)} /><Input label="Role" value={String(user?.role || form.role || '').replaceAll('_', ' ')} disabled /></div></Card><Card><h2 className="mb-5 font-display text-xl font-bold">Practice preferences</h2><div className="space-y-4"><Input label="Experience level" placeholder="Beginner, intermediate, advanced" value={form.experience_level || ''} onChange={(event) => change('experience_level', event.target.value)} /><Input label="Preferred debate topics" placeholder="Education, technology, society" value={form.preferred_debate_topics || ''} onChange={(event) => change('preferred_debate_topics', event.target.value)} /><Input label="Presentation domains" placeholder="Business, science, public speaking" value={form.presentation_domains || ''} onChange={(event) => change('presentation_domains', event.target.value)} /><Input label="Learning goals" placeholder="What would you like to improve?" value={form.learning_goals || ''} onChange={(event) => change('learning_goals', event.target.value)} /><Input label="Coaching preferences" placeholder="How should feedback feel?" value={form.coaching_preferences || ''} onChange={(event) => change('coaching_preferences', event.target.value)} /></div></Card><div className="lg:col-span-2"><Button type="submit" loading={saving}>Save profile</Button></div></form></>
+}
