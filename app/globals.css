@@ -1,88 +1,43 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --font-inter: 'Inter', sans-serif;
-  --font-jetbrains-mono: 'JetBrains Mono', monospace;
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 255, 255, 255;
+  --background-end-rgb: 255, 255, 255;
 }
 
 body {
-  font-family: var(--font-inter);
-  background-color: #faf8f3;
-  color: #1c2420;
-  min-height: 100vh;
+  color: #000000;
+  background: #ffffff;
+  font-size: 16px;
+  line-height: 1.7;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-.dark body {
-  background-color: #101412;
-  color: #e5e8e6;
-}
-
-/* Civic Ticket Perforation Line Effect */
-.ticket-perforation {
-  position: relative;
-  border-top: 2px dashed #d5cfc1;
-}
-
-.dark .ticket-perforation {
-  border-top: 2px dashed #2b3630;
-}
-
-.ticket-perforation::before,
-.ticket-perforation::after {
-  content: "";
-  position: absolute;
-  top: -10px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background-color: #faf8f3;
-}
-
-.dark .ticket-perforation::before,
-.dark .ticket-perforation::after {
-  background-color: #101412;
-}
-
-.ticket-perforation::before {
-  left: -20px;
-}
-
-.ticket-perforation::after {
-  right: -20px;
-}
-
-/* Watermark/Stamp Text Effect */
-.stamp-badge {
-  border: 2px solid currentColor;
-  padding: 4px 12px;
-  font-family: var(--font-jetbrains-mono);
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  transform: rotate(-3deg);
-  display: inline-block;
-}
-
-/* Smooth pulse for active tracking node */
-@keyframes pulse-ring {
-  0% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.7);
-  }
-  70% {
-    transform: scale(1);
-    box-shadow: 0 0 0 8px rgba(217, 119, 6, 0);
-  }
-  100% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(217, 119, 6, 0);
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
   }
 }
 
-.active-pulse {
-  animation: pulse-ring 2s infinite;
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #ffffff;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4d4d4;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #737373;
 }

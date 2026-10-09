@@ -1,131 +1,151 @@
-export type ParcelStatus =
-  | "Booked"
-  | "Rider assigned for pickup"
-  | "Picked up from sender"
-  | "Accepted at origin depot"
-  | "Loaded on bus"
-  | "In transit"
-  | "Arrived at destination depot"
-  | "Out for delivery"
-  | "Delivered";
+export type UserRole = 'learner' | 'coach' | 'educator' | 'admin';
 
-export const DEFAULT_PARCEL_STATUSES: ParcelStatus[] = [
-  "Booked",
-  "Accepted at origin depot",
-  "Loaded on bus",
-  "In transit",
-  "Arrived at destination depot",
-  "Delivered",
-];
+export type ExperienceLevel = 'Beginner' | 'Intermediate' | 'Advanced' | 'Elite';
 
-export function getPipelineForParcel(parcel: {
-  pickup_type?: "depot" | "doorstep";
-  delivery_type?: "depot" | "doorstep";
-}): ParcelStatus[] {
-  const pipeline: ParcelStatus[] = ["Booked"];
+export type DebateFormat = 
+  | 'one-on-one'
+  | 'parliamentary'
+  | 'oxford'
+  | 'policy'
+  | 'public-forum'
+  | 'ai-simulation';
 
-  if (parcel?.pickup_type === "doorstep") {
-    pipeline.push("Rider assigned for pickup");
-    pipeline.push("Picked up from sender");
-  }
+export type SpeechType = 
+  | 'Constructive (Affirmative)'
+  | 'Constructive (Negative)'
+  | 'Cross-Examination / POI'
+  | 'Rebuttal (Affirmative)'
+  | 'Rebuttal (Negative)'
+  | 'Summary & Final Focus';
 
-  pipeline.push("Accepted at origin depot");
-  pipeline.push("Loaded on bus");
-  pipeline.push("In transit");
-  pipeline.push("Arrived at destination depot");
-
-  if (parcel?.delivery_type === "doorstep") {
-    pipeline.push("Out for delivery");
-  }
-
-  pipeline.push("Delivered");
-  return pipeline;
-}
-
-export interface TimelineEntry {
-  status: ParcelStatus;
-  at: string;
-  note: string;
-}
-
-export interface Parcel {
-  ref: string;
-  origin: string;
-  dest: string;
-  trip_id: string;
-  trip_time: string;
-  trip_type: string;
-  bus_no: string;
-  size: "small" | "medium" | "large";
-  weight: number;
-  sender_name: string;
-  sender_phone?: string;
-  receiver_name: string;
-  receiver_phone?: string;
-  price: number;
-  otp?: string;
-  status: ParcelStatus;
-  booked_at: string;
-  timeline: TimelineEntry[];
-
-  // Doorstep & Date extension fields
-  pickup_type: "depot" | "doorstep";
-  delivery_type: "depot" | "doorstep";
-  pickup_locality?: string;
-  pickup_locality_distance_km?: number;
-  delivery_locality?: string;
-  delivery_locality_distance_km?: number;
-  pickup_fee: number;
-  delivery_fee: number;
-  scheduled_date: string; // YYYY-MM-DD
-  estimated_arrival_date: string; // YYYY-MM-DD or formatted string
-}
-
-export interface PublicParcel {
-  ref: string;
-  origin: string;
-  dest: string;
-  trip_id: string;
-  trip_time: string;
-  trip_type: string;
-  bus_no: string;
-  size: "small" | "medium" | "large";
-  weight: number;
-  sender_name: string;
-  receiver_name: string;
-  price: number;
-  status: ParcelStatus;
-  booked_at: string;
-  timeline: TimelineEntry[];
-
-  // Doorstep & Date extension fields
-  pickup_type: "depot" | "doorstep";
-  delivery_type: "depot" | "doorstep";
-  pickup_locality?: string;
-  pickup_locality_distance_km?: number;
-  delivery_locality?: string;
-  delivery_locality_distance_km?: number;
-  pickup_fee: number;
-  delivery_fee: number;
-  scheduled_date: string;
-  estimated_arrival_date: string;
-}
-
-export interface BusTrip {
+export interface UserProfile {
   id: string;
-  origin: string;
-  dest: string;
-  departureTime: string;
-  arrivalTime: string;
-  serviceClass: string;
-  busNo: string;
-  capacityKg: number;
-  remainingCapacityKg?: number;
-  estimatedDurationHours?: number;
-  estimatedArrivalDate?: string;
+  name: string;
+  email: string;
+  avatarUrl: string;
+  role: UserRole;
+  experienceLevel: ExperienceLevel;
+  preferredTopics: string[];
+  presentationDomains: string[];
+  learningGoals: string[];
+  coachingPreferences: {
+    feedbackStrictness: 'Gentle' | 'Balanced' | 'Rigorous' | 'Debate Coach Master';
+    focusAreas: string[];
+    aiPersona: 'Socratic Scholar' | 'Policy Specialist' | 'Oxford Orator' | 'Sharp Critic';
+  };
+  metrics: {
+    debatesCompleted: number;
+    winRate: number;
+    avgScore: number;
+    presentationsAnalyzed: number;
+    fallaciesIdentified: number;
+  };
 }
 
-export interface LocalityOption {
+export type FallacyType = 
+  | 'Ad Hominem'
+  | 'Straw Man'
+  | 'False Dilemma'
+  | 'Slippery Slope'
+  | 'Appeal to Authority'
+  | 'Circular Reasoning'
+  | 'Hasty Generalization'
+  | 'Red Herring';
+
+export interface FallacyMatch {
+  id: string;
+  type: FallacyType;
+  quote: string;
+  explanation: string;
+  correctionSuggestion: string;
+  severity: 'Low' | 'Medium' | 'High';
+}
+
+export type CounterargumentType = 
+  | 'Logical Rebuttals'
+  | 'Evidence-Based Rebuttals'
+  | 'Ethical Counterarguments'
+  | 'Practical Counterarguments'
+  | 'Policy Counterarguments';
+
+export interface CounterargumentOption {
+  id: string;
+  type: CounterargumentType;
+  title: string;
+  content: string;
+  challengeQuestion: string;
+  strategyTip: string;
+}
+
+export interface WeightedDebateScore {
+  argumentQuality: number; // 30%
+  evidenceUsage: number;   // 20%
+  logicalConsistency: number; // 20%
+  rebuttalEffectiveness: number; // 15%
+  communicationSkills: number;  // 15%
+  totalScore: number; // Weighted 0-100
+  speakerPoints: number; // 70-80 scale
+  verdict: 'Affirmative Win' | 'Negative Win' | 'Draw';
+  breakdownNotes: {
+    strengths: string[];
+    weaknesses: string[];
+    keyTurnarounds: string[];
+  };
+}
+
+export interface DebateTurn {
+  id: string;
+  speaker: 'User' | 'AI Opponent' | 'Moderator' | 'Coach';
+  speakerName: string;
+  role: 'Affirmative' | 'Negative' | 'Judge';
+  speechType: SpeechType;
+  content: string;
+  timestamp: string;
+  fallacies?: FallacyMatch[];
+  metrics?: {
+    wpm: number;
+    clarityScore: number;
+    persuasiveness: number;
+  };
+}
+
+export interface DebateSession {
+  id: string;
+  topic: string;
+  format: DebateFormat;
+  userPosition: 'Affirmative' | 'Negative';
+  aiModelId: string;
+  aiPersona: string;
+  status: 'Setup' | 'In-Progress' | 'Completed';
+  createdAt: string;
+  turns: DebateTurn[];
+  scorecard?: WeightedDebateScore;
+}
+
+export interface PresentationMetrics {
+  speechPaceWPM: number;
+  fillerWordCount: number;
+  fillerWordsFound: Record<string, number>;
+  confidenceScore: number; // 0-100
+  clarityScore: number;    // 0-100
+  audienceEngagementScore: number; // 0-100
+  ethosPathosLogos: {
+    ethos: number; // Credibility
+    pathos: number; // Emotion
+    logos: number; // Logic
+  };
+  fallaciesDetected: FallacyMatch[];
+  keyFeedback: string[];
+  improvementSuggestions: string[];
+}
+
+export interface AIModelDefinition {
+  id: string;
   name: string;
-  distanceKm: number;
+  provider: 'Google' | 'OpenAI' | 'Anthropic' | 'DeepSeek' | 'Meta' | 'Local Smart Simulator';
+  description: string;
+  badge: string;
+  isSimulator?: boolean;
+  capabilities: string[];
+  recommendedFor: string;
 }

@@ -1,12 +1,17 @@
-import "./globals.css";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import type { Metadata } from "next";
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { AuthProvider } from '@/lib/auth-context';
+import { ModelProvider } from '@/lib/model-context';
+import Navbar from '@/components/Navbar';
+import ModelSelectorModal from '@/components/ModelSelectorModal';
+import Footer from '@/components/Footer';
+
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "Aanavandi Parcel - KSRTC Bus Cargo Booking & Public Tracking",
-  description:
-    "Book state bus parcels between Kerala bus stations with real-time public tracking by reference number.",
+  title: 'VERBAL ARENA — AI Debate Coach & Presentation Intelligence Platform',
+  description: 'AI-powered Debate Coaching, Fallacy Detection, Multi-Model Simulation, and Speech & Presentation Analysis Platform.',
 };
 
 export default function RootLayout({
@@ -15,13 +20,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen flex flex-col bg-paper-light dark:bg-paper-dark text-slate-900 dark:text-slate-100 antialiased selection:bg-amber-400 selection:text-slate-950">
-        <Header />
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {children}
-        </main>
-        <Footer />
+    <html lang="en" className="light">
+      <body className={`${inter.className} min-h-screen bg-white text-black antialiased selection:bg-black selection:text-white flex flex-col justify-between`}>
+        <AuthProvider>
+          <ModelProvider>
+            <Navbar />
+            <ModelSelectorModal />
+            <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+              {children}
+            </main>
+            <Footer />
+          </ModelProvider>
+        </AuthProvider>
       </body>
     </html>
   );

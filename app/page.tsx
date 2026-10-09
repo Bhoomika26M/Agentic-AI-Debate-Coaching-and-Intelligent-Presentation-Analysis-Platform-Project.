@@ -1,179 +1,176 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Search, Package, ShieldCheck, Bus, ArrowRight, CheckCircle2, Ticket } from "lucide-react";
+import React from 'react';
+import Link from 'next/link';
+import {
+  Mic,
+  MessageSquare,
+  ArrowRight,
+  Sparkles
+} from 'lucide-react';
+import { AI_MODELS } from '@/lib/ai-models';
 
-export default function HomePage() {
-  const router = useRouter();
-  const [refInput, setRefInput] = useState("");
-
-  const handleTrackSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (refInput.trim()) {
-      router.push(`/track/${refInput.trim().toUpperCase()}`);
-    }
-  };
-
-  const sampleParcels = [
-    { ref: "KSRTC-7A8B9C", label: "TVM → Kochi (In Transit)", status: "In transit" },
-    { ref: "KSRTC-3X4Y5Z", label: "Kozhikode → Kannur (Ready for Pickup)", status: "Arrived at destination depot" },
-    { ref: "KSRTC-9K8J7H", label: "Kollam → Kochi (Booked)", status: "Booked" },
-  ];
-
+export default function Home() {
   return (
-    <div className="space-y-12">
+    <div className="space-y-24 pb-24 max-w-7xl mx-auto px-4 sm:px-6">
       
-      {/* Hero Banner */}
-      <section className="bg-slate-900 text-white rounded-xl p-6 sm:p-10 border-b-8 border-ksrtc-amber shadow-2xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 opacity-10 pointer-events-none transform translate-x-12 -translate-y-12">
-          <Bus className="w-96 h-96 text-white" />
-        </div>
+      {/* HURU-Inspired Asymmetric Editorial Hero Section */}
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-center pt-8">
+        
+        {/* Left Column: Stacked High Impact Headlines */}
+        <div className="lg:col-span-7 space-y-10">
+          
+          <div className="space-y-4">
+            <div className="inline-flex items-center gap-2 border-2 border-black bg-neutral-100 px-4 py-2 text-xs font-mono font-black tracking-widest text-black uppercase">
+              <Sparkles className="h-4 w-4 text-black" />
+              AGENTIC AI MULTI-MODEL ENGINE
+            </div>
 
-        <div className="relative z-10 max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 bg-emerald-900/80 border border-emerald-600 px-3 py-1 rounded-full text-xs font-mono text-emerald-300">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            OFFICIAL KSRTC BUS LOGISTICS NETWORK
+            <div className="space-y-2 pt-2">
+              <h1 className="text-7xl sm:text-8xl lg:text-9xl font-black text-black tracking-tighter uppercase leading-none">
+                YOU
+              </h1>
+              <div>
+                <span className="inline-block bg-black text-white px-6 py-3 font-black text-6xl sm:text-7xl lg:text-8xl tracking-tight uppercase">
+                  DESERVE
+                </span>
+              </div>
+              <h1 className="text-6xl sm:text-7xl lg:text-8xl font-black text-black tracking-tighter uppercase leading-none">
+                VERBAL ARENA
+              </h1>
+            </div>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl font-mono font-extrabold text-white tracking-tight leading-tight">
-            Inter-Depot Bus Parcel Transit Across Kerala
-          </h1>
-
-          <p className="text-slate-300 text-sm sm:text-base leading-relaxed font-sans">
-            Send parcels between 30+ KSRTC stations directly on scheduled state transport buses. Track your waybill anywhere using only your reference number — no login or phone lookup required.
+          <p className="text-lg sm:text-xl text-neutral-700 leading-relaxed font-semibold max-w-xl">
+            Master debating, public speaking, and critical reasoning. Evaluate persuasive rhetoric, spot logical fallacies in real time, and audit presentation metrics across <strong>Gemini 2.0, GPT-4o, Claude 3.5, and DeepSeek R1</strong>.
           </p>
 
-          {/* Quick Track Input Box */}
-          <form onSubmit={handleTrackSubmit} className="pt-4 max-w-xl">
-            <div className="flex flex-col sm:flex-row gap-2 bg-slate-950 p-2 rounded-lg border-2 border-amber-500/80 shadow-lg">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Enter Waybill Ref (e.g. KSRTC-7A8B9C)"
-                  value={refInput}
-                  onChange={(e) => setRefInput(e.target.value)}
-                  className="w-full bg-transparent text-white pl-10 pr-4 py-3 text-sm font-mono tracking-wider focus:outline-none placeholder-slate-500 uppercase"
-                />
+          <div className="flex flex-wrap gap-5 pt-4">
+            <Link
+              href="/debate"
+              className="flex items-center gap-4 bg-black text-white px-10 py-5 font-black uppercase text-sm sm:text-base tracking-widest hover:bg-neutral-800 transition-all shadow-2xl"
+            >
+              <MessageSquare className="h-5 w-5" /> ENTER DEBATE ARENA
+            </Link>
+
+            <Link
+              href="/presentation"
+              className="flex items-center gap-4 border-4 border-black bg-white text-black px-10 py-5 font-black uppercase text-sm sm:text-base tracking-widest hover:bg-black hover:text-white transition-all"
+            >
+              <Mic className="h-5 w-5" /> PRESENTATION STUDIO
+            </Link>
+          </div>
+
+        </div>
+
+        {/* Right Column: Hero Feature Card */}
+        <div className="lg:col-span-5">
+          <div className="relative border-4 border-black bg-neutral-50 p-10 space-y-8 shadow-[16px_16px_0px_0px_rgba(0,0,0,1)]">
+            <div className="flex justify-between items-center border-b-4 border-black pb-5">
+              <span className="font-mono font-black text-sm uppercase tracking-widest text-black">
+                LIVE ARENA BOOTH
+              </span>
+              <span className="bg-black text-white px-3 py-1.5 text-xs font-mono font-bold uppercase">
+                READY
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-2xl font-black uppercase tracking-tight text-black leading-snug">
+                WSDC Parliamentary & Oxford Debate Simulation
+              </h3>
+              <p className="text-sm text-neutral-600 leading-relaxed font-semibold">
+                Real-time speech recording, automated Point of Information (POI) interjections, and official 5-part judge scorecards.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 pt-2">
+              <div className="border-2 border-black bg-white p-4 space-y-1">
+                <span className="text-xs font-mono font-bold uppercase text-neutral-500 block">JUDGE SCORING</span>
+                <span className="text-sm font-black uppercase text-black">30% Arg • 20% Ev</span>
               </div>
-              <button
-                type="submit"
-                className="bg-ksrtc-amber hover:bg-amber-500 text-slate-950 font-bold px-6 py-3 rounded text-sm font-mono flex items-center justify-center gap-2 transition-colors shadow"
+              <div className="border-2 border-black bg-white p-4 space-y-1">
+                <span className="text-xs font-mono font-bold uppercase text-neutral-500 block">FALLACY DETECTOR</span>
+                <span className="text-sm font-black uppercase text-black">8 Fallacies</span>
+              </div>
+            </div>
+
+            <div className="pt-4">
+              <Link
+                href="/debate"
+                className="w-full flex items-center justify-between border-4 border-black bg-black text-white p-5 font-black text-sm uppercase tracking-wider hover:bg-neutral-800 transition-all"
               >
-                <span>Track Waybill</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+                <span>LAUNCH PRACTICE ROUND</span>
+                <ArrowRight className="h-5 w-5" />
+              </Link>
             </div>
-          </form>
-
-          {/* Demo Quick Track Samples */}
-          <div className="pt-2 flex flex-wrap items-center gap-2 text-xs font-mono text-slate-400">
-            <span className="text-amber-400 font-bold">Try Demo Waybills:</span>
-            {sampleParcels.map((sp) => (
-              <button
-                key={sp.ref}
-                onClick={() => router.push(`/track/${sp.ref}`)}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded border border-slate-700 transition-colors"
-              >
-                {sp.ref}
-              </button>
-            ))}
           </div>
-
-        </div>
-      </section>
-
-      {/* 3 Main Action Cards */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
-        {/* Card 1: Book */}
-        <div className="bg-white dark:bg-slate-900 rounded-lg p-6 border-2 border-slate-200 dark:border-slate-800 shadow-ticket flex flex-col justify-between hover:border-emerald-600 transition-all group">
-          <div>
-            <div className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 w-12 h-12 rounded-lg flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-              <Package className="w-6 h-6" />
-            </div>
-            <h3 className="font-mono font-bold text-lg text-slate-900 dark:text-slate-100 mb-2">
-              Book a Bus Parcel
-            </h3>
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
-              Choose origin and destination depots, select bus timings with live remaining cargo space, and get an instant reference number & delivery OTP.
-            </p>
-          </div>
-          <Link
-            href="/book"
-            className="inline-flex items-center gap-2 text-xs font-mono font-bold text-emerald-800 dark:text-emerald-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-300"
-          >
-            <span>Start Booking Form</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-
-        {/* Card 2: Track */}
-        <div className="bg-white dark:bg-slate-900 rounded-lg p-6 border-2 border-slate-200 dark:border-slate-800 shadow-ticket flex flex-col justify-between hover:border-amber-500 transition-all group">
-          <div>
-            <div className="bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 w-12 h-12 rounded-lg flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-              <Search className="w-6 h-6" />
-            </div>
-            <h3 className="font-mono font-bold text-lg text-slate-900 dark:text-slate-100 mb-2">
-              Public Tracking
-            </h3>
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
-              Enter your reference number to view the 6-stage transit stepper and real-time reverse-chronological timeline of depot scan notes.
-            </p>
-          </div>
-          <Link
-            href="/track"
-            className="inline-flex items-center gap-2 text-xs font-mono font-bold text-amber-700 dark:text-amber-400 group-hover:text-amber-600 dark:group-hover:text-amber-300"
-          >
-            <span>Open Tracking Lookup</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-
-        {/* Card 3: Staff */}
-        <div className="bg-white dark:bg-slate-900 rounded-lg p-6 border-2 border-slate-200 dark:border-slate-800 shadow-ticket flex flex-col justify-between hover:border-slate-700 transition-all group">
-          <div>
-            <div className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 w-12 h-12 rounded-lg flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-              <ShieldCheck className="w-6 h-6" />
-            </div>
-            <h3 className="font-mono font-bold text-lg text-slate-900 dark:text-slate-100 mb-2">
-              Depot Staff Desk
-            </h3>
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
-              Simulate depot staff scans to advance parcel status, verify receiver OTPs upon final handover, and view station manifests.
-            </p>
-          </div>
-          <Link
-            href="/staff"
-            className="inline-flex items-center gap-2 text-xs font-mono font-bold text-slate-800 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-slate-100"
-          >
-            <span>Open Depot Desk</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
         </div>
 
       </section>
 
-      {/* Hackathon Submission Highlights */}
-      <section className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-6 rounded-lg">
-        <h3 className="font-mono font-bold text-emerald-900 dark:text-emerald-300 text-sm uppercase tracking-wider mb-3 flex items-center gap-2">
-          <Ticket className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
-          Shared Persistent Storage & Live Walkthrough Ready
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-700 dark:text-slate-300">
-          <div className="flex items-start gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-            <p>
-              <strong>Multi-device persistent sync:</strong> Book on phone → Advance on depot staff screen → View live tracking update on receiver phone.
-            </p>
+      {/* Specifications Grid */}
+      <section className="space-y-10 border-t-4 border-black pt-16">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="space-y-2">
+            <span className="text-sm font-mono font-black text-neutral-400 uppercase tracking-widest">SPECIFICATIONS</span>
+            <h2 className="text-4xl sm:text-5xl font-black text-black tracking-tight uppercase">SUPPORTED AI ENGINES</h2>
           </div>
-          <div className="flex items-start gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-            <p>
-              <strong>OTP Delivery Guard:</strong> Server-side validation ensures parcel delivery cannot be completed without the correct 4-digit receiver code.
-            </p>
+          <p className="text-sm text-neutral-700 font-bold max-w-md">Zero-latency built-in simulator engine or custom model API keys.</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {AI_MODELS.map((model) => (
+            <div key={model.id} className="border-4 border-black bg-white p-8 space-y-6 hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] transition-all flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="border-2 border-black bg-neutral-100 px-3 py-1 text-xs font-mono font-bold text-black uppercase">
+                    {model.provider}
+                  </span>
+                  <span className="bg-black text-white px-3 py-1 text-xs font-mono font-bold uppercase">
+                    {model.badge}
+                  </span>
+                </div>
+                <h3 className="font-black text-xl uppercase text-black">{model.name}</h3>
+                <p className="text-sm text-neutral-600 leading-relaxed font-semibold">{model.description}</p>
+              </div>
+
+              <div className="border-t-2 border-neutral-200 pt-4">
+                <p className="text-xs font-bold uppercase text-black">🎯 <strong>BEST FOR:</strong> {model.recommendedFor}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Microservices Architecture */}
+      <section className="border-4 border-black bg-neutral-900 text-white p-12 space-y-10">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b-2 border-neutral-700 pb-8">
+          <div className="space-y-2">
+            <span className="text-xs font-mono font-black text-neutral-400 uppercase tracking-widest">ARCHITECTURE</span>
+            <h2 className="text-4xl font-black text-white uppercase tracking-tight">PDF COMPLIANT MICROSERVICES</h2>
+          </div>
+          <span className="bg-white text-black px-4 py-2 font-mono font-bold text-sm uppercase">
+            FastAPI / Next.js Stack
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 text-sm font-semibold">
+          <div className="border-2 border-neutral-700 bg-black p-6 space-y-3">
+            <h4 className="font-black font-mono text-white uppercase text-base">1. DEBATE SIMULATION</h4>
+            <p className="text-neutral-400 leading-relaxed">Multi-turn debate flow, Parliamentary & Oxford formats, POI interjections.</p>
+          </div>
+          <div className="border-2 border-neutral-700 bg-black p-6 space-y-3">
+            <h4 className="font-black font-mono text-white uppercase text-base">2. ARGUMENT ENGINE</h4>
+            <p className="text-neutral-400 leading-relaxed">Claim extraction, evidence evaluation, reasoning quality scoring.</p>
+          </div>
+          <div className="border-2 border-neutral-700 bg-black p-6 space-y-3">
+            <h4 className="font-black font-mono text-white uppercase text-base">3. FALLACY DETECTOR</h4>
+            <p className="text-neutral-400 leading-relaxed">Identifies Ad Hominem, Straw Man, False Dilemma, Slippery Slope + 4 fallacies.</p>
+          </div>
+          <div className="border-2 border-neutral-700 bg-black p-6 space-y-3">
+            <h4 className="font-black font-mono text-white uppercase text-base">4. PRESENTATION ENGINE</h4>
+            <p className="text-neutral-400 leading-relaxed">Speech pace (WPM), filler word counts, Ethos/Pathos/Logos triad.</p>
           </div>
         </div>
       </section>
