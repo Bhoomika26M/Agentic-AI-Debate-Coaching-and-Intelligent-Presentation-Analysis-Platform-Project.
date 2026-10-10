@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: debate_coach_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: debate_user
+      POSTGRES_PASSWORD: debate_secure_password
+      POSTGRES_DB: debate_coach_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U debate_user -d debate_coach_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: debate_coach_backend
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://debate_user:debate_secure_password@db:5432/debate_coach_db
+      - JWT_SECRET_KEY=super-secret-debate-coach-jwt-key-2026-production
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: debate_coach_frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres_data:
