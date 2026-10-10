@@ -9,3 +9,5 @@ export const joinDebate = (id, payload = {}) => api.post(`/debates/${id}/join`, 
 export const getParticipants = (id) => api.get(`/debates/${id}/participants`)
 export const analyzeDebate = (id, payload) => api.post(`/debates/${id}/analysis`, payload)
 export const getDebateAnalysis = (id) => api.get(`/debates/${id}/analysis`)
+export const createSimulation = (id, payload) => api.post(`/debates/${id}/simulation`, payload)
+export const getSimulation = (id) => api.get(`/debates/${id}/simulation`)

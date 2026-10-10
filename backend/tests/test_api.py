@@ -82,3 +82,43 @@ def test_debate_update_delete_authorization_and_admin_users(client: TestClient) 
     register(client, "admin@example.com", "ADMINISTRATOR")
     admin_token = login(client, "admin@example.com")
     assert client.get("/api/users", headers=auth(admin_token)).status_code == 200
+
+
+def test_milestone3_simulation_and_coaching_flow(client: TestClient) -> None:
+    register(client)
+    token = login(client)
+    headers = auth(token)
+    created = client.post("/api/debates", headers=headers, json=debate_payload()).json()
+    debate_id = created["id"]
+
+    simulation = client.post(f"/api/debates/{debate_id}/simulation", headers=headers, json={"position": "FOR", "prompt": "AI should be used in classrooms."})
+    assert simulation.status_code == 201, simulation.text
+    body = simulation.json()
+    assert body["position"] == "FOR"
+    assert body["opponent_position"] == "AGAINST"
+    assert len(body["counterarguments"]) >= 2
+    assert body["score"]["overall"] > 0
+    skills_after_simulation = client.get("/api/skills/me", headers=headers).json()
+    assert skills_after_simulation["debate_score"] == round(body["score"]["overall"])
+    assert skills_after_simulation["communication_score"] == round(body["score"]["clarity"])
+
+    fetched = client.get(f"/api/debates/{debate_id}/simulate", headers=headers)
+    assert fetched.status_code == 200
+    assert fetched.json()["id"] == body["id"]
+
+    dashboard = client.get("/api/coaching/dashboard", headers=headers)
+    assert dashboard.status_code == 200
+    dashboard_body = dashboard.json()
+    assert "overall_readiness" in dashboard_body
+    assert len(dashboard_body["recommendations"]) >= 1
+
+    plan = client.get("/api/skills/me/coaching", headers=headers)
+    assert plan.status_code == 200
+    assert "plan" in plan.json()
+
+    history = client.get("/api/simulations/history", headers=headers)
+    assert history.status_code == 200
+    assert len(history.json()) == 1
+    dashboard_with_history = client.get("/api/coaching/dashboard", headers=headers)
+    assert dashboard_with_history.status_code == 200
+    assert len(dashboard_with_history.json()["simulation_history"]) == 1

@@ -6,6 +6,7 @@ without changing the API contract.
 """
 
 import re
+import logging
 from collections.abc import Iterable
 
 from datetime import UTC, datetime
@@ -13,6 +14,11 @@ from datetime import UTC, datetime
 from bson import ObjectId
 from pymongo.database import Database
 
+from app.ml.argument_quality_model import predict_argument_quality_batch
+from app.services.llm_analysis import analyze_with_llm
+from app.services.llm_service import LLMUnavailableError, llm_enabled
+
+logger = logging.getLogger(__name__)
 
 _EVIDENCE = re.compile(r"\b(?:because|evidence|study|research|data|statistics?|according to|percent|%)\b", re.I)
 _REASONING = re.compile(r"\b(?:therefore|thus|so|which means|this shows|consequently|as a result)\b", re.I)
@@ -54,7 +60,23 @@ def _find_fallacies(sentences: Iterable[str]) -> list[dict]:
     return findings
 
 
+def _ml_adjusted_quality(sentences: list[str]) -> tuple[float, float, float, float]:
+    model_predictions = predict_argument_quality_batch(sentences)
+    if not model_predictions:
+        return (0.0, 0.0, 0.0, 0.0)
+    claim_quality = round(sum(model_predictions) / len(model_predictions), 2)
+    evidence_quality = round(min(100.0, claim_quality + 4.0), 2)
+    reasoning_quality = round(min(100.0, claim_quality + 2.5), 2)
+    fallacy_control = round(max(0.0, 100.0 - (100.0 - claim_quality) * 0.35), 2)
+    return claim_quality, evidence_quality, reasoning_quality, fallacy_control
+
+
 def analyze_transcript(transcript: str) -> dict:
+    if llm_enabled():
+        try:
+            return analyze_with_llm(transcript)
+        except LLMUnavailableError as exc:
+            logger.warning("OpenAI transcript analysis unavailable; using local fallback: %s", exc)
     sentences = _sentences(transcript)
     arguments = _arguments(sentences)
     fallacies = _find_fallacies(sentences)
@@ -62,6 +84,9 @@ def analyze_transcript(transcript: str) -> dict:
     evidence_quality = min(100.0, 35.0 + sum(bool(item["evidence"]) for item in arguments) * 15.0)
     reasoning_quality = min(100.0, 35.0 + sum(bool(item["reasoning"]) for item in arguments) * 15.0)
     fallacy_control = max(0.0, 100.0 - len(fallacies) * 15.0)
+    adjusted = _ml_adjusted_quality(sentences)
+    if adjusted[0] > 0:
+        claim_quality, evidence_quality, reasoning_quality, fallacy_control = adjusted
     overall = round(claim_quality * 0.3 + evidence_quality * 0.25 + reasoning_quality * 0.3 + fallacy_control * 0.15, 2)
     counterarguments = [
         f"Ask what evidence supports: {arguments[0]['claim']}." if arguments else "State the central claim explicitly.",
@@ -92,6 +117,24 @@ def save_analysis(db: Database, debate: dict, user: dict, transcript: str) -> di
         report["_id"] = existing["_id"]
     else:
         report["_id"] = db.analysis_reports.insert_one(report).inserted_id
+    db.skills.update_one(
+        {"user_id": user["_id"]},
+        {
+            "$max": {
+                "communication_score": round(result["scores"]["claim_quality"]),
+                "critical_thinking_score": round(
+                    (result["scores"]["evidence_quality"] + result["scores"]["reasoning_quality"]) / 2
+                ),
+                "debate_score": round(result["scores"]["overall"]),
+            },
+            "$set": {"updated_at": now},
+            "$setOnInsert": {
+                "presentation_score": 0,
+                "created_at": now,
+            },
+        },
+        upsert=True,
+    )
     return report
 
 

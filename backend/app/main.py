@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app import models  # noqa: F401
-from app.routers import analysis, auth, debates, health, profiles, skills, users
+from app.routers import analysis, auth, coaching, debates, health, profiles, skills, users
 
 
 app = FastAPI(
@@ -27,3 +27,4 @@ app.include_router(profiles.router)
 app.include_router(skills.router)
 app.include_router(debates.router)
 app.include_router(analysis.router)
+app.include_router(coaching.router)

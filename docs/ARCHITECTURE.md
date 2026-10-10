@@ -51,12 +51,20 @@ user information.
 ## Deterministic debate analysis (Milestone 2)
 
 `POST /api/debates/{id}/analysis` accepts a transcript and stores a generated
-report in the `analysis_reports` MongoDB collection. The analysis service uses
-sentence extraction and stable lexical rules for argument structure, evidence,
-reasoning, seven supported fallacy categories, counterargument prompts, and a
-weighted score. `GET` returns the latest report. Access is limited to debate
-participants, the creator, and administrators; no external model or provider
-is required.
+report in the `analysis_reports` MongoDB collection. When `OPENAI_API_KEY` is
+configured, the analysis service sends the transcript to ChatGPT with a strict
+JSON response contract and validates the returned scores and report shape
+before persistence. If the provider is unavailable or returns invalid data,
+the local trained model and deterministic rules remain available. `GET`
+returns the latest report. Access is limited to debate participants, the
+creator, and administrators.
+
+### AI simulation and coaching (Milestone 3)
+
+Simulation requests use the same OpenAI provider boundary. ChatGPT generates
+an opening statement, counterarguments, rebuttals, strengths, weaknesses, and
+scores when configured. The explainable local simulation is used as a
+provider-independent fallback.
 
 ## Extension boundary
 

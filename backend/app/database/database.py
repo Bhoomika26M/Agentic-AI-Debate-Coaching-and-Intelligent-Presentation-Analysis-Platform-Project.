@@ -21,3 +21,5 @@ def configure_indexes(db: Database) -> None:
     db.skills.create_index("user_id", unique=True)
     db.participants.create_index([("debate_id", 1), ("user_id", 1)], unique=True)
     db.analysis_reports.create_index("debate_id", unique=True)
+    db.simulation_reports.create_index("debate_id", unique=True)
+    db.simulation_attempts.create_index([("user_id", 1), ("created_at", -1)])

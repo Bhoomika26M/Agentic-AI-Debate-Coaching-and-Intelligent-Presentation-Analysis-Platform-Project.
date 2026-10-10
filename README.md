@@ -16,6 +16,36 @@ This repository currently contains the Week 1-2 foundation only:
 
 Milestone 2 adds MongoDB-backed, deterministic debate analysis. It extracts arguments, scores claim/evidence/reasoning quality, detects supported logical fallacies, suggests counterarguments, and returns actionable feedback without an external LLM dependency.
 
+Milestone 3 adds deterministic AI debate simulation and coaching support. The backend now can generate mock opponent positions, produce rebuttal guidance, and return personalized learning dashboards based on skill scores and focus areas.
+
+The platform also includes a lightweight trained argument-quality scoring model
+at `backend/app/ml/artifacts/argument_quality_model.joblib`. Version 2 uses
+74 balanced labeled examples across strong, moderate, unsupported, and
+fallacious arguments. It stores feature vectors and uses nearest labeled
+examples for explainable scoring. Retrain it with
+`python -m app.ml.train_argument_quality_model`. This dataset is suitable for
+development and demonstration; real production accuracy requires a larger
+human-labeled debate corpus and a held-out evaluation set.
+
+## ChatGPT / OpenAI integration
+
+The analysis and AI simulation services use OpenAI's ChatGPT API when
+`OPENAI_API_KEY` is configured. Without a key, the local model and deterministic
+fallbacks continue to work, so tests and local development do not require a
+network request.
+
+Set these values in `backend/.env`:
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_TIMEOUT_SECONDS=30
+```
+
+Never commit the API key. The `.env` file is local configuration and
+`.env.example` contains only the configuration template.
+
 Architecture, schema, and frontend workflow details are documented in `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, and `docs/FRONTEND_WORKFLOW.md`.
 
 ## Backend Setup
