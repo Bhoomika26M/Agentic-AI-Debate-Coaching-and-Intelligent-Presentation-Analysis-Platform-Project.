@@ -2,9 +2,7 @@ const configuredApiOrigin = import.meta.env.VITE_API_BASE_URL?.trim();
 
 function resolveApiOrigin(value: string | undefined) {
   if (!value) {
-    if (import.meta.env.PROD) {
-      throw new Error("Set VITE_API_BASE_URL to the deployed Python API origin before building.");
-    }
+    // Blank means a same-origin relative API ("/api/...").
     return "";
   }
 

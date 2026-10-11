@@ -166,6 +166,35 @@ function StatusTag({ state }: { state: BackendState }) {
 
 const HASH_VIEWS: View[] = ["landing", "setup", "present", "auth", "account"];
 
+const SNAPSHOT_KEY = "verdict-arena-snapshot";
+const RECENTS_KEY = "verdict-recent-motions";
+
+type ArenaSnapshot = {
+  messages: DebateMessage[];
+  draft: string;
+  secondsLeft: number;
+  duration: number;
+  topicChoice: string;
+  customTopic: string;
+  position: "for" | "against";
+  persona: PersonaKey;
+  difficulty: DebateOptions["difficulty"];
+  sessionId: number;
+  startedAt: number;
+  recordId: string | null;
+  savedAt: number;
+};
+
+function loadRecentMotions(): string[] {
+  try {
+    const raw = window.localStorage.getItem(RECENTS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string").slice(0, 3) : [];
+  } catch {
+    return [];
+  }
+}
+
 function viewFromHash(): View {
   const hash = window.location.hash.replace("#/", "").replace("#", "");
   return (HASH_VIEWS as string[]).includes(hash) ? (hash as View) : "landing";
@@ -195,6 +224,9 @@ export default function App() {
   const [recordId, setRecordId] = useState<string | null>(null);
   const [recordNotice, setRecordNotice] = useState("");
   const [startingSession, setStartingSession] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState<ArenaSnapshot | null>(null);
+  const [recentMotions, setRecentMotions] = useState<string[]>(() => loadRecentMotions());
   const [analysis, setAnalysis] = useState<AnalysisReport | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
@@ -207,6 +239,7 @@ export default function App() {
   const [helpNotice, setHelpNotice] = useState("");
   const pollAttempts = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const savedTurnIds = useRef(new Set<string>());
 
@@ -394,6 +427,54 @@ export default function App() {
   }, [messages]);
 
   useEffect(() => {
+    if (view !== "arena") return;
+    const snapshot: ArenaSnapshot = {
+      messages, draft, secondsLeft, duration, topicChoice, customTopic,
+      position, persona, difficulty, sessionId, startedAt, recordId,
+      savedAt: Date.now(),
+    };
+    try {
+      window.sessionStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+    } catch {
+      /* Private browsing or quota — the live session is unaffected. */
+    }
+  }, [view, messages, draft, secondsLeft, duration, topicChoice, customTopic, position, persona, difficulty, sessionId, startedAt, recordId]);
+
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(SNAPSHOT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<ArenaSnapshot>;
+      if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+        setSavedSnapshot(parsed as ArenaSnapshot);
+      }
+    } catch {
+      /* A corrupt snapshot is the same as no snapshot. */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view !== "arena" || learnerTurns.length === 0) return;
+    const guard = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [view, learnerTurns.length]);
+
+  useEffect(() => {
+    if (!confirmEnd) return;
+    const timer = window.setTimeout(() => setConfirmEnd(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [confirmEnd]);
+
+  useEffect(() => {
+    if (view !== "arena") return;
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    composerRef.current?.focus({ preventScroll: true });
+  }, [view, sessionId]);
+
+  useEffect(() => {
     if (!recordId) return;
     messages.forEach((message, index) => {
       if (message.pending || !message.content.trim() || savedTurnIds.current.has(message.id)) return;
@@ -435,6 +516,18 @@ export default function App() {
     }
     setRecordId(nextRecordId);
     setSessionId((current) => current + 1);
+    const recent = activeTopic.trim().slice(0, 240);
+    if (recent) {
+      setRecentMotions((current) => {
+        const next = [recent, ...current.filter((item) => item !== recent)].slice(0, 3);
+        try {
+          window.localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+        } catch {
+          /* Recents are a convenience — the session starts regardless. */
+        }
+        return next;
+      });
+    }
     setView("arena");
     setStartingSession(false);
   }
@@ -484,9 +577,29 @@ export default function App() {
     }
   }
 
+  function clearSnapshot() {
+    try {
+      window.sessionStorage.removeItem(SNAPSHOT_KEY);
+    } catch {
+      /* Nothing to clear. */
+    }
+    setSavedSnapshot(null);
+  }
+
+  function requestEndSession() {
+    if (learnerTurns.length === 0 || confirmEnd) {
+      setConfirmEnd(false);
+      finishSession();
+      return;
+    }
+    setConfirmEnd(true);
+  }
+
   function finishSession() {
     abortRef.current?.abort();
     setStreaming(false);
+    setConfirmEnd(false);
+    clearSnapshot();
     if (recordId) {
       void finishDebateRecord(recordId).catch(() => {
         setRecordNotice("The transcript is saved, but the rehearsal could not be marked complete. It will remain in your archive.");
@@ -552,10 +665,47 @@ export default function App() {
     }
   }
 
+  function resumeSnapshot(snapshot: ArenaSnapshot) {
+    const remaining = Math.max(0, snapshot.secondsLeft - Math.floor((Date.now() - snapshot.savedAt) / 1000));
+    if (remaining <= 0 || snapshot.messages.length === 0) {
+      clearSnapshot();
+      return;
+    }
+    setTopicChoice(snapshot.topicChoice);
+    setCustomTopic(snapshot.customTopic);
+    setPosition(snapshot.position);
+    setPersona(snapshot.persona);
+    setDifficulty(snapshot.difficulty);
+    setDuration(snapshot.duration);
+    setSecondsLeft(remaining);
+    setMessages(snapshot.messages.map((message) => ({ ...message, pending: false })));
+    savedTurnIds.current = new Set(snapshot.messages.map((message) => message.id));
+    setDraft(snapshot.draft);
+    setSessionId(snapshot.sessionId);
+    setStartedAt(snapshot.startedAt);
+    setRecordId(snapshot.recordId);
+    setStreaming(false);
+    setCueVisible(false);
+    setRecordNotice("");
+    setSavedSnapshot(null);
+    setView("arena");
+  }
+
+  function applyRecentMotion(title: string) {
+    if (motionTitles.includes(title)) {
+      setTopicChoice(title);
+      setCustomTopic("");
+    } else {
+      setTopicChoice("");
+      setCustomTopic(title);
+    }
+  }
+
   function returnHome() {
     abortRef.current?.abort();
     setStreaming(false);
     setView("landing");
+    setConfirmEnd(false);
     setMessages([]);
     setSessionId(0);
     setRecordId(null);
@@ -629,6 +779,12 @@ export default function App() {
                 <p className="hero-intro">
                   Step into a live debate rehearsal. Make your case, meet a distinct opponent, and find your next line under pressure.
                 </p>
+                {savedSnapshot && savedSnapshot.messages.length > 0 && (
+                  <div className="resume-banner" role="status">
+                    <div><span>REHEARSAL IN PROGRESS</span><p>{savedSnapshot.messages.filter((message) => message.speaker === "learner").length} of your turns on “{(savedSnapshot.customTopic.trim() || savedSnapshot.topicChoice).slice(0, 80)}” are still here.</p></div>
+                    <div className="resume-actions"><button className="button button-dark" onClick={() => resumeSnapshot(savedSnapshot)}>Resume rehearsal</button><button className="button" onClick={clearSnapshot}>Discard</button></div>
+                  </div>
+                )}
                 <div className="hero-actions">
                   <button className="button button-primary" onClick={() => setView("setup")}>
                     Open the prompt book <ArrowUpRight size={17} />
@@ -767,18 +923,33 @@ export default function App() {
             <div className="setup-heading">
               <h1>Set the scene.<br /><span>Choose your side.</span></h1>
               <p>Pick a motion, choose your scene partner, and set the pace for this rehearsal.</p>
+              <div className="setup-progress" role="status" aria-label="Setup summary">
+                <span className={activeTopic.trim() ? "is-set" : "is-missing"}>MOTION · {activeTopic.trim() ? "SET" : "CHOOSE ONE"}</span>
+                <span className="is-set">SIDE · {position.toUpperCase()}</span>
+                <span className="is-set">OPPONENT · {activePersona.name.replace("The ", "").toUpperCase()}</span>
+                <span className="is-set">DIFFICULTY · {difficultyOptions.find((option) => option.value === difficulty)?.label.toUpperCase()} · {duration} MIN</span>
+              </div>
             </div>
 
             <div className="setup-layout">
               <section className="setup-panel motion-panel">
                 <div className="panel-heading"><span className="panel-count">A</span><div><h2>Your motion</h2><p>What do you want to make a case for?</p></div></div>
+                {recentMotions.length > 0 && (
+                  <div className="recent-motions">
+                    <span>RECENT</span>
+                    {recentMotions.map((recent) => (
+                      <button key={recent} type="button" onClick={() => applyRecentMotion(recent)} title={recent}>
+                        {recent.length > 48 ? `${recent.slice(0, 48)}…` : recent}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="topic-list" role="radiogroup" aria-label="Choose a motion">
                   {motionTitles.map((topic, index) => (
                     <button
                       key={topic}
                       role="radio"
                       aria-checked={topicChoice === topic && !customTopic}
-                      aria-pressed={topicChoice === topic && !customTopic}
                       className={`topic-option ${topicChoice === topic && !customTopic ? "selected" : ""}`}
                       onClick={() => { setTopicChoice(topic); setCustomTopic(""); }}
                     >
@@ -812,15 +983,15 @@ export default function App() {
                 </div>
               </section>
 
-              <section className="setup-panel opponent-panel">
                 <div className="panel-heading"><span className="panel-count">B</span><div><h2>Across the room</h2><p>Choose the voice that tests you best.</p></div></div>
+              <a className="setup-continue" href="#setup-opponent">Next: your opponent <ArrowDownRight size={15} /></a>
+              <section className="setup-panel opponent-panel" id="setup-opponent">
                 <div className="persona-list" role="radiogroup" aria-label="Choose your opponent">
                   {personas.map((person) => (
                     <button
                       key={person.key}
                       role="radio"
                       aria-checked={persona === person.key}
-                      aria-pressed={persona === person.key}
                       className={`persona-option tone-${person.color} ${persona === person.key ? "selected" : ""}`}
                       onClick={() => setPersona(person.key)}
                     >
@@ -838,8 +1009,7 @@ export default function App() {
                       <button
                         role="radio"
                         aria-checked={difficulty === option.value}
-                        aria-pressed={difficulty === option.value}
-                        title={option.value === "cross-examination" ? "Cross-examination" : option.label}
+                        title={option.label}
                         className={difficulty === option.value ? "selected" : ""} key={option.value} onClick={() => setDifficulty(option.value)}>
                         <span>0{index + 1}</span><b>{option.label}</b><small>{option.detail}</small>
                       </button>
@@ -878,12 +1048,18 @@ export default function App() {
             <header className="arena-header">
               <button className="arena-brand" onClick={returnHome} aria-label="Return home"><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button>
               <div className="arena-session"><span>LIVE REHEARSAL</span><i /> <span>ACT / {String(sessionId).slice(-4).padStart(4, "0")}</span></div>
-              <div className="arena-header-actions"><span className={`arena-model model-${backendState}`}><i /> {backendState === "ready" ? "AI OPPONENT READY" : backendState === "warming" ? "AI OPPONENT WARMING" : backendState === "offline" ? "AI OPPONENT OFFLINE" : "CHECKING OPPONENT"}</span><button className="end-button" onClick={finishSession}>End session <X size={15} /></button></div>
+              <div className="arena-header-actions"><span className={`arena-model model-${backendState}`}><i /> {backendState === "ready" ? "OPPONENT READY" : backendState === "warming" ? "OPPONENT WARMING" : backendState === "offline" ? "OPPONENT OFFLINE" : "CHECKING OPPONENT"}</span><button className={`end-button${confirmEnd ? " armed" : ""}`} onClick={requestEndSession}>{confirmEnd ? "Tap again to end" : "End session"} <X size={15} /></button></div>
             </header>
 
+            <div className="arena-statusbar" role="status" aria-label="Session status">
+              <span className="statusbar-motion">{activeTopic}</span>
+              <span className="statusbar-side">{position === "for" ? "FOR" : "AGAINST"}</span>
+              <span className="statusbar-turn">TURN {Math.max(1, learnerTurns.length + 1).toString().padStart(2, "0")}</span>
+              <span className={`statusbar-clock ${secondsLeft < 60 ? "clock-urgent" : ""}`}><i aria-hidden="true" />{formatTime(secondsLeft)}</span>
+            </div>
+
             <div className="arena-casebar">
-              <div><span className="casebar-label">THE MOTION</span><h1>{activeTopic}</h1></div>
-              <div className="casebar-side"><span>YOU SPEAK</span><b>{position.toUpperCase()}</b></div>
+              <div><span className="casebar-label">MOTION</span><h1>{activeTopic}</h1></div>
               <div className={`arena-clock ${secondsLeft < 60 ? "clock-urgent" : ""}`}><TimerReset size={17} /><span>{formatTime(secondsLeft)}</span>{secondsLeft < 60 && secondsLeft > 0 && <span className="clock-warning">Final minute</span>}</div>
             </div>
 
@@ -961,6 +1137,7 @@ export default function App() {
                 <form className="argument-composer" onSubmit={(event) => void submitArgument(event)}>
                   <div className="composer-topline"><span><CornerDownLeft size={13} /> YOUR TURN</span><span>{draft.length} / 1000 · ENTER TO SEND</span></div>
                   <textarea
+                    ref={composerRef}
                     value={draft}
                     onChange={(event) => setDraft(event.target.value.slice(0, 1000))}
                     onKeyDown={(event) => {
@@ -975,7 +1152,7 @@ export default function App() {
                     disabled={streaming || secondsLeft === 0}
                   />
                   {challengeError && <div className="inline-notice" role="status">{challengeError}</div>}
-                  <div className="composer-bottom"><span>One claim at a time — aim for 1–2 sentences. Enter sends · Shift + Enter adds a line.</span><button className="challenge-button" type="button" onClick={() => void requestFollowUp()} disabled={challenging || streaming || learnerTurns.length === 0 || challengeDepth() >= 2 || secondsLeft === 0}>{challenging ? <LoaderCircle size={15} className="spin" /> : <Sparkles size={14} />} <span>{challengeDepth() >= 2 ? "Follow-ups done" : "Challenge me"}</span></button><button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">{streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />} <span>{streaming ? "Opponent has the floor" : "Make your case"}</span></button></div>
+                  <div className="composer-bottom"><span>One claim at a time — aim for 1–2 sentences. Enter sends · Shift + Enter adds a line.</span><button className="challenge-button" type="button" onClick={() => void requestFollowUp()} disabled={challenging || streaming || learnerTurns.length === 0 || challengeDepth() >= 2 || secondsLeft === 0} title={learnerTurns.length === 0 ? "Make your case first — follow-ups unlock after your opening turn" : "Ask the coach to press your latest point"}>{challenging ? <LoaderCircle size={15} className="spin" /> : <Sparkles size={14} />} <span>{challengeDepth() >= 2 ? "Follow-ups done" : learnerTurns.length === 0 ? "Make a case first" : "Ask a follow-up"}</span></button><button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">{streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />} <span>{streaming ? "Opponent is replying" : "Make your case"}</span></button></div>
                 </form>
               </section>
 
@@ -990,6 +1167,7 @@ export default function App() {
                 <div className="room-divider" />
                 <div className="live-note"><span className="live-note-mark"><Swords size={15} /></span><b>YOUR WORDS SET THE SCENE.</b><p>Your opponent responds to the argument you make, not a preset sequence.</p></div>
                 <div className="room-status"><span>OPPONENT STATUS</span><b className={`model-${backendState}`}><i /> {backendState === "ready" ? "CONNECTED" : backendState === "warming" ? "WARMING" : backendState === "offline" ? "OFFLINE" : "CHECKING"}</b></div>
+                {!user && <div className="room-guest"><span>GUEST REHEARSAL</span><p>This transcript stays in this browser. Sign in to keep it in your archive.</p></div>}
               </aside>
             </div>
             <div className="arena-bottomline"><span>VERDICT / PRACTICE ROOM</span><span>AI OPPONENT STREAMED LIVE</span><span>SESSION LENGTH {duration} MIN</span></div>

@@ -218,7 +218,7 @@
   line-height: 1.55;
 }
 
-.auth-feedback.is-error { border-color: #c68479; color: #762d25; background: #f5e5dc; }
+.auth-feedback.is-error { border: 3px double #762d25; color: #762d25; background: #f5e5dc; font-weight: 700; }
 .auth-feedback.is-success { border-color: #9bafa1; color: #314d43; background: #e8efe8; }
 .auth-config-note { color: #534c41; background: #eee7d8; }
 
@@ -258,7 +258,7 @@
   .auth-welcome > p { font-size: 13px; }
   .auth-benefits { margin-top: 18px; }
   .auth-benefits > div { min-height: 46px; padding-block: 9px; }
-  .auth-guest-link { margin-top: 14px; }
+  .auth-guest-link { min-height: 44px; margin-top: 14px; align-items: center; }
 }
 
 @media (max-width: 420px) {
