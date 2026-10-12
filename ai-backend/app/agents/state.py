@@ -14,6 +14,7 @@ class DebateState(TypedDict, total=False):
     difficulty: str
     history: list[DebateTurnState]
     latest: str | None
+    preferences: dict | None
     route: Literal["respond", "redirect"]
     reply: str
     brief: str | None

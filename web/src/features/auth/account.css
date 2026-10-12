@@ -13,9 +13,33 @@
 .account-seal { width: 39px; height: 39px; margin-bottom: 16px; display: grid; place-items: center; border: 1px solid #a89b84; color: #8d4035; }
 .account-intro h1 { margin: 0 0 13px; font: 500 clamp(3rem, 5.5vw, 4.8rem)/.98 var(--serif); letter-spacing: -.025em; }
 .account-intro h1 em { color: #8d4035; font-weight: 500; }
-.account-intro > p { margin: 0; color: #5a5349; font-size: 12px; }
+.account-intro-line { max-width: 62ch; margin: 0; color: #4b453c; font-size: 13px; line-height: 1.65; }
+.account-intro-line.is-open { color: #8d4035; }
+.account-intro-mail { margin: 10px 0 0; color: #6d655a; font: 10px var(--mono); }
 .account-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr); align-items: start; gap: 30px; }
 .account-profile { margin-bottom: 30px; padding: 20px; border: 1px solid #c9bda9; background: var(--paper-light); }
+.account-setup-band { margin-bottom: 30px; display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); align-items: start; gap: 22px; }
+.account-setup-band .account-profile { margin-bottom: 0; }
+.account-room { padding: 20px; border: 1px solid #c9bda9; background: var(--paper-light); }
+.room-question { margin-top: 17px; }
+.room-label { display: block; margin-bottom: 9px; color: #5e574d; font: 8px var(--mono); letter-spacing: .08em; }
+.room-label em { color: var(--muted); font-style: normal; letter-spacing: 0; }
+.room-chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(186px, 1fr)); gap: 9px; }
+.room-chips button { min-height: 58px; padding: 10px 12px; display: grid; align-content: center; gap: 3px; border: 1px solid #c7bba6; color: var(--ink); background: #fffdf8; text-align: left; cursor: pointer; transition: background .18s, border-color .18s, color .18s; }
+.room-chips button:hover { border-color: #a99c85; background: #f7efe0; }
+.room-chips button.is-picked { border-color: var(--stage); color: var(--paper-light); background: var(--stage); }
+.room-chips button:focus-visible { outline: 2px solid var(--cue); outline-offset: 2px; }
+.room-chips b { font: 500 14px var(--serif); }
+.room-chips small { color: inherit; opacity: .82; font-size: 11px; line-height: 1.4; }
+.room-effect { margin-top: 19px; padding-top: 15px; border-top: 1px solid #bdb19c; }
+.room-effect-grid { margin-top: 11px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.room-effect-grid > div { min-width: 0; padding-right: 12px; border-right: 1px solid #ded3c0; }
+.room-effect-grid > div:last-child { padding-right: 0; border-right: 0; }
+.room-effect-grid span { display: block; color: #6d655a; font: 8px var(--mono); letter-spacing: .07em; }
+.room-effect-grid b { display: block; margin-top: 6px; color: var(--ink); font: 500 15px/1.25 var(--serif); }
+.room-effect p { margin: 13px 0 0; color: #4b453c; font-size: 11.5px; line-height: 1.6; }
+.account-setup-foot { margin-top: 20px; padding-top: 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #c7bba6; }
+.account-setup-foot p { max-width: 48ch; margin: 0; color: #5b5348; font-size: 11px; line-height: 1.6; }
 .account-profile label { display: block; margin: 12px 0 6px; color: #302b25; font-size: 11px; font-weight: 650; }
 .account-profile input[type="text"], .account-profile select, .account-profile textarea { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #bfb39e; color: var(--ink); background: #fffdf8; font-size: 12px; font-family: inherit; }
 .account-profile textarea { resize: vertical; }
@@ -60,6 +84,7 @@
 @media (max-width: 900px) {
   .account-layout { grid-template-columns: 1fr; }
   .record-detail { max-width: 700px; }
+  .account-setup-band { grid-template-columns: 1fr; gap: 18px; }
 }
 
 @media (max-width: 760px) {
@@ -76,8 +101,17 @@
   .record-turn.learner { margin-left: 10px; }
 }
 
-.account-tabs { margin-bottom: 22px; display: flex; gap: 8px; }
 .account-tabs button { min-height: 44px; padding: 0 18px; border: 1px solid #b7a992; color: #514a40; background: transparent; font-size: 11px; cursor: pointer; }
+@media (max-width: 560px) {
+  .room-chips { grid-template-columns: 1fr; }
+  .room-effect-grid { grid-template-columns: 1fr; }
+  .room-effect-grid > div { padding: 9px 0; border-right: 0; border-bottom: 1px solid #ded3c0; }
+  .room-effect-grid > div:last-child { border-bottom: 0; }
+  .room-effect-grid b { margin-top: 3px; }
+  .account-setup-foot { align-items: stretch; }
+  .account-setup-foot .button { width: 100%; }
+}
+
 .account-tabs button.active { color: var(--paper-light); background: var(--stage); border-color: var(--stage); }
 .account-progress { margin-bottom: 30px; padding: 20px; border: 1px solid #c9bda9; background: var(--paper-light); }
 .progress-stats { margin-top: 16px; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid #c7baa4; border-bottom: 1px solid #c7baa4; }

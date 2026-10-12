@@ -2,6 +2,18 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+GoalKey = Literal["structure", "evidence", "nerves", "hostile", "win"]
+PurposeKey = Literal["school", "university", "interview", "confidence", "competition"]
+FocusKey = Literal["argument", "delivery", "confidence"]
+
+
+class PracticePreferences(BaseModel):
+    """The learner's own onboarding answers, used to aim practice at what they asked for."""
+
+    goal: GoalKey | None = None
+    purpose: PurposeKey | None = None
+    focus: list[FocusKey] = Field(default_factory=list, max_length=3)
+
 
 class DebateTurn(BaseModel):
     speaker: Literal["learner", "opponent"]
@@ -15,6 +27,7 @@ class DebateRequest(BaseModel):
     difficulty: Literal["warm-up", "challenge", "cross-examination"]
     history: list[DebateTurn] = Field(default_factory=list, max_length=20)
     learner_argument: str | None = Field(default=None, max_length=4000)
+    preferences: PracticePreferences | None = None
 
 
 class AnalysisTurn(BaseModel):
@@ -181,6 +194,7 @@ class ChallengeRequest(BaseModel):
     history: list[ChallengeTurn] = Field(default_factory=list, max_length=20)
     latest: str = Field(min_length=1, max_length=4000)
     depth: int = Field(ge=0, le=2)
+    preferences: PracticePreferences | None = None
 
 
 class ChallengeResponse(BaseModel):

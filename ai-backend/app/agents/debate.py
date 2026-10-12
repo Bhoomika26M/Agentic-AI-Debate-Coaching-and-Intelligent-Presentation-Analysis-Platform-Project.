@@ -34,6 +34,7 @@ def _to_request(state: DebateState) -> DebateRequest:
             for t in state.get("history", [])
         ],
         learner_argument=state.get("latest"),
+        preferences=state.get("preferences"),
     )
 
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { useEffect, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, BookOpenText, Eye, EyeOff, LoaderCircle, RotateCcw, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { supabase, supabaseConfigured } from "./supabase";
 import "./auth.css";
 
@@ -210,15 +210,7 @@ export function AuthView({
     <main className="auth-page">
       <section className="auth-welcome">
         <h1>Keep your<br /><em>practice close.</em></h1>
-        <p>Save your debate sessions, return to the arguments that matter, and keep building your next point.</p>
-        <div className="auth-benefits">
-          <div><BookOpenText size={16} /><p>Revisit your debate transcript</p></div>
-          <div><RotateCcw size={16} /><p>Pick up where your practice left off</p></div>
-          <div><ShieldCheck size={16} /><p>Keep your words in your own account</p></div>
-        </div>
-        <button className="auth-guest-link" onClick={onContinueAsGuest}>
-          <ArrowLeft size={15} /> Continue to practice as a guest
-        </button>
+        <p>Sign in to keep your transcripts, argument reviews, and progress. You can also continue as a guest and keep everything in this browser.</p>
       </section>
 
       <section className="auth-workspace" aria-labelledby="auth-heading">
@@ -273,8 +265,7 @@ export function AuthView({
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             >
-              <h2 id="auth-heading">{mode === "sign-in" ? "Welcome back." : "Start your record."}</h2>
-              <p>{mode === "sign-in" ? "Return to your learner account." : "Create a learner account for your debate practice."}</p>
+              <h2 id="auth-heading">{mode === "sign-in" ? "Welcome back." : "Create your account."}</h2>
             </motion.div>
           </AnimatePresence>
         </div>
@@ -384,7 +375,10 @@ export function AuthView({
           </>
         )}
 
-        <p className="auth-privacy">Your password is handled by Supabase Auth. Verdict never sees or stores it.</p>
+        <button className="auth-guest-button" type="button" onClick={onContinueAsGuest}>
+          <ArrowLeft size={15} /> Continue as a guest — no account needed
+        </button>
+        <p className="auth-privacy">Passwords are handled by Supabase Auth. Verdict never sees or stores them.</p>
       </section>
     </main>
   );

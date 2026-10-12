@@ -1,20 +1,37 @@
-import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowUpRight, BookOpenText, Check, Download, LoaderCircle, Printer, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
 import { listDebateRecords, loadDebateAnalysis, loadDebateRecord, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
 import type { AnalysisReport } from "../../services/debate-api";
 import { requestJudge } from "../../services/debate-api";
 import { listPresentationFeedbacks } from "../../services/presentation-records";
-import { loadProfile, saveProfile, type LearnerProfile } from "../../services/profiles";
+import { emptyProfile, loadProfile, saveProfile, type LearnerProfile } from "../../services/profiles";
+import { difficultyFor, personaFor, personas } from "../debate-catalog";
+import {
+  FOCUS_OPTIONS,
+  GOAL_OPTIONS,
+  PURPOSE_OPTIONS,
+  buildRecommendation,
+  emptyPrefs,
+  focusLabels,
+  goalLine,
+  hasAnswers,
+  loadPrefs,
+  markOnboardingDone,
+  prefsToProfileFields,
+  purposeLine,
+  savePrefs,
+  stampPrefs,
+  type FocusKey,
+  type LearnerPrefs,
+} from "../../services/learner-prefs";
 import { useAuth } from "./AuthProvider";
 import "./account.css";
 
-const personaNames = {
-  strategist: "The Strategist",
-  skeptic: "The Skeptic",
-  diplomat: "The Diplomat",
-};
+function opponentName(key: string) {
+  return personas.find((person) => person.key === key)?.name ?? "Your opponent";
+}
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
@@ -31,16 +48,28 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
   const [loadingRecord, setLoadingRecord] = useState("");
   const [error, setError] = useState("");
   const [signingOut, setSigningOut] = useState(false);
-  const [profile, setProfile] = useState<LearnerProfile>({ display_name: null, experience: null, goals: null, retain_audio: false });
+  const [profile, setProfile] = useState<LearnerProfile>(emptyProfile);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState("");
   const [tab, setTab] = useState<"archive" | "progress">("archive");
+  const [prefs, setPrefs] = useState<LearnerPrefs>(() => (user ? loadPrefs(user.id) : emptyPrefs()));
   const [progress, setProgress] = useState<null | {
     sessions: number; completed: number; streakDays: number; avgOverall: number | null;
     avgDims: { key: string; score: number }[]; fillerFirst: number | null; fillerLast: number | null;
     deliveries: number; weeks: { label: string; count: number }[];
   }>(null);
   const [progressLoading, setProgressLoading] = useState(false);
+  const recommendation = useMemo(() => buildRecommendation(profile.experience, prefs), [profile.experience, prefs]);
+  const setupComplete = hasAnswers(prefs);
+  const introLine = useMemo(() => {
+    if (!setupComplete) return "Two minutes in your room tunes your opponent, your pressure, and the cue waiting on your dashboard.";
+    const parts = [
+      purposeLine(prefs),
+      goalLine(prefs.goal) && `working on ${goalLine(prefs.goal)}`,
+      focusLabels(prefs.focus).length > 0 && `focused on ${focusLabels(prefs.focus).join(" and ").toLowerCase()}`,
+    ];
+    return `${parts.filter(Boolean).join(" · ")}.`;
+  }, [prefs, setupComplete]);
 
   useEffect(() => {
     let active = true;
@@ -80,23 +109,37 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
       .finally(() => setLoading(false));
   }
 
-  async function saveLearnerProfile() {
+  // The browser copy is written first, so a failed sync still leaves the learner set up.
+  async function saveSetup() {
     if (!user || savingProfile) return;
     setSavingProfile(true);
     setProfileNotice("");
+    const stamped = stampPrefs({ ...prefs, experience: profile.experience });
+    setPrefs(stamped);
+    savePrefs(user.id, stamped);
+    markOnboardingDone(user.id);
     try {
       await saveProfile(user.id, {
+        ...profile,
         display_name: profile.display_name?.trim() || null,
-        experience: profile.experience,
         goals: profile.goals?.trim().slice(0, 500) || null,
-        retain_audio: profile.retain_audio,
+        ...prefsToProfileFields(stamped),
       });
-      setProfileNotice("Profile saved.");
+      setProfileNotice("Saved. Your dashboard, first cue, and session setup follow these answers.");
     } catch {
-      setProfileNotice("Could not save your profile. Check your connection and try again.");
+      setProfileNotice("Saved on this device only. Your account could not be reached, so try again to sync it.");
     } finally {
       setSavingProfile(false);
     }
+  }
+
+  function toggleFocus(key: FocusKey) {
+    setPrefs((current) => ({
+      ...current,
+      focus: current.focus.includes(key)
+        ? current.focus.filter((value) => value !== key)
+        : [...current.focus, key].slice(0, 3),
+    }));
   }
 
   function dayKey(value: string) {
@@ -221,56 +264,144 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
       <section className="account-intro">
         <span className="account-seal"><BookOpenText size={21} /></span>
         <h1>Your practice,<br /><em>kept in reach.</em></h1>
-        <p>{user?.email ?? "Learner account"}</p>
+        <p className={`account-intro-line${setupComplete ? "" : " is-open"}`}>{introLine}</p>
+        <p className="account-intro-mail">{user?.email ?? "Learner account"}</p>
       </section>
 
-      <section className="account-profile" aria-labelledby="profile-heading">
-        <div className="archive-heading">
-          <div><h2 id="profile-heading">Learner profile</h2><p>Goals shape your practice. Audio stays discarded unless you opt in.</p></div>
-        </div>
-        <label htmlFor="profile-name">Display name</label>
-        <input
-          id="profile-name"
-          type="text"
-          value={profile.display_name ?? ""}
-          onChange={(event) => setProfile((p) => ({ ...p, display_name: event.target.value.slice(0, 60) }))}
-          placeholder="What should we call you?"
-          maxLength={60}
-        />
-        <label htmlFor="profile-experience">Speaking experience</label>
-        <select
-          id="profile-experience"
-          value={profile.experience ?? ""}
-          onChange={(event) => setProfile((p) => ({ ...p, experience: (event.target.value || null) as LearnerProfile["experience"] }))}
-        >
-          <option value="">Prefer not to say</option>
-          <option value="new">New to debating</option>
-          <option value="developing">Developing</option>
-          <option value="confident">Confident</option>
-        </select>
-        <label htmlFor="profile-goals">Practice goals</label>
-        <textarea
-          id="profile-goals"
-          value={profile.goals ?? ""}
-          onChange={(event) => setProfile((p) => ({ ...p, goals: event.target.value.slice(0, 500) }))}
-          placeholder="Example: hold my nerve in cross-examination."
-          rows={2}
-          maxLength={500}
-        />
-        <label className="profile-check" htmlFor="profile-retain">
+      <div className="account-setup-band">
+        <section className="account-profile" aria-labelledby="profile-heading">
+          <div className="archive-heading">
+            <div><h2 id="profile-heading">Learner profile</h2><p>Your name and how long you have been speaking.</p></div>
+          </div>
+          <label htmlFor="profile-name">Display name</label>
           <input
-            id="profile-retain"
-            type="checkbox"
-            checked={profile.retain_audio}
-            onChange={(event) => setProfile((p) => ({ ...p, retain_audio: event.target.checked }))}
+            id="profile-name"
+            type="text"
+            value={profile.display_name ?? ""}
+            onChange={(event) => setProfile((p) => ({ ...p, display_name: event.target.value.slice(0, 60) }))}
+            placeholder="What should we call you?"
+            maxLength={60}
           />
-          Keep my delivery recordings in my archive
-        </label>
-        <button className="button button-dark" onClick={() => void saveLearnerProfile()} disabled={savingProfile}>
-          {savingProfile ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />} Save profile
-        </button>
-        {profileNotice && <div className="inline-notice" role="status">{profileNotice}</div>}
-      </section>
+          <label htmlFor="profile-experience">Speaking experience</label>
+          <select
+            id="profile-experience"
+            value={profile.experience ?? ""}
+            onChange={(event) => setProfile((p) => ({ ...p, experience: (event.target.value || null) as LearnerProfile["experience"] }))}
+          >
+            <option value="">Prefer not to say</option>
+            <option value="new">New to debating</option>
+            <option value="developing">Developing</option>
+            <option value="confident">Confident</option>
+          </select>
+          <label htmlFor="profile-goals">Practice goals</label>
+          <textarea
+            id="profile-goals"
+            value={profile.goals ?? ""}
+            onChange={(event) => setProfile((p) => ({ ...p, goals: event.target.value.slice(0, 500) }))}
+            placeholder="Example: hold my nerve in cross-examination."
+            rows={2}
+            maxLength={500}
+          />
+          <label className="profile-check" htmlFor="profile-retain">
+            <input
+              id="profile-retain"
+              type="checkbox"
+              checked={profile.retain_audio}
+              onChange={(event) => setProfile((p) => ({ ...p, retain_audio: event.target.checked }))}
+            />
+            Keep my delivery recordings in my archive
+          </label>
+        </section>
+
+        <section className="account-room" aria-labelledby="room-heading">
+          <div className="archive-heading">
+            <div>
+              <h2 id="room-heading">{setupComplete ? "Your room" : "Set your room"}</h2>
+              <p>These answers choose your opponent, your pressure, and the cue waiting on your dashboard.</p>
+            </div>
+          </div>
+
+          <div className="room-question">
+            <span className="room-label" id="room-purpose">WHERE YOU PRACTISE</span>
+            <div className="room-chips" role="radiogroup" aria-labelledby="room-purpose">
+              {PURPOSE_OPTIONS.map((option) => {
+                const picked = prefs.purpose === option.key;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    role="radio"
+                    aria-checked={picked}
+                    className={picked ? "is-picked" : ""}
+                    onClick={() => setPrefs((current) => ({ ...current, purpose: picked ? null : option.key }))}
+                  >
+                    <b>{option.label}</b><small>{option.detail}</small>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="room-question">
+            <span className="room-label" id="room-goal">WHAT WOULD COUNT AS PROGRESS</span>
+            <div className="room-chips" role="radiogroup" aria-labelledby="room-goal">
+              {GOAL_OPTIONS.map((option) => {
+                const picked = prefs.goal === option.key;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    role="radio"
+                    aria-checked={picked}
+                    className={picked ? "is-picked" : ""}
+                    onClick={() => setPrefs((current) => ({ ...current, goal: picked ? null : option.key }))}
+                  >
+                    <b>{option.label}</b><small>{option.detail}</small>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="room-question">
+            <span className="room-label" id="room-focus">WHAT YOU WANT FROM PRACTICE <em>up to three</em></span>
+            <div className="room-chips room-chips-focus" role="group" aria-labelledby="room-focus">
+              {FOCUS_OPTIONS.map((option) => {
+                const picked = prefs.focus.includes(option.key);
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    aria-pressed={picked}
+                    className={picked ? "is-picked" : ""}
+                    onClick={() => toggleFocus(option.key)}
+                  >
+                    <b>{option.label}</b><small>{option.detail}</small>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="room-effect">
+            <span className="room-label">WHAT THESE ANSWERS PICK FOR YOU</span>
+            <div className="room-effect-grid">
+              <div><span>Opponent</span><b>{personaFor(recommendation.persona).name}</b></div>
+              <div><span>Pressure</span><b>{difficultyFor(recommendation.difficulty).label}</b></div>
+              <div><span>Clock</span><b>{recommendation.duration} min</b></div>
+            </div>
+            <p>{recommendation.reason}</p>
+          </div>
+
+          <div className="account-setup-foot">
+            <p>Every answer here also reshapes your dashboard and the motions you are offered first.</p>
+            <button className="button button-dark" type="button" onClick={() => void saveSetup()} disabled={savingProfile}>
+              {savingProfile ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />} Save your room
+            </button>
+          </div>
+          {profileNotice && <div className="inline-notice" role="status">{profileNotice}</div>}
+        </section>
+      </div>
 
       <div className="account-tabs no-print" role="group" aria-label="Archive or progress">
         <button type="button" className={tab === "archive" ? "active" : ""} aria-pressed={tab === "archive"} onClick={() => setTab("archive")}>Archive</button>
@@ -353,7 +484,7 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
             >
               <span className="archive-date">{formatDate(record.started_at)}</span>
               <span className="archive-topic">{record.topic}</span>
-              <span className="archive-meta">{personaNames[record.persona]} · {record.duration_minutes} min · {record.status === "completed" ? "Complete" : "In progress"}</span>
+              <span className="archive-meta">{opponentName(record.persona)} · {record.duration_minutes} min · {record.status === "completed" ? "Complete" : "In progress"}</span>
               <span className="archive-arrow">{loadingRecord === record.id ? <LoaderCircle className="spin" size={15} /> : <ArrowUpRight size={15} />}</span>
             </button>
           ))}
@@ -367,11 +498,11 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
               <div><span>THE MOTION</span><h2>{selected.session.topic}</h2></div>
               <button onClick={() => setSelected(null)} aria-label="Close transcript"><ArrowLeft size={16} /></button>
             </div>
-            <div className="record-detail-meta">{personaNames[selected.session.persona]} · {selected.session.learner_position === "for" ? "In favour" : "Against"} · {formatDate(selected.session.started_at)}</div>
+            <div className="record-detail-meta">{opponentName(selected.session.persona)} · {selected.session.learner_position === "for" ? "In favour" : "Against"} · {formatDate(selected.session.started_at)}</div>
             <div className="record-detail-turns">
               {selected.turns.map((turn) => (
                 <article className={`record-turn ${turn.speaker}`} key={turn.id}>
-                  <span>{turn.speaker === "learner" ? "YOUR CASE" : personaNames[selected.session.persona].toUpperCase()}</span>
+                  <span>{turn.speaker === "learner" ? "YOUR CASE" : opponentName(selected.session.persona).toUpperCase()}</span>
                   <p><MarkdownText text={turn.content} compact /></p>
                 </article>
               ))}

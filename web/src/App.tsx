@@ -32,6 +32,10 @@ import {
 } from "./services/debate-api";
 import { createDebateRecord, finishDebateRecord, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn } from "./services/debate-records";
 import { addBankTopic, listBankTopics, type BankTopic } from "./services/topics";
+import { loadProfile } from "./services/profiles";
+import { difficultyOptions, personas, starterTopics, type PersonaKey } from "./features/debate-catalog";
+import { buildRecommendation, hydratePrefs, isOnboardingDone, loadPrefs, preferencesFor } from "./services/learner-prefs";
+import type { OnboardingResult } from "./features/onboarding/OnboardingFlow";
 import { useAuth } from "./features/auth/AuthProvider";
 import { supabaseConfigured } from "./features/auth/supabase";
 import { OpponentEmblem } from "./components/OpponentEmblem";
@@ -41,54 +45,11 @@ import type { PresentationResult } from "./services/presentation-api";
 
 const AccountView = lazy(() => import("./features/auth/AccountView").then((m) => ({ default: m.AccountView })));
 const AuthView = lazy(() => import("./features/auth/AuthView").then((m) => ({ default: m.AuthView })));
+const OnboardingFlow = lazy(() => import("./features/onboarding/OnboardingFlow").then((m) => ({ default: m.OnboardingFlow })));
 const PresentationRoom = lazy(() => import("./features/presentation/PresentationRoom").then((m) => ({ default: m.PresentationRoom })));
 
-type View = "landing" | "setup" | "arena" | "verdict" | "auth" | "account" | "present";
-type PersonaKey = DebateOptions["persona"];
+type View = "landing" | "setup" | "arena" | "verdict" | "auth" | "account" | "present" | "onboarding";
 type BackendState = "checking" | "warming" | "ready" | "offline";
-
-const topics = [
-  "Should social platforms verify every user?",
-  "Do grades measure what matters?",
-  "Should cities ban cars from their centres?",
-  "Is a four-day work week better for everyone?",
-];
-
-const personas: {
-  key: PersonaKey;
-  name: string;
-  title: string;
-  line: string;
-  color: string;
-}[] = [
-  {
-    key: "strategist",
-    name: "The Strategist",
-    title: "Reads the room",
-    line: "Looks past the headline to the consequences underneath.",
-    color: "mint",
-  },
-  {
-    key: "skeptic",
-    name: "The Skeptic",
-    title: "Follows the proof",
-    line: "Finds the assumption hiding between your points.",
-    color: "coral",
-  },
-  {
-    key: "diplomat",
-    name: "The Diplomat",
-    title: "Sees every side",
-    line: "Tests your case against the people it affects.",
-    color: "violet",
-  },
-];
-
-const difficultyOptions: { value: DebateOptions["difficulty"]; label: string; detail: string }[] = [
-  { value: "warm-up", label: "Warm-up", detail: "Find your footing" },
-  { value: "challenge", label: "Challenge", detail: "Push the case" },
-  { value: "cross-examination", label: "Cross-exam", detail: "No easy exits" },
-];
 
 const pageMotion = {
   initial: { opacity: 0, y: 12 },
@@ -164,7 +125,7 @@ function StatusTag({ state }: { state: BackendState }) {
   );
 }
 
-const HASH_VIEWS: View[] = ["landing", "setup", "present", "auth", "account"];
+const HASH_VIEWS: View[] = ["landing", "setup", "present", "auth", "account", "onboarding"];
 
 const SNAPSHOT_KEY = "verdict-arena-snapshot";
 const RECENTS_KEY = "verdict-recent-motions";
@@ -203,7 +164,7 @@ function viewFromHash(): View {
 export default function App() {
   const { session, user, signOut, loading: authLoading } = useAuth();
   const [view, setView] = useState<View>(() => viewFromHash());
-  const [topicChoice, setTopicChoice] = useState(topics[0]);
+  const [topicChoice, setTopicChoice] = useState(starterTopics[0]);
   const [customTopic, setCustomTopic] = useState("");
   const [bankTopics, setBankTopics] = useState<BankTopic[]>([]);
   const [bankNotice, setBankNotice] = useState("");
@@ -227,6 +188,7 @@ export default function App() {
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [savedSnapshot, setSavedSnapshot] = useState<ArenaSnapshot | null>(null);
   const [recentMotions, setRecentMotions] = useState<string[]>(() => loadRecentMotions());
+  const [learnerName, setLearnerName] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisReport | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
@@ -242,13 +204,15 @@ export default function App() {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const savedTurnIds = useRef(new Set<string>());
+  const routedForRef = useRef<string | null>(null);
+  const [prefsReady, setPrefsReady] = useState(false);
 
   const activePersona = useMemo(
     () => personas.find((candidate) => candidate.key === persona) ?? personas[0],
     [persona],
   );
   const activeTopic = customTopic.trim() || topicChoice;
-  const motionTitles = bankTopics.length > 0 ? bankTopics.map((t) => t.title) : topics;
+  const motionTitles = bankTopics.length > 0 ? bankTopics.map((t) => t.title) : starterTopics;
   const learnerTurns = messages.filter((message) => message.speaker === "learner");
   const totalWords = learnerTurns.reduce(
     (count, message) => count + message.content.trim().split(/\s+/).filter(Boolean).length,
@@ -304,9 +268,11 @@ export default function App() {
   useEffect(() => {
     if (!user || !supabaseConfigured) {
       setBankTopics([]);
+      setPrefsReady(true);
       return;
     }
     let active = true;
+    setPrefsReady(false);
     void listBankTopics()
       .then((data) => {
         if (!active) return;
@@ -314,9 +280,28 @@ export default function App() {
         if (data.length > 0) setTopicChoice((current) => current || data[0].title);
       })
       .catch(() => {});
+    void loadProfile(user.id)
+      .then((profile) => {
+        if (!active) return;
+        hydratePrefs(user.id, profile ?? null);
+        if (profile?.display_name) setLearnerName(profile.display_name);
+      })
+      .catch(() => {
+        // Offline or unmigrated: the cached answers still stand in.
+      })
+      .finally(() => {
+        if (active) setPrefsReady(true);
+      });
     return () => { active = false; };
   }, [user]);
 
+  // A signed-in learner lands on the dashboard, or in onboarding on a first visit.
+  useEffect(() => {
+    if (authLoading || !user || !supabaseConfigured || !prefsReady) return;
+    if (routedForRef.current === user.id) return;
+    routedForRef.current = user.id;
+    setView(isOnboardingDone(user.id) ? "account" : "onboarding");
+  }, [authLoading, user, prefsReady]);
   async function saveMotionToBank() {
     const title = customTopic.trim();
     if (!user || title.length < 3) return;
@@ -338,6 +323,12 @@ export default function App() {
     window.scrollTo(0, 0);
   }, [view]);
 
+  // The learner's own answers, read fresh so a change in Learner space applies to the next turn.
+  function learnerAim() {
+    if (!user || !supabaseConfigured) return null;
+    return preferencesFor(loadPrefs(user.id));
+  }
+
   async function requestOpponentReply(
     history: DebateMessage[],
     learnerArgument: string | null,
@@ -347,6 +338,7 @@ export default function App() {
       learner_position: position,
       persona,
       difficulty,
+      preferences: learnerAim(),
     };
     const replyId = crypto.randomUUID();
     setCueSequence((current) => current + 1);
@@ -644,6 +636,7 @@ export default function App() {
         learner_position: position,
         persona,
         difficulty,
+        preferences: learnerAim(),
       };
       const result = await requestChallenge(options, messages, latestLearner.content, depth, session?.access_token);
       if (result.done || !result.follow_up) {
@@ -719,7 +712,24 @@ export default function App() {
 
   async function handleSignOut() {
     await signOut();
+    routedForRef.current = null;
+    setPrefsReady(false);
+    setLearnerName(null);
     setView("landing");
+  }
+
+  function completeOnboarding(result: OnboardingResult) {
+    if (result.profile.display_name) setLearnerName(result.profile.display_name);
+    const recommendation = buildRecommendation(result.prefs.experience, result.prefs);
+    setPersona(recommendation.persona);
+    setDifficulty(recommendation.difficulty);
+    setDuration(recommendation.duration);
+    setSecondsLeft(recommendation.duration * 60);
+    setView(result.destination === "delivery" ? "present" : "account");
+  }
+
+  function skipOnboarding() {
+    setView(user ? "account" : "landing");
   }
 
   async function resumeSession() {
@@ -739,12 +749,12 @@ export default function App() {
 
   return (
     <div className={`app-shell ${view === "setup" ? "app-shell-setup" : ""} ${view === "arena" || view === "verdict" || view === "present" ? "app-shell-room" : ""}`}>
-      {view !== "arena" && view !== "verdict" && (
+      {view !== "arena" && view !== "verdict" && view !== "onboarding" && (
         <Header
           onHome={returnHome}
           onStart={() => setView("setup")}
           onAccount={openAccount}
-          accountLabel={authLoading ? "…" : user ? "Learner space" : "Sign in"}
+          accountLabel={authLoading ? "…" : user ? (learnerName ? learnerName.split(/\s+/)[0] : "Learner space") : "Sign in"}
           showNav={view === "landing"}
         />
       )}
@@ -755,8 +765,20 @@ export default function App() {
             <Suspense fallback={<div className="inline-notice" role="status">Loading account access…</div>}>
               <AuthView
                 onContinueAsGuest={() => setView("setup")}
-                onAuthenticated={() => setView("landing")}
+                onAuthenticated={() => setView("onboarding")}
               />
+            </Suspense>
+          </motion.div>
+        )}
+
+        {view === "onboarding" && (
+          <motion.div key="onboarding" className="app-onboarding-view" {...pageMotion}>
+            <Suspense fallback={<div className="inline-notice" role="status">Setting up your room…</div>}>
+              {authLoading
+                ? <div className="inline-notice" role="status">Checking your sign-in…</div>
+                : user
+                  ? <OnboardingFlow userId={user.id} onComplete={completeOnboarding} onSkip={skipOnboarding} />
+                  : <AuthView onContinueAsGuest={() => setView("setup")} onAuthenticated={() => setView("onboarding")} />}
             </Suspense>
           </motion.div>
         )}

@@ -37,6 +37,7 @@ export async function requestChallenge(
       history: turns.filter((turn) => !turn.pending && turn.content.trim()).map(({ speaker, content }) => ({ speaker, content })),
       latest,
       depth,
+      preferences: options.preferences ?? undefined,
     }),
   });
   if (!response.ok) {
@@ -46,11 +47,19 @@ export async function requestChallenge(
   return (await response.json()) as ChallengeResult;
 }
 
+/** The learner's own onboarding answers, sent so the coaching can aim at what they asked for. */
+export type PracticePreferences = {
+  goal: "structure" | "evidence" | "nerves" | "hostile" | "win" | null;
+  purpose: "school" | "university" | "interview" | "confidence" | "competition" | null;
+  focus: ("argument" | "delivery" | "confidence")[];
+};
+
 export type DebateOptions = {
   topic: string;
   learner_position: "for" | "against";
   persona: "strategist" | "skeptic" | "diplomat";
   difficulty: "warm-up" | "challenge" | "cross-examination";
+  preferences?: PracticePreferences | null;
 };
 
 export type AnalysisReport = {

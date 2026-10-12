@@ -137,6 +137,11 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
                         for t in request.history
                     ],
                     "latest": request.learner_argument,
+                    "preferences": (
+                        request.preferences.model_dump()
+                        if request.preferences
+                        else None
+                    ),
                 }
             ):
                 assembled.append(delta)
@@ -231,6 +236,7 @@ async def debate_challenge(request: ChallengeRequest) -> ChallengeResponse:
             request.latest,
             request.topic,
             request.depth,
+            request.preferences.model_dump() if request.preferences else None,
         )
         if result is None:
             return ChallengeResponse(done=True, depth=request.depth)
