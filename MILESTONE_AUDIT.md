@@ -13,7 +13,7 @@ Anything not exercised is marked as unverified rather than assumed.
 |---|---|---|---|
 | Define objectives and coaching workflows | Done | `PRODUCT.md`, `README.md` | — |
 | Design system architecture and database schema | Done | `supabase/migrations/*`, `ai-backend/app/` | — |
-| UI wireframes and workflow planning | Done | `DESIGN.md`, `.impeccable/surfaces/*.md` | — |
+| UI wireframes and workflow planning | Done | `PRODUCT.md` for the workflow; wireframes and per-screen specs are local-only (`DESIGN.md`, `.impeccable/surfaces/`), both gitignored by choice | — |
 | Frontend and backend environments | Done | `web/` (Vite + TS), `ai-backend/` (FastAPI + uv) | — |
 | Authentication and role-based access | Partial | `web/src/features/auth/`, `ai-backend/app/auth.py`, Supabase RLS | Deliberate: v1 is learner-only, so there is no instructor or judge role. The learner role is enforced by RLS plus JWKS verification, not by a role table. |
 | User profile and skill tracking | Done | `profiles` table, `AccountView` profile form, trends tab, `learning_plans` | The skill model is now persisted: a plan records which weak spots were diagnosed, from which scores. |
@@ -55,7 +55,7 @@ scores directly, with the gap disclosed to the learner.
 |---|---|---|
 | Presentation analysis engine | Done | `delivery_graph.py` (transcribe → signals → coach), `speech.py`, `delivery.py` |
 | Reports and visualization modules | Done | Verdict delivery section, signal rows, drills, print/CSV |
-| Testing and validations | Done | `ai-backend/tests/` — 73 pytest tests over the deterministic gates, the agent graphs and the request contracts, with deterministic model fakes so no Ollama is needed |
+| Testing and validations | Done | `ai-backend/tests/` — 96 pytest tests over the deterministic gates, the agent graphs and the request contracts, with deterministic model fakes so no Ollama is needed |
 | Deploy with Docker and cloud services | Done | `ai-backend/Dockerfile` (runtime + test stages), `web/Dockerfile` + `nginx.conf`, `docker-compose.yml`, `.env.docker.example` |
 | Final documentation and presentation | Done | `README.md`, `PROGRESS.md`, this file |
 

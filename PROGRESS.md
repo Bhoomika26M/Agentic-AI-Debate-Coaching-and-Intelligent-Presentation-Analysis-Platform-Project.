@@ -16,7 +16,7 @@ Five-criteria argument analysis, eight fallacy types grounded in exact transcrip
 Streaming debate with game-plan briefing, a memory agent that briefs the opponent from stored digests, a verifier plus reviser on every opponent turn, Socratic follow-ups capped at 2 deep, adaptive pressure, performance dashboard with streaks and trends, and a coaching plan agent that diagnoses weak spots from the learner's own scores, drills them, and persists the plan in the learner space.
 
 **Milestone 4, presentation analytics, testing, deployment: complete, with containers instead of a managed host.**
-Recording and upload, timestamped transcription, pace/filler/pause signals with drills, reports and visualizations, an automated suite (73 tests) covering the deterministic gates and the agent graphs, Dockerfiles for the API and web app with a compose file that starts Ollama, the API and the frontend together, and README documentation for the whole stack. Open by choice: managed hosting for the Python API, hosted provider key routing, narrowed production CSP.
+Recording and upload, timestamped transcription, pace/filler/pause signals with drills, reports and visualizations, an automated suite (96 tests) covering the deterministic gates and the agent graphs, Dockerfiles for the API and web app with a compose file that starts Ollama, the API and the frontend together, and README documentation for the whole stack. Open by choice: managed hosting for the Python API, hosted provider key routing, narrowed production CSP.
 
 ## Standing decisions
 
@@ -50,7 +50,7 @@ Recording and upload, timestamped transcription, pace/filler/pause signals with 
 
 ## Verification
 
-- `cd ai-backend` then `uv run python -m pytest` passes 73 tests with no model or network.
+- `cd ai-backend` then `uv run --extra dev python -m pytest` passes 96 tests with no model or network.
 - `cd ai-backend` then `uv run python -m compileall app` finishes with no errors.
 - `cd web` then `npm run build` finishes with no errors.
 - `git diff --check` is clean, and the detector over changed web targets reports nothing.

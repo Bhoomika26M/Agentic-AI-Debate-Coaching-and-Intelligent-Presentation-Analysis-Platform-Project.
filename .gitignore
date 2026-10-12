@@ -6,6 +6,7 @@ personal-guide/
 .env
 .env.*
 !.env.example
+!.env.docker.example
 .venv/
 venv/
 node_modules/

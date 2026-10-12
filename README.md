@@ -110,29 +110,92 @@ docker build --target test ./ai-backend
 
 ## Milestones and completion status
 
-**Milestone 1 (Weeks 1 and 2): initialization, design, core setup. Status: complete, with roles intentionally out of scope.**
+Each task and outcome below is a checkbox. A ticked box means the item is shipped in this repository and was exercised; an unticked box is still open, and the reason is named next to it. Every link points at a tracked file. The evidence behind every tick, including what could not be verified, is in [MILESTONE_AUDIT.md](MILESTONE_AUDIT.md).
 
-- Done: objectives and debate workflows, system architecture, database schema with owner scoped access, wireframes and workflow planning, frontend and backend environments, email plus Google authentication with password recovery, learner profiles with goals and audio opt-in, topic bank with curated seed, debate session management with saved transcripts.
-- Deliberately excluded: coach, admin, or staff roles. Version 1 serves learners only.
+### Milestone 1: Week 1 & 2 — Project Initialization, Design Process & Core Setup
 
-**Milestone 2 (Weeks 3 and 4): argument analysis and fallacy detection. Status: complete.**
+Status: complete, with role-based access scoped to the learner on purpose.
 
-- Done: argument analysis engine across five rubric criteria, fallacy detection across eight types with exact quote grounding, reasoning evaluation through rubric scores, weighted scoring at 30/20/20/15/15 with citations, feedback reports in the verdict with CSV download and print support.
-- Partial reviews disclose named gaps with a retry affordance instead of failing silently.
+Tasks
 
-**Milestone 3 (Weeks 5 and 6): simulation and coaching. Status: complete.**
+- [x] Define project objectives and debate coaching workflows — [PRODUCT.md](PRODUCT.md), [README.md](README.md)
+- [x] Design system architecture and database schema — `ai-backend/app/` plus the schema in [supabase/migrations/](supabase/migrations), where every learner-facing table carries row level security policies
+- [x] Create UI wireframes and workflow planning — workflow planning is in [PRODUCT.md](PRODUCT.md); the wireframes and per-screen specs live in local design notes (`DESIGN.md`, `.impeccable/surfaces/`) that are gitignored on purpose, so they are not part of this repository
+- [x] Setup frontend and backend environments — Vite plus TypeScript in `web/`, FastAPI plus uv in `ai-backend/`
+- [x] Implement authentication — email and Google sign-in, password recovery, JWKS-verified tokens, rows readable only by their owner
+- [ ] Role-based access for coach, admin or staff roles — version 1 serves learners only; the learner role is enforced by Supabase row level security rather than a role table
+- [x] Build user profile and skill tracking workflows — `profiles` table, profile form, trends tab, persisted practice plans
+- [x] Create debate session management modules — sessions, turns, saved transcripts, archive and resume
 
-- Done: AI debate simulation with streaming and game-plan briefing, a memory agent that briefs the opponent from saved history, counterargument generation across five kinds, Socratic follow-up loop capped at 2 deep, adaptive pressure from turn signals, a coaching engine that diagnoses weak spots from your own scores and writes drills and a four-week plan around them, persisted plans in the learner space, and a performance dashboard with sessions, streaks, averages, and filler trends.
+Outcomes
 
-**Milestone 4 (Weeks 7 and 8): presentation analytics, testing, deployment. Status: complete, with container packaging instead of a managed backend.**
+- [x] Understand AI-powered debate coaching workflows — documented end to end in [PRODUCT.md](PRODUCT.md)
+- [x] Learn system architecture and database design concepts — architecture notes are in the local design doc (`DESIGN.md`, gitignored) and the schema it describes is in [supabase/migrations/](supabase/migrations)
+- [x] Build frontend and backend project initialization — both projects run and are built by CI-style checks below
+- [x] Working authentication and debate session management system
 
-- Done: presentation recording and upload, transcription with timestamps, pace, filler, and pause features with tutor drills, reports and CSS bar visualizations, an automated test suite for the deterministic gates and the agent graphs, Docker images for the API and the web app plus a compose file that starts the whole stack, and this documentation.
-- Still open by choice: managed hosting for the Python API plus Ollama, and hosted provider key routing. The frontend deploys static to Vercel or Render today. Do not expose a guest mode API as a public service.
+### Milestone 2: Week 3 & 4 — Argument Analysis & Fallacy Detection
+
+Status: complete.
+
+Tasks
+
+- [x] Implement argument analysis engine — [analysis_graph.py](ai-backend/app/agents/analysis_graph.py) fans out rubric, fallacy and counterpoint branches with targeted retries
+- [x] Build logical fallacy detection workflows — eight fallacy types, every quote grounded against the learner's own words
+- [x] Develop reasoning evaluation models — rubric branch over five named criteria
+- [x] Create argument scoring systems — [judge.py](ai-backend/app/agents/judge.py), weighted 30/20/20/15/15, deterministic, no model call
+- [x] Generate debate feedback reports — the verdict view, CSV download and print report
+
+Outcomes
+
+- [x] Argument analysis engine operational
+- [x] Fallacy detection workflows functional
+- [x] Reasoning assessment system completed
+
+Partial reviews name their gaps and offer a retry instead of failing silently.
+
+### Milestone 3: Week 5 & 6 — AI Debate Simulation & Coaching
+
+Status: complete.
+
+Tasks
+
+- [x] Implement AI debate simulation engine — [debate.py](ai-backend/app/agents/debate.py): guard to memory to planner to drafter (streamed) to verifier to reviser, with an in-character fallback instead of a discarded turn
+- [x] Build counterargument generation workflows — five counterpoint kinds, each enforced exactly once
+- [x] Develop coaching recommendation engine — [memory.py](ai-backend/app/agents/memory.py) diagnoses weak spots from your own scores
+- [x] Generate personalized learning plans — `POST /api/coach/plan`, the `learning_plans` table, and the Plan tab in the learner space
+- [x] Create performance dashboards — sessions, streaks, averages and filler direction in the trends tab, plus the plan's four-week rhythm
+
+Outcomes
+
+- [x] AI debate simulation operational — streaming opponent with a Socratic follow-up loop capped at 2 deep and adaptive pressure
+- [x] Coaching engine functional — the model may only coach weak spots the deterministic diagnosis found; invented weaknesses, scores or session counts are rejected by [verifier.py](ai-backend/app/agents/verifier.py)
+- [x] Personalized learning workflows completed
+
+### Milestone 4: Week 7 & 8 — Presentation Analytics, Testing & Deployment
+
+Status: every task is done except managed cloud deployment and the presentation, both open on purpose.
+
+Tasks
+
+- [x] Implement presentation analysis engine — transcribe, then delivery signals, then drills in [delivery_graph.py](ai-backend/app/agents/delivery_graph.py), with audio discarded unless you opt in
+- [x] Add reports and visualization modules — delivery signal rows, drills, print and CSV output, CSS bar visualizations
+- [x] Implement testing and validations — 96 pytest tests over the deterministic gates, the agent graphs and the request contracts, with model fakes so no Ollama is needed
+- [x] Deploy the platform with Docker — [ai-backend/Dockerfile](ai-backend/Dockerfile) (runtime and test stages), [web/Dockerfile](web/Dockerfile), [nginx.conf](web/nginx.conf), [docker-compose.yml](docker-compose.yml)
+- [ ] Deploy to cloud services — the frontend has a static deploy config in [render.yaml](render.yaml), but managed hosting for the Python API and the model runtime, plus hosted provider key routing, are still open; do not expose a guest mode API as a public service
+- [x] Prepare final documentation — this file, [PROGRESS.md](PROGRESS.md), [MILESTONE_AUDIT.md](MILESTONE_AUDIT.md) and [SECURITY.md](SECURITY.md); the `personal-guide/` walkthrough is local-only and gitignored
+- [ ] Prepare the final presentation — nothing in this repository yet
+
+Outcomes
+
+- [ ] Fully deployed production-ready platform — Docker packaging is done; managed hosting is not
+- [x] Debate coaching intelligence systems operational
+- [x] Complete end-to-end debate improvement workflow demonstrable
 
 ## Checks that should pass
 
 - Backend health at `http://127.0.0.1:8000/api/health` shows `"status": "ready"`.
-- `cd ai-backend` then `uv run python -m pytest` passes (73 tests, no model or network needed).
+- `cd ai-backend` then `uv run --extra dev python -m pytest` passes (96 tests, no model or network needed).
 - `cd ai-backend` then `uv run python -m compileall app` finishes with no errors.
 - `cd web` then `npm run build` finishes with no errors.
 - `docker compose config --quiet` accepts the compose file.
