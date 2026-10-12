@@ -1,4 +1,5 @@
 import { apiUrl } from "../config";
+import type { SessionDigest } from "./plan-api";
 
 export type Speaker = "learner" | "opponent";
 
@@ -149,6 +150,8 @@ export async function streamOpponentReply(
   accessToken: string | undefined,
   onDelta: (delta: string) => void,
   signal: AbortSignal,
+  memory: SessionDigest[] = [],
+  onCorrected?: (reply: string) => void,
 ) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
@@ -161,6 +164,7 @@ export async function streamOpponentReply(
       ...options,
       history: history.filter((m) => !m.pending && m.content.trim()).map(({ speaker, content }) => ({ speaker, content })),
       learner_argument: learnerArgument,
+      memory,
     }),
     signal,
   });
@@ -191,14 +195,16 @@ export async function streamOpponentReply(
 
       if (data === "[DONE]") return;
       if (data) {
-        let payload: { delta?: string; error?: string };
+        let payload: { delta?: string; replace?: string; error?: string };
         try {
-          payload = JSON.parse(data) as { delta?: string; error?: string };
+          payload = JSON.parse(data) as { delta?: string; replace?: string; error?: string };
         } catch {
           continue;
         }
         if (payload.error) throw new Error(payload.error);
         if (payload.delta) onDelta(payload.delta);
+        // The verifier rejected the streamed draft; swap the whole turn for the corrected one.
+        if (payload.replace) (onCorrected ?? (() => undefined))(payload.replace);
       }
       boundary = buffer.indexOf("\n\n");
     }

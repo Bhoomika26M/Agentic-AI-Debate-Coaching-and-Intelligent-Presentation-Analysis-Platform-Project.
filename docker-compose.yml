@@ -1,0 +1,81 @@
+# Whole stack on one command: docker compose up --build, then open http://localhost:8080.
+# Accounts are optional; set the Supabase values in a root .env (see .env.docker.example).
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # Pulls the model once so the API does not start against an empty model list.
+  model-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_MODEL:-qwen3.5:4b}"]
+    restart: "no"
+
+  api:
+    build:
+      context: ./ai-backend
+      target: runtime
+      # Set EXTRAS to "--extra stt" to enable local transcription for delivery review.
+      args:
+        EXTRAS: ${EXTRAS:-}
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+      model-pull:
+        condition: service_completed_successfully
+    environment:
+      # Point at http://host.docker.internal:11434 to reuse a host Ollama (docker compose up api web).
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
+      WEB_ORIGIN: http://localhost:8080
+      ALLOWED_HOSTS: localhost,127.0.0.1,api
+      REQUIRE_AUTH: ${REQUIRE_AUTH:-false}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_JWKS_URL: ${SUPABASE_JWKS_URL:-}
+      SUPABASE_JWT_ISSUER: ${SUPABASE_JWT_ISSUER:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/api/health").read()
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  web:
+    build:
+      context: ./web
+      args:
+        # Same-origin: nginx proxies /api to the api service.
+        VITE_API_BASE_URL: ""
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  ollama-models:

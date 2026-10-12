@@ -31,6 +31,8 @@ import {
   type JudgeVerdict,
 } from "./services/debate-api";
 import { createDebateRecord, finishDebateRecord, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn } from "./services/debate-records";
+import { loadSessionDigests } from "./services/plan-records";
+import type { SessionDigest } from "./services/plan-api";
 import { addBankTopic, listBankTopics, type BankTopic } from "./services/topics";
 import { loadProfile } from "./services/profiles";
 import { difficultyOptions, personas, starterTopics, type PersonaKey } from "./features/debate-catalog";
@@ -46,9 +48,10 @@ import type { PresentationResult } from "./services/presentation-api";
 const AccountView = lazy(() => import("./features/auth/AccountView").then((m) => ({ default: m.AccountView })));
 const AuthView = lazy(() => import("./features/auth/AuthView").then((m) => ({ default: m.AuthView })));
 const OnboardingFlow = lazy(() => import("./features/onboarding/OnboardingFlow").then((m) => ({ default: m.OnboardingFlow })));
+const DashboardView = lazy(() => import("./features/dashboard/DashboardView").then((m) => ({ default: m.DashboardView })));
 const PresentationRoom = lazy(() => import("./features/presentation/PresentationRoom").then((m) => ({ default: m.PresentationRoom })));
 
-type View = "landing" | "setup" | "arena" | "verdict" | "auth" | "account" | "present" | "onboarding";
+type View = "landing" | "setup" | "arena" | "verdict" | "auth" | "account" | "present" | "onboarding" | "home";
 type BackendState = "checking" | "warming" | "ready" | "offline";
 
 const pageMotion = {
@@ -95,7 +98,7 @@ function Header({
           )}
           <button className="header-account-link" onClick={onAccount}>{accountLabel}</button>
           <button className="header-cta" onClick={onStart}>
-            <span className="cta-full">Open the prompt book</span>
+            <span className="cta-full">Start a rehearsal</span>
             <span className="cta-short">Start</span>
             <ArrowUpRight size={15} aria-hidden="true" />
           </button>
@@ -125,7 +128,7 @@ function StatusTag({ state }: { state: BackendState }) {
   );
 }
 
-const HASH_VIEWS: View[] = ["landing", "setup", "present", "auth", "account", "onboarding"];
+const HASH_VIEWS: View[] = ["landing", "setup", "present", "auth", "account", "onboarding", "home"];
 
 const SNAPSHOT_KEY = "verdict-arena-snapshot";
 const RECENTS_KEY = "verdict-recent-motions";
@@ -198,7 +201,6 @@ export default function App() {
   const [judgeError, setJudgeError] = useState("");
   const [challenging, setChallenging] = useState(false);
   const [challengeError, setChallengeError] = useState("");
-  const [helpNotice, setHelpNotice] = useState("");
   const pollAttempts = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -206,6 +208,8 @@ export default function App() {
   const savedTurnIds = useRef(new Set<string>());
   const routedForRef = useRef<string | null>(null);
   const [prefsReady, setPrefsReady] = useState(false);
+  // Digests the memory agent turns into the opponent's private brief.
+  const memoryRef = useRef<SessionDigest[]>([]);
 
   const activePersona = useMemo(
     () => personas.find((candidate) => candidate.key === persona) ?? personas[0],
@@ -300,8 +304,13 @@ export default function App() {
     if (authLoading || !user || !supabaseConfigured || !prefsReady) return;
     if (routedForRef.current === user.id) return;
     routedForRef.current = user.id;
-    setView(isOnboardingDone(user.id) ? "account" : "onboarding");
+    setView(isOnboardingDone(user.id) ? "home" : "onboarding");
   }, [authLoading, user, prefsReady]);
+
+  useEffect(() => {
+    if (user && view === "landing") setView("home");
+  }, [user, view]);
+
   async function saveMotionToBank() {
     const title = customTopic.trim();
     if (!user || title.length < 3) return;
@@ -368,6 +377,14 @@ export default function App() {
           );
         },
         controller.signal,
+        memoryRef.current,
+        (corrected) => {
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === replyId ? { ...message, content: corrected } : message,
+            ),
+          );
+        },
       );
       setMessages((current) =>
         current.map((message) =>
@@ -479,8 +496,17 @@ export default function App() {
     });
   }, [messages, recordId]);
 
-  async function startSession() {
+  async function startSession(prefill?: {
+    topic: string;
+    position: "for" | "against";
+    persona: PersonaKey;
+    difficulty: DebateOptions["difficulty"];
+    duration: number;
+  }) {
     if (startingSession) return;
+    const chosenTopic = (prefill?.topic ?? activeTopic).trim();
+    const chosenDuration = prefill?.duration ?? duration;
+    if (!chosenTopic) return;
     setStartingSession(true);
     setRecordNotice("");
     setAnalysis(null);
@@ -490,25 +516,45 @@ export default function App() {
     setJudgeError("");
     setMessages([]);
     setDraft("");
-    setSecondsLeft(duration * 60);
+    if (prefill) {
+      setPosition(prefill.position);
+      setPersona(prefill.persona);
+      setDifficulty(prefill.difficulty);
+      setDuration(prefill.duration);
+      if (motionTitles.includes(prefill.topic)) {
+        setTopicChoice(prefill.topic);
+        setCustomTopic("");
+      } else {
+        setTopicChoice("");
+        setCustomTopic(prefill.topic);
+      }
+    }
+    setSecondsLeft(chosenDuration * 60);
     setStartedAt(Date.now());
     savedTurnIds.current = new Set();
     let nextRecordId: string | null = null;
+    memoryRef.current = [];
     if (user && supabaseConfigured) {
       try {
         nextRecordId = await createDebateRecord({
-          topic: activeTopic,
-          learner_position: position,
-          persona,
-          difficulty,
-        }, duration);
+          topic: chosenTopic,
+          learner_position: prefill?.position ?? position,
+          persona: prefill?.persona ?? persona,
+          difficulty: prefill?.difficulty ?? difficulty,
+        }, chosenDuration);
       } catch {
         setRecordNotice("The debate can continue, but this session could not be saved to your account. Check your Supabase setup.");
+      }
+      try {
+        // One bounded read of recent rehearsals so the opponent can press a known weak spot.
+        memoryRef.current = await loadSessionDigests(12);
+      } catch {
+        memoryRef.current = [];
       }
     }
     setRecordId(nextRecordId);
     setSessionId((current) => current + 1);
-    const recent = activeTopic.trim().slice(0, 240);
+    const recent = chosenTopic.slice(0, 240);
     if (recent) {
       setRecentMotions((current) => {
         const next = [recent, ...current.filter((item) => item !== recent)].slice(0, 3);
@@ -545,6 +591,8 @@ export default function App() {
           setAnalysisError("The review is ready, but could not be saved to your learner archive.");
         }
       }
+      // The weighted verdict is deterministic, so show it without a second click.
+      if (report.ratings) void runJudge(report, deliveryResult);
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "The coach could not review this transcript.");
     } finally {
@@ -552,15 +600,12 @@ export default function App() {
     }
   }
 
-  async function scoreRehearsal() {
-    if (judgeLoading || !analysis?.ratings) {
-      if (!analysis?.ratings) setJudgeError("Scoring needs the full ratings first. Run the case review again.");
-      return;
-    }
+  async function runJudge(report: AnalysisReport | null, delivery: PresentationResult | null) {
+    if (!report?.ratings) return;
     setJudgeLoading(true);
     setJudgeError("");
     try {
-      const verdict = await requestJudge(analysis, deliveryResult, session?.access_token);
+      const verdict = await requestJudge(report, delivery, session?.access_token);
       setJudge(verdict);
     } catch (error) {
       setJudgeError(error instanceof Error ? error.message : "The judge could not score this rehearsal. Try again.");
@@ -697,8 +742,8 @@ export default function App() {
   function returnHome() {
     abortRef.current?.abort();
     setStreaming(false);
-    setView("landing");
     setConfirmEnd(false);
+    setView(user ? "home" : "landing");
     setMessages([]);
     setSessionId(0);
     setRecordId(null);
@@ -725,11 +770,11 @@ export default function App() {
     setDifficulty(recommendation.difficulty);
     setDuration(recommendation.duration);
     setSecondsLeft(recommendation.duration * 60);
-    setView(result.destination === "delivery" ? "present" : "account");
+    setView(result.destination === "delivery" ? "present" : "home");
   }
 
   function skipOnboarding() {
-    setView(user ? "account" : "landing");
+    setView(user ? "home" : "landing");
   }
 
   async function resumeSession() {
@@ -783,6 +828,31 @@ export default function App() {
           </motion.div>
         )}
 
+        {view === "home" && (
+          <motion.div key="home" className="app-shell-room" {...pageMotion}>
+            <Suspense fallback={<div className="inline-notice" role="status">Loading your dashboard…</div>}>
+              {authLoading
+                ? <div className="inline-notice" role="status">Checking your sign-in…</div>
+                : user
+                  ? (
+                    <DashboardView
+                      userId={user.id}
+                      displayName={learnerName}
+                      resume={savedSnapshot && savedSnapshot.messages.length > 0 ? {
+                        turns: savedSnapshot.messages.filter((message) => message.speaker === "learner").length,
+                        topic: savedSnapshot.customTopic.trim() || savedSnapshot.topicChoice,
+                        onResume: () => resumeSnapshot(savedSnapshot),
+                        onDiscard: clearSnapshot,
+                      } : null}
+                      onLaunch={(prefill) => void startSession(prefill)}
+                      onNavigate={(next) => setView(next)}
+                    />
+                  )
+                  : <AuthView onContinueAsGuest={() => setView("setup")} onAuthenticated={() => setView("onboarding")} />}
+            </Suspense>
+          </motion.div>
+        )}
+
         {view === "account" && (
           <motion.div key="account" className="app-shell-room" {...pageMotion}>
             <Suspense fallback={<div className="inline-notice" role="status">Loading your archive…</div>}>
@@ -797,9 +867,9 @@ export default function App() {
           <motion.main key="landing" className="landing" {...pageMotion}>
             <section className="hero-section">
               <div className="hero-copy">
-                <h1>The next line<br />is <span className="hero-accent">yours.</span></h1>
+                <h1>Test your argument<br /><span className="hero-accent">before the room does.</span></h1>
                 <p className="hero-intro">
-                  Step into a live debate rehearsal. Make your case, meet a distinct opponent, and find your next line under pressure.
+                  Pick a motion and a side, debate a live AI opponent in your own words, then read a plain-language review of what you argued and how you said it.
                 </p>
                 {savedSnapshot && savedSnapshot.messages.length > 0 && (
                   <div className="resume-banner" role="status">
@@ -809,11 +879,11 @@ export default function App() {
                 )}
                 <div className="hero-actions">
                   <button className="button button-primary" onClick={() => setView("setup")}>
-                    Open the prompt book <ArrowUpRight size={17} />
+                    Start a rehearsal <ArrowUpRight size={17} />
                   </button>
                   <a className="text-link" href="#how-it-works">See how it works <ArrowDownRight size={16} /></a>
                 </div>
-                <div className="hero-footnote"><LockKeyhole size={13} /> Guest practice open · sign in only to save your work</div>
+                <div className="hero-footnote"><LockKeyhole size={13} /> No account needed — sign in only to save your work</div>
               </div>
 
               <div className="hero-scene" role="img" aria-label="A sample page from a live debate prompt book">
@@ -844,57 +914,48 @@ export default function App() {
                   </div>
                   <div className="case-bottomline"><span>STREAMED EXCHANGE</span><span>AI OPPONENT / {modelStatusLabel}</span></div>
                 </motion.div>
-                <div className="scene-note"><span className="note-arrow">↗</span><span>LIVE DEBATE<br />IN THREE ACTS</span></div>
               </div>
-            </section>
-
-            <section className="intro-strip">
-              <div className="intro-small">A ROOM THAT ANSWERS BACK</div>
-              <p>Every turn changes the scene.<br /><span>Your words stay at centre stage.</span></p>
-              <div className="strip-arrow"><ArrowDownRight size={21} /></div>
             </section>
 
             <section className="format-section" id="how-it-works">
               <div className="section-heading">
-                <h2>One motion.<br /><span>Three beats.</span></h2>
-                <p className="section-subtitle">A guided rehearsal with a live opponent, a clock you choose, and your own argument on the page.</p>
+                <h2>How a rehearsal<br /><span>runs.</span></h2>
+                <p className="section-subtitle">Three steps, and you set every one of them: the motion, the opponent, the pressure, and the clock.</p>
+              </div>
+              <div className="format-outcomes">
+                <span><b>A live opponent</b> that answers your actual argument</span>
+                <span><b>An argument review</b> across five criteria</span>
+                <span><b>A weighted verdict</b> plus drills for your delivery</span>
               </div>
               <div className="cue-ledger" role="list" aria-label="How a rehearsal runs">
                 <motion.article className="cue-row" role="listitem" whileHover={{ x: 4 }} transition={{ duration: 0.22 }}>
                   <span className="cue-row-index" aria-hidden="true">01</span>
                   <div className="cue-row-main">
-                    <h3>Take a side.</h3>
-                    <p>Pick a motion, choose for or against, and open in your own words. The room goes quiet — the floor is yours.</p>
+                    <h3>Set it up.</h3>
+                    <p>Pick a motion, choose for or against, then choose who argues against you and how long the round runs.</p>
                   </div>
-                  <span className="cue-row-tag">ENTRANCE CUE</span>
                 </motion.article>
                 <motion.article className="cue-row" role="listitem" whileHover={{ x: 4 }} transition={{ duration: 0.22 }}>
                   <span className="cue-row-index" aria-hidden="true">02</span>
                   <div className="cue-row-main">
-                    <h3>Hold the floor.</h3>
-                    <p>A distinct opponent listens, probes the weak joint, and answers in real time. One claim at a time — the cue ribbon marks every reply.</p>
+                    <h3>Argue it out.</h3>
+                    <p>Write one claim at a time. Your opponent replies as you watch, and presses wherever your case is thinnest.</p>
                   </div>
-                  <span className="cue-row-tag">RESPONSE CUE</span>
                 </motion.article>
                 <motion.article className="cue-row" role="listitem" whileHover={{ x: 4 }} transition={{ duration: 0.22 }}>
                   <span className="cue-row-index" aria-hidden="true">03</span>
                   <div className="cue-row-main">
-                    <h3>Read the room.</h3>
-                    <p>Close the session and keep the transcript. Review the exchange and carry a sharper line into the next room.</p>
+                    <h3>Read the review.</h3>
+                    <p>Get scores for your argument, the counterpoints you missed, and the one thing to fix next.</p>
                   </div>
-                  <span className="cue-row-tag">FINAL CUE</span>
                 </motion.article>
               </div>
-              <div className="ledger-tape" aria-hidden="true"><span>YOUR TURN</span><i /><span>OPPONENT CUE</span><i /><span>YOUR TURN</span><b>STREAMED LIVE</b></div>
             </section>
 
             <section className="opponents-section" id="opponents">
               <div className="opponents-copy">
-                <h2>Choose your<br /><span>scene partner.</span></h2>
-                <p>Each opponent sees the same motion differently. Choose who you want across the table.</p>
-                <button className="button button-outline" onClick={() => setView("setup")}>
-                  Choose your opponent <ArrowUpRight size={16} />
-                </button>
+                <h2>Choose who is<br /><span>across the table.</span></h2>
+                <p>Each opponent argues the same motion differently. Pick one here and you land straight in the setup with them chosen.</p>
               </div>
               <div className="opponent-stack">
                 {personas.map((person, index) => (
@@ -915,22 +976,22 @@ export default function App() {
                     <span className="tile-slash" aria-hidden="true" />
                   </motion.button>
                 ))}
-                <div className="opponent-stack-caption">AN OPPONENT FOR EVERY BLIND SPOT</div>
               </div>
             </section>
 
             <section className="closing-section">
-              <span className="closing-orbit" />
               <div className="closing-content">
-                <h2>Ready for your<br /><span>opening cue?</span></h2>
-                <button className="button button-dark" onClick={() => setView("setup")}>
-                  Open the prompt book <ArrowUpRight size={17} />
-                </button>
-                <button className="button button-light" onClick={() => setView("present")}>
-                  Practice delivery solo <ArrowUpRight size={16} />
-                </button>
+                <h2>Ready to make<br /><span>your case?</span></h2>
+                <p className="closing-note">Rehearse against an opponent, or practise a closing take on your own.</p>
+                <div className="closing-actions">
+                  <button className="button button-dark" onClick={() => setView("setup")}>
+                    Start a rehearsal <ArrowUpRight size={17} />
+                  </button>
+                  <button className="button button-light" onClick={() => setView("present")}>
+                    Practice delivery solo <ArrowUpRight size={16} />
+                  </button>
+                </div>
               </div>
-              <div className="closing-aside">ACT I / MAKE YOUR CASE<br />ACT II / MEET THE COUNTERPOINT<br />ACT III / TAKE IT WITH YOU</div>
             </section>
             <footer className="site-footer"><span>VERDICT<span className="brand-period">.</span></span><span>THINK CLEAR. SPEAK SHARP.</span><span>AI PRACTICE ROOM</span></footer>
           </motion.main>
@@ -939,12 +1000,12 @@ export default function App() {
         {view === "setup" && (
           <motion.main key="setup" className="setup-page" {...pageMotion}>
             <div className="setup-topline">
-              <button className="back-link" onClick={() => setView("landing")}><ArrowLeft size={16} /> Back to introduction</button>
+              <button className="back-link" onClick={returnHome}><ArrowLeft size={16} /> Back</button>
               <StatusTag state={backendState} />
             </div>
             <div className="setup-heading">
-              <h1>Set the scene.<br /><span>Choose your side.</span></h1>
-              <p>Pick a motion, choose your scene partner, and set the pace for this rehearsal.</p>
+              <h1>{learnerName ? `Set up your debate, ${learnerName.split(/\s+/)[0]}.` : "Set up your debate."}</h1>
+              <p>{learnerName ? "Picked for your level — change anything before you step in." : "Two quick choices, then you are in the room. You can change anything in the next round."}</p>
               <div className="setup-progress" role="status" aria-label="Setup summary">
                 <span className={activeTopic.trim() ? "is-set" : "is-missing"}>MOTION · {activeTopic.trim() ? "SET" : "CHOOSE ONE"}</span>
                 <span className="is-set">SIDE · {position.toUpperCase()}</span>
@@ -955,7 +1016,7 @@ export default function App() {
 
             <div className="setup-layout">
               <section className="setup-panel motion-panel">
-                <div className="panel-heading"><span className="panel-count">A</span><div><h2>Your motion</h2><p>What do you want to make a case for?</p></div></div>
+                <div className="panel-heading"><span className="panel-count">1</span><div><h2>Your motion</h2><p>Pick a topic, or write your own.</p></div></div>
                 {recentMotions.length > 0 && (
                   <div className="recent-motions">
                     <span>RECENT</span>
@@ -980,7 +1041,7 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-                <label className="custom-topic-label" htmlFor="custom-topic">OR WRITE A CUSTOM MOTION</label>
+                <label className="custom-topic-label" htmlFor="custom-topic">OR WRITE YOUR OWN</label>
                 <input
                   id="custom-topic"
                   className="custom-topic-input"
@@ -997,7 +1058,7 @@ export default function App() {
                 )}
                 {bankNotice && <p className="setup-hint" role="status">{bankNotice}</p>}
                 <div className="position-row">
-                  <span className="setting-label">I'M ARGUING</span>
+                  <span className="setting-label">YOUR SIDE</span>
                   <div className="segmented-control" role="group" aria-label="Your side">
                     <button aria-pressed={position === "for"} className={position === "for" ? "active" : ""} onClick={() => setPosition("for")}>FOR</button>
                     <button aria-pressed={position === "against"} className={position === "against" ? "active" : ""} onClick={() => setPosition("against")}>AGAINST</button>
@@ -1005,9 +1066,9 @@ export default function App() {
                 </div>
               </section>
 
-                <div className="panel-heading"><span className="panel-count">B</span><div><h2>Across the room</h2><p>Choose the voice that tests you best.</p></div></div>
               <a className="setup-continue" href="#setup-opponent">Next: your opponent <ArrowDownRight size={15} /></a>
               <section className="setup-panel opponent-panel" id="setup-opponent">
+                <div className="panel-heading"><span className="panel-count">2</span><div><h2>Your opponent</h2><p>Each one attacks a case differently.</p></div></div>
                 <div className="persona-list" role="radiogroup" aria-label="Choose your opponent">
                   {personas.map((person) => (
                     <button
@@ -1025,7 +1086,7 @@ export default function App() {
                 </div>
 
                 <div className="setting-block">
-                  <div className="setting-line"><span className="setting-label">REHEARSAL PRESSURE</span><span className="setting-value">{difficultyOptions.find((option) => option.value === difficulty)?.label}</span></div>
+                  <div className="setting-line"><span className="setting-label">DIFFICULTY</span></div>
                   <div className="difficulty-options" role="radiogroup" aria-label="Rehearsal pressure">
                     {difficultyOptions.map((option, index) => (
                       <button
@@ -1040,7 +1101,7 @@ export default function App() {
                 </div>
 
                 <div className="setting-block duration-setting">
-                  <div className="setting-line"><span className="setting-label">TIME IN THE ROOM</span><span className="setting-value"><Clock3 size={14} /> {duration} MIN</span></div>
+                  <div className="setting-line"><span className="setting-label">LENGTH</span><span className="setting-value"><Clock3 size={14} /> {duration} MIN</span></div>
                   <input type="range" min="2" max="10" step="1" value={duration} onChange={(event) => setDuration(Number(event.target.value))} aria-label="Debate duration in minutes" />
                   <div className="range-labels"><span>2 MIN</span><span>10 MIN</span></div>
                 </div>
@@ -1048,13 +1109,13 @@ export default function App() {
             </div>
 
             <div className="setup-bottom">
-              <div className="local-note"><LockKeyhole size={14} /><span>Guest practice open — no account needed. Sign in to keep transcripts in your learner archive.</span></div>
+              <div className="local-note"><LockKeyhole size={14} /><span>No account needed. Sign in to keep this transcript in your archive.</span></div>
               <button className="button button-dark setup-submit" onClick={() => void startSession()} disabled={!activeTopic.trim() || startingSession}>
-                {startingSession ? "Setting the table..." : "Call the first cue"} {!startingSession && <ArrowRight size={17} />}
+                {startingSession ? "Setting up..." : "Start rehearsal"} {!startingSession && <ArrowRight size={17} />}
               </button>
             </div>
             {!activeTopic.trim() && (
-              <p className="setup-hint" role="status">Choose a motion above or write a custom one to begin.</p>
+              <p className="setup-hint" role="status">Choose a motion above, or write your own, to begin.</p>
             )}
             {backendState === "offline" && (
               <div className="backend-help" role="status">
@@ -1094,12 +1155,12 @@ export default function App() {
                   <div className="identity-copy"><span>ACROSS THE TABLE</span><h2>{activePersona.name}</h2><p>{activePersona.line}</p></div>
                   <div className="identity-trait"><span>DEBATE STYLE</span><b>{persona === "skeptic" ? "EVIDENCE FIRST" : persona === "strategist" ? "LONG GAME" : "WIDER LENS"}</b></div>
                 </div>
-                <div className="arena-side-note"><span>YOUR POSITION</span><b>{position === "for" ? "IN FAVOUR" : "AGAINST"}</b><p>Stay with your case. Change your mind only when the argument earns it.</p></div>
-                <button className="arena-help" onClick={() => setHelpNotice("Write one clear claim. The opponent will answer that point directly.")}><Sparkles size={14} /> How to make a strong turn</button>
+                <div className="arena-side-note"><span>YOUR SIDE</span><b>{position === "for" ? "FOR" : "AGAINST"}</b><p>Stay with your case. Change your mind only when an argument earns it.</p></div>
+                <div className="arena-tip"><Swords size={14} /><p>One claim at a time, with a reason attached. Your opponent answers the point you just made.</p></div>
               </aside>
 
               <section className="transcript-panel" role="region" aria-label="Live debate transcript">
-                <div className="transcript-heading"><div><span className="transcript-kicker">LIVE TRANSCRIPT</span><h2>The floor is open.</h2></div><span className="round-counter"><span>CUE</span> {Math.max(1, learnerTurns.length + 1).toString().padStart(2, "0")}</span></div>
+                <div className="transcript-heading"><div><h2>The debate</h2></div><span className="round-counter"><span>TURN</span> {Math.max(1, learnerTurns.length + 1).toString().padStart(2, "0")}</span></div>
                 <AnimatePresence initial={false}>
                   {cueVisible && (
                     <motion.div
@@ -1111,15 +1172,12 @@ export default function App() {
                       exit={{ opacity: 0, y: -5 }}
                       transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
                     >
-                      <span>ENTRANCE / CUE {cueSequence.toString().padStart(2, "0")}</span>
-                      <strong>{activePersona.name} takes the floor</strong>
-                      <i>RESPONSE IN PROGRESS</i>
+                      <span>RESPONSE {cueSequence.toString().padStart(2, "0")}</span>
+                      <strong>{activePersona.name} is answering</strong>
+                      <i>WRITING A REPLY</i>
                     </motion.div>
                   )}
                 </AnimatePresence>
-                {helpNotice && (
-                  <div className="inline-notice" role="status"><span>{helpNotice}</span><button onClick={() => setHelpNotice("")}>Dismiss</button></div>
-                )}
                 {backendMessage && (
                   <div className="inline-notice" role="status"><span>{backendMessage}</span>{backendState === "offline" && <button onClick={() => void refreshBackend()}>Retry connection</button>}</div>
                 )}
@@ -1179,16 +1237,12 @@ export default function App() {
               </section>
 
               <aside className="room-notes">
-                <div className="room-note-heading"><span>THE PROMPT BOOK</span><span className="record-dot" /></div>
                 <div className={`room-opponent tone-${activePersona.color}`}>
                   <span className="room-opponent-mark" aria-hidden="true"><OpponentEmblem persona={persona} label={`${activePersona.name} emblem`} /></span>
                   <span className="room-opponent-copy"><b>{activePersona.name}</b><small>{activePersona.title}</small></span>
                 </div>
                 <div className="record-card"><div className="record-number">{learnerTurns.length.toString().padStart(2, "0")}</div><span>YOUR TURNS</span></div>
                 <div className="record-card"><div className="record-number">{totalWords.toString().padStart(2, "0")}</div><span>YOUR WORDS</span></div>
-                <div className="room-divider" />
-                <div className="live-note"><span className="live-note-mark"><Swords size={15} /></span><b>YOUR WORDS SET THE SCENE.</b><p>Your opponent responds to the argument you make, not a preset sequence.</p></div>
-                <div className="room-status"><span>OPPONENT STATUS</span><b className={`model-${backendState}`}><i /> {backendState === "ready" ? "CONNECTED" : backendState === "warming" ? "WARMING" : backendState === "offline" ? "OFFLINE" : "CHECKING"}</b></div>
                 {!user && <div className="room-guest"><span>GUEST REHEARSAL</span><p>This transcript stays in this browser. Sign in to keep it in your archive.</p></div>}
               </aside>
             </div>
@@ -1200,117 +1254,163 @@ export default function App() {
           <motion.main key="verdict" className="verdict-page" {...pageMotion}>
             <header className="verdict-header"><button className="arena-brand" onClick={returnHome}><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button><span>REHEARSAL COMPLETE / CASE REVIEW</span></header>
             <section className="verdict-content">
-              <div className="verdict-overline"><span className="verdict-seal"><BookOpenText size={22} /></span><span>THE LAST CUE IS CALLED.</span></div>
-              <h1>Keep the next<br /><span>line in reach.</span></h1>
-              <p className="verdict-summary">You rehearsed with <b>{activePersona.name}</b> on the motion: <b>“{activeTopic}”</b></p>
+              <h1>Your rehearsal<br /><span>is in the book.</span></h1>
+              <p className="verdict-summary">You argued <b>{position === "for" ? "for" : "against"}</b> the motion <b>“{activeTopic}”</b> against <b>{activePersona.name}</b>.</p>
               <div className="verdict-stats">
                 <div><span>YOUR TURNS</span><b>{learnerTurns.length.toString().padStart(2, "0")}</b></div>
                 <div><span>YOUR WORDS</span><b>{totalWords.toString().padStart(2, "0")}</b></div>
                 <div><span>TIME IN ROOM</span><b>{formatTime(Math.min(elapsed, duration * 60))}</b></div>
               </div>
-              <section className="analysis-chamber" aria-labelledby="analysis-heading">
-                <div className="analysis-chamber-head">
-                  <div><span>ACT IV / THE CASE REVIEW</span><h2 id="analysis-heading">Read the argument.<br /><em>Sharpen the next one.</em></h2></div>
-                  {!analysis && <button className="button button-dark" onClick={() => void reviewDebate()} disabled={analysisLoading || learnerTurns.length === 0}>
-                    {analysisLoading ? <><LoaderCircle className="spin" size={15} /> Reading your case</> : <><Sparkles size={15} /> Analyze my arguments</>}
-                  </button>}
+              <section className="review-block" aria-labelledby="review-heading">
+                <div className="review-head">
+                  <h2 id="review-heading">{analysis ? "Your review" : "Review your argument"}</h2>
+                  {!analysis && (
+                    <button className="button button-dark" onClick={() => void reviewDebate()} disabled={analysisLoading || learnerTurns.length === 0}>
+                      {analysisLoading ? <><LoaderCircle className="spin" size={15} /> Reading your case</> : <><Sparkles size={15} /> Start the review</>}
+                    </button>
+                  )}
                 </div>
-                {!analysis && <p className="analysis-intro">A text-based coaching review of clarity, evidence, reasoning, and persuasion. It runs on the Ollama model and does not assess your voice.</p>}
+                {!analysis && (
+                  <p className="review-intro">
+                    {learnerTurns.length === 0
+                      ? "This rehearsal has no turns to review. Run a round with at least one argument to get scores."
+                      : "Five scores for your argument, the counterpoints you missed, and one thing to fix next. It reads your words only — your voice is reviewed separately under Delivery."}
+                  </p>
+                )}
+                {analysisLoading && <p className="review-intro" role="status"><LoaderCircle className="spin" size={14} /> Reading your case. This runs on a local model, so give it a moment.</p>}
                 {analysisError && <div className="analysis-error" role="alert">{analysisError}</div>}
+                {(analysis?.gaps ?? []).length > 0 && (
+                  <div className="inline-notice" role="status">
+                    <span>Partial review — {analysis?.gaps.join(" ")} The finished sections are below; running it again may complete the rest.</span>
+                    <button onClick={() => void reviewDebate()}>Retry review</button>
+                  </div>
+                )}
+
                 {analysis && <>
-                  {(analysis.gaps ?? []).length > 0 && (
-                    <div className="inline-notice" role="status">
-                      <span>Partial review — {analysis.gaps.join(" ")} The finished sections are below; running it again may complete the rest.</span>
-                      <button onClick={() => void reviewDebate()}>Retry review</button>
+                  {judgeLoading && !judge && <p className="review-intro" role="status"><LoaderCircle className="spin" size={14} /> Weighing your scores.</p>}
+                  {judgeError && (
+                    <div className="analysis-error" role="alert">
+                      {judgeError}
+                      <button className="button button-light" type="button" onClick={() => void runJudge(analysis, deliveryResult)}>Score it again</button>
                     </div>
                   )}
+                  {judge && (
+                    <div className="score-summary">
+                      <div className="score-figure">
+                        <span>WEIGHTED SCORE</span>
+                        <b>{judge.overall.toFixed(1)}<small> / 5</small></b>
+                        <p>{deliveryResult ? "Includes your closing take." : "Record a closing take under Delivery to score communication."}</p>
+                      </div>
+                      <div className="score-bars">
+                        {judge.dimensions.map((dim) => (
+                          <div className="score-bar" key={dim.key}>
+                            <span>{dim.key.replaceAll("_", " ")}</span>
+                            <div className="score-track" role="img" aria-label={`${dim.key.replaceAll("_", " ")} scores ${dim.score.toFixed(1)} of 5`}><i style={{ width: `${Math.min(100, dim.score / 5 * 100)}%` }} /></div>
+                            <b>{dim.score.toFixed(1)}</b>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(analysis.strengths.length > 0 || analysis.next_steps.length > 0) && (
+                    <div className="analysis-coaching-grid">
+                      <section className="analysis-coaching-card"><span>WHAT WORKED</span>{analysis.strengths.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
+                      <section className="analysis-coaching-card"><span>DO THIS NEXT</span>{analysis.next_steps.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
+                    </div>
+                  )}
+
                   {analysis.ratings && (
-                    <div className="analysis-rubric">
-                      {([
-                        ["clarity", "Clarity"],
-                        ["relevance", "Relevance"],
-                        ["evidence_strength", "Evidence"],
-                        ["logical_consistency", "Logic"],
-                        ["persuasiveness", "Persuasion"],
-                      ] as const).map(([key, label]) => (
-                        <article className="analysis-rating" key={key}>
-                          <span>{label}</span><b>{analysis.ratings?.[key]?.score ?? "–"}<small> / 5</small></b><p>{analysis.ratings?.[key]?.note}</p>
+                    <details className="disclosure">
+                      <summary>
+                        Argument scores
+                        <span>clarity {analysis.ratings?.clarity?.score ?? "–"} · relevance {analysis.ratings?.relevance?.score ?? "–"} · evidence {analysis.ratings?.evidence_strength?.score ?? "–"} · logic {analysis.ratings?.logical_consistency?.score ?? "–"} · persuasion {analysis.ratings?.persuasiveness?.score ?? "–"}</span>
+                      </summary>
+                      <div className="analysis-rubric">
+                        {([
+                          ["clarity", "Clarity"],
+                          ["relevance", "Relevance"],
+                          ["evidence_strength", "Evidence"],
+                          ["logical_consistency", "Logic"],
+                          ["persuasiveness", "Persuasion"],
+                        ] as const).map(([key, label]) => (
+                          <article className="analysis-rating" key={key}>
+                            <span>{label}</span><b>{analysis.ratings?.[key]?.score ?? "–"}<small> / 5</small></b><p>{analysis.ratings?.[key]?.note}</p>
+                          </article>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+
+                  <details className="disclosure">
+                    <summary>Logic watch<span>{analysis.fallacies.length === 0 ? "no clear examples" : `${analysis.fallacies.length} to review`}</span></summary>
+                    <section className="analysis-fallacies">
+                      {analysis.fallacies.length === 0
+                        ? <p>No clear examples of the listed fallacies appeared. Keep checking claims against their evidence.</p>
+                        : analysis.fallacies.map((item, index) => <article key={`${item.label}-${index}`}><b>{item.label}</b><blockquote>“{item.quote}”</blockquote><p>{item.explanation}</p><small>TRY THIS: {item.revision}</small></article>)}
+                    </section>
+                  </details>
+
+                  {analysis.counterarguments.length > 0 && (
+                    <details className="disclosure">
+                      <summary>Counterpoints to test your case<span>{analysis.counterarguments.length} angles</span></summary>
+                      <section className="analysis-counterpoints"><div className="counterpoint-grid">
+                        {analysis.counterarguments.map((item) => <article key={item.kind}><span>{item.kind.toUpperCase()}</span><p>{item.response}</p><small>ASK: {item.question}</small></article>)}
+                      </div></section>
+                    </details>
+                  )}
+
+                  {judge && (
+                    <details className="disclosure">
+                      <summary>How the score is weighted<span>argument 30 · evidence 20 · logic 20 · rebuttal 15 · communication 15</span></summary>
+                      <div className="judge-grid">
+                        {judge.dimensions.map((dim) => (
+                          <article key={dim.key} className="judge-card">
+                            <span>{dim.key.replaceAll("_", " ")} · {dim.weight_pct}%</span>
+                            <b>{dim.score.toFixed(1)}<small> / 5</small></b>
+                            <p>{dim.note}</p>
+                            {dim.citations.length > 0 && <small className="judge-cites">{dim.citations.map((cite) => `“${cite}”`).join(" · ")}</small>}
+                          </article>
+                        ))}
+                      </div>
+                      {judge.gaps.length > 0 && (
+                        <div className="judge-gaps">
+                          <div className="analysis-section-label">DISCLOSED GAPS / {judge.gaps.length.toString().padStart(2, "0")}</div>
+                          {judge.gaps.map((gap) => <p key={gap}>{gap}</p>)}
+                        </div>
+                      )}
+                    </details>
+                  )}
+
+                  <details className="disclosure">
+                    <summary>Read the full transcript<span>{messages.length} turns</span></summary>
+                    <div className="transcript-recap">
+                      {messages.map((message) => (
+                        <article key={message.id} className={`recap-turn ${message.speaker}`}>
+                          <span>{message.speaker === "learner" ? "YOU" : activePersona.name.toUpperCase()}</span>
+                          <div><MarkdownText text={message.content} compact /></div>
                         </article>
                       ))}
                     </div>
-                  )}
-                  {(analysis.strengths.length > 0 || analysis.next_steps.length > 0) && (
-                    <div className="analysis-coaching-grid">
-                      <section className="analysis-coaching-card"><span>WHAT LANDED</span>{analysis.strengths.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
-                      <section className="analysis-coaching-card"><span>YOUR NEXT MOVE</span>{analysis.next_steps.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
-                    </div>
-                  )}
-                  <section className="analysis-fallacies"><div className="analysis-section-label">LOGIC WATCH / {analysis.fallacies.length.toString().padStart(2, "0")}</div>
-                    {analysis.fallacies.length === 0
-                      ? <p>No clear examples of the listed fallacies appeared. Keep checking claims against their evidence.</p>
-                      : analysis.fallacies.map((item, index) => <article key={`${item.label}-${index}`}><b>{item.label}</b><blockquote>“{item.quote}”</blockquote><p>{item.explanation}</p><small>TRY THIS: {item.revision}</small></article>)}
-                  </section>
-                  {analysis.counterarguments.length > 0 && (
-                    <section className="analysis-counterpoints"><div className="analysis-section-label">FIVE WAYS TO TEST THE CASE</div><div className="counterpoint-grid">
-                      {analysis.counterarguments.map((item) => <article key={item.kind}><span>{item.kind.toUpperCase()} COUNTERPOINT</span><p>{item.response}</p><small>ASK: {item.question}</small></article>)}
-                    </div></section>
-                  )}
-                  <p className="analysis-limit">Coaching estimate from an AI model, based on this transcript only. Scores are not objective measures. Check each observation against what you meant to say.</p>
+                  </details>
+
+                  <p className="analysis-limit">Coaching estimate from an AI model, based only on this transcript. Scores are not objective measures — check each observation against what you meant to say.</p>
                 </>}
               </section>
-              <section className="analysis-chamber" aria-labelledby="delivery-heading">
-                <div className="analysis-chamber-head">
-                  <div><span>ACT V / DELIVERY REVIEW</span><h2 id="delivery-heading">Hear the delivery.<br /><em>Steady the next one.</em></h2></div>
+              <details className="disclosure" open={deliveryResult !== null}>
+                <summary>Delivery review<span>{deliveryResult ? "closing take reviewed" : "record a closing take"}</span></summary>
+                <div className="delivery-body">
+                  <p className="analysis-intro">Record or upload a closing take. Pace, fillers, and pauses are observable patterns with timestamps, not diagnoses. Your audio is discarded after the review.</p>
+                  <Suspense fallback={<div className="inline-notice" role="status">Loading delivery review…</div>}>
+                    <PresentationRoom topic={activeTopic} sessionId={recordId} compact onResult={(next) => { setDeliveryResult(next); void runJudge(analysis, next); }} />
+                  </Suspense>
+                  <button className="text-link step-aside" type="button" onClick={() => setView("present")}>Or practise a take on its own <ArrowUpRight size={15} /></button>
                 </div>
-                <p className="analysis-intro">Record or upload a closing take. Delivery states are observable patterns with timestamps, not diagnoses. Audio is discarded after review.</p>
-                <Suspense fallback={<div className="inline-notice" role="status">Loading delivery review…</div>}>
-                  <PresentationRoom topic={activeTopic} sessionId={recordId} compact onResult={(next) => { setDeliveryResult(next); setJudge(null); setJudgeError(""); }} />
-                </Suspense>
-              </section>
-              <section className="analysis-chamber judge-chamber" aria-labelledby="judge-heading">
-                <div className="analysis-chamber-head">
-                  <div><span>ACT VI / THE WEIGHTED VERDICT</span><h2 id="judge-heading">Weigh the case.<br /><em>Carry the next line.</em></h2></div>
-                  {!judge && <button className="button button-dark" onClick={() => void scoreRehearsal()} disabled={judgeLoading || !analysis?.ratings}>
-                    {judgeLoading ? <><LoaderCircle className="spin" size={15} /> Scoring the rehearsal</> : <><Sparkles size={15} /> Score my rehearsal</>}
-                  </button>}
-                </div>
-                <p className="analysis-intro">A deterministic scoring of this rehearsal on five weighted dimensions: argument 30, evidence 20, logic 20, rebuttal 15, communication 15. {deliveryResult ? "Includes your closing take." : "Add a closing take above to score communication; otherwise it scores neutral."}</p>
-                {!analysis?.ratings && <p className="present-empty" role="status">Run the case review first — scoring builds on its ratings and counterpoints.</p>}
-                {judgeError && <div className="analysis-error" role="alert">{judgeError}</div>}
-                {judge && <>
-                  <div className="judge-overall">
-                    <div><span>WEIGHTED OVERALL</span><b>{judge.overall.toFixed(1)}<small> / 5</small></b></div>
-                    <p>Argument 30 · Evidence 20 · Logic 20 · Rebuttal 15 · Communication 15. Scores are coaching estimates, not objective measures.</p>
-                  </div>
-                  <div className="judge-grid">
-                    {judge.dimensions.map((dim) => (
-                      <article key={dim.key} className="judge-card">
-                        <span>{dim.key.toUpperCase()} · {dim.weight_pct}%</span>
-                        <b>{dim.score.toFixed(1)}<small> / 5</small></b>
-                        <p>{dim.note}</p>
-                        {dim.citations.length > 0 && <small className="judge-cites">{dim.citations.map((cite) => `“${cite}”`).join(" · ")}</small>}
-                      </article>
-                    ))}
-                  </div>
-                  {judge.gaps.length > 0 && (
-                    <div className="judge-gaps">
-                      <div className="analysis-section-label">DISCLOSED GAPS / {judge.gaps.length.toString().padStart(2, "0")}</div>
-                      {judge.gaps.map((gap) => <p key={gap}>{gap}</p>)}
-                    </div>
-                  )}
-                  <p className="analysis-limit">Deterministic scoring from your case review{deliveryResult ? " and closing take" : ""}. Check each note against what you meant to say.</p>
-                  <div className="judge-actions">
-                    <button className="button button-light" onClick={() => void scoreRehearsal()} disabled={judgeLoading || !analysis?.ratings}>
-                      {judgeLoading ? <><LoaderCircle className="spin" size={15} /> Re-scoring</> : <>Re-score with current review</>}
-                    </button>
-                  </div>
-                </>}
-              </section>
-              <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>{user ? "Your transcript and any completed argument review are kept in your learner archive." : "Your transcript and review stay in this browser session. Sign in before your next rehearsal to keep its transcript in your learner archive."}</p></div>
+              </details>
+              <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>{user ? "This transcript, its review, and any completed delivery take stay in your learner archive." : "This transcript and review stay in this browser session. Sign in before your next rehearsal to keep its transcript in your archive."}</p></div>
               <div className="verdict-actions">
-                <button className="button button-dark" onClick={() => void resumeSession()}><RotateCcw size={16} /> Return to the room</button>
-                <button className="button button-light" onClick={() => setView("present")}>Practice delivery solo <ArrowUpRight size={16} /></button>
-                <button className="button button-light" onClick={() => setView("setup")}>Start a new rehearsal <ArrowUpRight size={16} /></button>
+                <button className="button button-dark" onClick={() => setView("setup")}>Start a new rehearsal <ArrowUpRight size={16} /></button>
+                <button className="button button-light" onClick={() => void resumeSession()}><RotateCcw size={16} /> Return to the room</button>
               </div>
             </section>
             <div className="verdict-footer"><span>VERDICT / CASE CLOSED</span><span>AI PRACTICE ROOM</span></div>

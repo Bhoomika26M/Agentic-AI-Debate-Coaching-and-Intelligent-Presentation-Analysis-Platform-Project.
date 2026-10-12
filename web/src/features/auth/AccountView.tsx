@@ -1,11 +1,13 @@
-import { ArrowLeft, ArrowUpRight, BookOpenText, Check, Download, LoaderCircle, Printer, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ArrowUpRight, BookOpenText, Check, Download, LoaderCircle, Printer, RotateCcw, Sparkles } from "lucide-react";
 import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
 import { listDebateRecords, loadDebateAnalysis, loadDebateRecord, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
 import type { AnalysisReport } from "../../services/debate-api";
 import { requestJudge } from "../../services/debate-api";
 import { listPresentationFeedbacks } from "../../services/presentation-records";
+import { requestPlan, type LearningPlan } from "../../services/plan-api";
+import { listLearningPlans, loadSessionDigests, saveLearningPlan } from "../../services/plan-records";
 import { emptyProfile, loadProfile, saveProfile, type LearnerProfile } from "../../services/profiles";
 import { difficultyFor, personaFor, personas } from "../debate-catalog";
 import {
@@ -19,6 +21,7 @@ import {
   hasAnswers,
   loadPrefs,
   markOnboardingDone,
+  preferencesFor,
   prefsToProfileFields,
   purposeLine,
   savePrefs,
@@ -28,6 +31,22 @@ import {
 } from "../../services/learner-prefs";
 import { useAuth } from "./AuthProvider";
 import "./account.css";
+
+type TabKey = "archive" | "progress" | "plan";
+
+// The tab a learner most likely wants first, given what they said practice is for.
+function recommendedTab(prefs: LearnerPrefs): TabKey {
+  if (prefs.goal === "structure" || prefs.goal === "evidence") return "plan";
+  const competitive = prefs.purpose === "competition" || prefs.goal === "win" || prefs.goal === "hostile";
+  const delivery = prefs.focus.includes("delivery") || prefs.focus.includes("confidence") || prefs.goal === "nerves";
+  return competitive || delivery ? "progress" : "archive";
+}
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "archive", label: "Archive" },
+  { key: "progress", label: "Progress" },
+  { key: "plan", label: "Plan" },
+];
 
 function opponentName(key: string) {
   return personas.find((person) => person.key === key)?.name ?? "Your opponent";
@@ -41,7 +60,7 @@ function formatDate(value: string) {
 }
 
 export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSignOut: () => Promise<void> }) {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const [records, setRecords] = useState<DebateRecord[]>([]);
   const [selected, setSelected] = useState<{ session: DebateRecord; turns: DebateRecordTurn[]; analysis: AnalysisReport | null } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,16 +70,27 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
   const [profile, setProfile] = useState<LearnerProfile>(emptyProfile);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState("");
-  const [tab, setTab] = useState<"archive" | "progress">("archive");
   const [prefs, setPrefs] = useState<LearnerPrefs>(() => (user ? loadPrefs(user.id) : emptyPrefs()));
+  const [tab, setTab] = useState<TabKey>(() => recommendedTab(user ? loadPrefs(user.id) : emptyPrefs()));
+  const [storedPlan, setStoredPlan] = useState<{ plan: LearningPlan; created_at: string; sessions_considered: number } | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState("");
+  const [planLoaded, setPlanLoaded] = useState(false);
   const [progress, setProgress] = useState<null | {
     sessions: number; completed: number; streakDays: number; avgOverall: number | null;
     avgDims: { key: string; score: number }[]; fillerFirst: number | null; fillerLast: number | null;
     deliveries: number; weeks: { label: string; count: number }[];
   }>(null);
   const [progressLoading, setProgressLoading] = useState(false);
+  const [progressError, setProgressError] = useState("");
+
   const recommendation = useMemo(() => buildRecommendation(profile.experience, prefs), [profile.experience, prefs]);
   const setupComplete = hasAnswers(prefs);
+  const recommended = useMemo(() => recommendedTab(prefs), [prefs]);
+  const orderedTabs = useMemo(
+    () => [...TABS].sort((a, b) => (a.key === recommended ? -1 : b.key === recommended ? 1 : 0)),
+    [recommended],
+  );
   const introLine = useMemo(() => {
     if (!setupComplete) return "Two minutes in your room tunes your opponent, your pressure, and the cue waiting on your dashboard.";
     const parts = [
@@ -85,6 +115,11 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
     }
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (tab === "progress") void loadProgress();
+    else if (tab === "plan") void loadPlan();
+  }, [tab]);
 
   async function openRecord(recordId: string) {
     if (loadingRecord) return;
@@ -157,9 +192,52 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
     return streak;
   }
 
+  async function loadPlan() {
+    if (planLoaded || planLoading) return;
+    setPlanError("");
+    setPlanLoaded(true);
+    try {
+      const saved = await listLearningPlans(1);
+      setStoredPlan(saved[0] ?? null);
+    } catch {
+      setPlanError("Your plan library is not connected yet. Apply the Supabase database migration, then reload this page.");
+    }
+  }
+
+  async function buildPlan() {
+    if (!user || planLoading) return;
+    setPlanLoading(true);
+    setPlanError("");
+    try {
+      const digests = await loadSessionDigests(12);
+      const result = await requestPlan(
+        {
+          goals: profile.goals,
+          experience: profile.experience,
+          digests,
+          preferences: preferencesFor(prefs),
+        },
+        session?.access_token,
+      );
+      const created = await saveLearningPlan(user.id, result.plan, digests.length).catch(() => null);
+      setStoredPlan({
+        plan: result.plan,
+        created_at: created?.created_at ?? new Date().toISOString(),
+        sessions_considered: digests.length,
+      });
+      setPlanLoaded(true);
+      if (!created) setPlanError("The plan is ready, but it could not be saved to your account.");
+    } catch (error) {
+      setPlanError(error instanceof Error ? error.message : "The coach could not build your plan.");
+    } finally {
+      setPlanLoading(false);
+    }
+  }
+
   async function loadProgress() {
     if (progressLoading || progress) return;
     setProgressLoading(true);
+    setProgressError("");
     try {
       const sessions = await listDebateRecords(30);
       const withAnalysis = await Promise.all(
@@ -198,7 +276,7 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
           deliveries: feedbacks.length,
         };
       } catch {
-        /* delivery history optional */
+        /* Delivery history is optional. */
       }
       const days = new Set(sessions.map((s) => dayKey(s.started_at)));
       const weeks: { label: string; count: number }[] = [];
@@ -224,6 +302,8 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
         deliveries: fillers.deliveries,
         weeks,
       });
+    } catch {
+      setProgressError("Your trends are not connected yet. Apply the Supabase database migration, then retry.");
     } finally {
       setProgressLoading(false);
     }
@@ -403,10 +483,98 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
         </section>
       </div>
 
-      <div className="account-tabs no-print" role="group" aria-label="Archive or progress">
-        <button type="button" className={tab === "archive" ? "active" : ""} aria-pressed={tab === "archive"} onClick={() => setTab("archive")}>Archive</button>
-        <button type="button" className={tab === "progress" ? "active" : ""} aria-pressed={tab === "progress"} onClick={() => { setTab("progress"); void loadProgress(); }}>Progress</button>
+      <div className="account-tabs no-print" role="group" aria-label="Archive, progress, or plan">
+        {orderedTabs.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={tab === item.key ? "active" : ""}
+            aria-pressed={tab === item.key}
+            onClick={() => setTab(item.key)}
+          >
+            {item.label}
+            {item.key === recommended && <span className="tab-flag">For you</span>}
+          </button>
+        ))}
       </div>
+
+      {tab === "plan" && (
+        <section className="account-plan" aria-labelledby="plan-heading">
+          <div className="archive-heading">
+            <div><h2 id="plan-heading">Practice plan</h2><p>Diagnosed from your saved sessions, then drafted and checked by the coaching agent.</p></div>
+            <span>{storedPlan ? `${storedPlan.sessions_considered} SESSIONS` : "--"}</span>
+          </div>
+
+          {planLoading && <div className="archive-loading"><LoaderCircle className="spin" size={18} /> Reading your sessions and drafting drills</div>}
+
+          {!planLoading && !storedPlan && !planError && (
+            <div className="archive-empty">
+              <EmptyCueArt label="No plan yet" />
+              <div><b>Turn your archive into drills.</b><p>Your weakest criteria, a drill for each one, and a four-week rhythm — grounded only in reviews you already have. Rebuilding after every few rehearsals keeps it honest.</p></div>
+              <button className="button button-dark" onClick={() => void buildPlan()} disabled={!user}>Build my plan <Sparkles size={15} /></button>
+            </div>
+          )}
+
+          {storedPlan && (
+            <div className="plan-body">
+              <div className="plan-head">
+                <h3>{storedPlan.plan.headline}</h3>
+                <span>NEXT REHEARSAL</span>
+                <b>{storedPlan.plan.next_session}</b>
+                <p>{storedPlan.plan.summary}</p>
+                <small>{formatDate(storedPlan.created_at)} · {storedPlan.sessions_considered} session{storedPlan.sessions_considered === 1 ? "" : "s"} considered</small>
+              </div>
+
+              <div className="plan-block">
+                <span>WHAT YOUR RECORD SHOWS</span>
+                {storedPlan.plan.weak_spots.map((spot) => (
+                  <article className="plan-spot" key={spot.key}>
+                    <b>{spot.label}</b>
+                    <p>{spot.evidence}</p>
+                    <em>{spot.first_step}</em>
+                  </article>
+                ))}
+              </div>
+
+              <div className="plan-block">
+                <span>DRILLS</span>
+                {storedPlan.plan.drills.map((drill) => (
+                  <article className="plan-drill" key={drill.title}>
+                    <div><b>{drill.title}</b><span>{drill.minutes} MIN · {drill.weak_spot.replaceAll("_", " ").toUpperCase()}</span></div>
+                    <ol>{drill.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+                    <p className="plan-check"><Check size={13} /> {drill.success_check}</p>
+                  </article>
+                ))}
+              </div>
+
+              <div className="plan-block no-print">
+                <span>THE RHYTHM</span>
+                <div className="plan-weeks">
+                  {storedPlan.plan.milestones.map((milestone) => (
+                    <div className="plan-week" key={milestone.week}>
+                      <b>WEEK {milestone.week}</b>
+                      <p>{milestone.practice}</p>
+                      <em>{milestone.win_condition}</em>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {(storedPlan.plan.gaps ?? []).length > 0 && <p className="archive-partial">{storedPlan.plan.gaps.join(" ")}</p>}
+              {records[0] && new Date(records[0].started_at) > new Date(storedPlan.created_at) && (
+                <p className="plan-stale">You have rehearsed since this plan was built — rebuild it to fold in the newest session.</p>
+              )}
+
+              <div className="plan-actions no-print">
+                <button className="button button-light" onClick={() => void buildPlan()} disabled={planLoading}><Sparkles size={15} /> Rebuild plan</button>
+                <button className="button button-light" onClick={() => window.print()}><Printer size={15} /> Print plan</button>
+              </div>
+            </div>
+          )}
+
+          {planError && <div className="archive-error" role="alert">{planError}</div>}
+        </section>
+      )}
 
       {tab === "progress" && (
         <section className="account-progress" aria-labelledby="progress-heading">
@@ -415,7 +583,8 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
             <span>{progress?.sessions.toString().padStart(2, "0") ?? "--"}</span>
           </div>
           {progressLoading && <div className="archive-loading"><LoaderCircle className="spin" size={18} /> Reading your trends</div>}
-          {!progressLoading && !progress && (
+          {progressError && <div className="archive-error" role="alert">{progressError} <button className="button button-light" onClick={() => void loadProgress()}>Retry</button></div>}
+          {!progressLoading && !progress && !progressError && (
             <div className="archive-empty">
               <EmptyCueArt label="No trends yet" />
               <div><b>Debate once to start your trends.</b><p>Scores, streaks, and filler direction appear here.</p></div>

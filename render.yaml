@@ -1,6 +1,4 @@
-# Static frontend only. The Python API + Ollama stay local/VPS for now; add a
-# backend service here only with hosted BYOK + REQUIRE_AUTH=true verified.
-# TODO: narrow connect-src from 'self https:' to the exact API + Supabase origins.
+# Static frontend only; TODO: narrow connect-src once hosted BYOK + REQUIRE_AUTH are verified.
 services:
   - type: web
     runtime: static

@@ -2,6 +2,37 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+FallacyLabel = Literal[
+    "Ad Hominem",
+    "Straw Man",
+    "False Dilemma",
+    "Slippery Slope",
+    "Appeal to Authority",
+    "Circular Reasoning",
+    "Hasty Generalization",
+    "Red Herring",
+]
+
+CriterionKey = Literal[
+    "clarity",
+    "relevance",
+    "evidence_strength",
+    "logical_consistency",
+    "persuasiveness",
+]
+
+WeakSpotKey = Literal[
+    "clarity",
+    "relevance",
+    "evidence_strength",
+    "logical_consistency",
+    "persuasiveness",
+    "delivery",
+    "fallacy_control",
+    "practice_volume",
+]
+
+
 GoalKey = Literal["structure", "evidence", "nerves", "hostile", "win"]
 PurposeKey = Literal["school", "university", "interview", "confidence", "competition"]
 FocusKey = Literal["argument", "delivery", "confidence"]
@@ -20,6 +51,14 @@ class DebateTurn(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
 
 
+class SessionDigest(BaseModel):
+    """One finished rehearsal, reduced by the browser to a compact record (oldest first)."""
+
+    ratings: "RubricRatings | None" = None
+    fallacy_labels: list[FallacyLabel] = Field(default_factory=list, max_length=8)
+    filler_rate_per_100w: float | None = Field(default=None, ge=0, le=200)
+
+
 class DebateRequest(BaseModel):
     topic: str = Field(min_length=3, max_length=240)
     learner_position: Literal["for", "against"]
@@ -27,6 +66,7 @@ class DebateRequest(BaseModel):
     difficulty: Literal["warm-up", "challenge", "cross-examination"]
     history: list[DebateTurn] = Field(default_factory=list, max_length=20)
     learner_argument: str | None = Field(default=None, max_length=4000)
+    memory: list[SessionDigest] = Field(default_factory=list, max_length=12)
     preferences: PracticePreferences | None = None
 
 
@@ -62,17 +102,11 @@ class RubricRatings(BaseModel):
     persuasiveness: RubricRating
 
 
+SessionDigest.model_rebuild()
+
+
 class FallacyFlag(BaseModel):
-    label: Literal[
-        "Ad Hominem",
-        "Straw Man",
-        "False Dilemma",
-        "Slippery Slope",
-        "Appeal to Authority",
-        "Circular Reasoning",
-        "Hasty Generalization",
-        "Red Herring",
-    ]
+    label: FallacyLabel
     quote: str = Field(min_length=1, max_length=400)
     explanation: str = Field(min_length=1, max_length=240)
     revision: str = Field(min_length=1, max_length=280)
@@ -216,3 +250,58 @@ class PresentationResponse(BaseModel):
 class JudgeRequest(BaseModel):
     report: AnalysisReport
     delivery: PresentationResponse | None = None
+
+
+class PlanWeakSpot(BaseModel):
+    key: WeakSpotKey
+    label: str = Field(min_length=3, max_length=80)
+    evidence: str = Field(min_length=3, max_length=240)
+    first_step: str = Field(min_length=3, max_length=240)
+
+
+class PlanDrill(BaseModel):
+    weak_spot: WeakSpotKey
+    title: str = Field(min_length=3, max_length=80)
+    minutes: int = Field(ge=3, le=30)
+    steps: list[str] = Field(min_length=1, max_length=3)
+    success_check: str = Field(min_length=5, max_length=200)
+
+
+class PlanMilestone(BaseModel):
+    week: int = Field(ge=1, le=6)
+    focus: list[WeakSpotKey] = Field(min_length=1, max_length=3)
+    practice: str = Field(min_length=5, max_length=240)
+    win_condition: str = Field(min_length=5, max_length=200)
+
+
+class PlanRequest(BaseModel):
+    goals: str | None = Field(default=None, max_length=500)
+    experience: Literal["new", "developing", "confident"] | None = None
+    digests: list[SessionDigest] = Field(default_factory=list, max_length=12)
+    preferences: PracticePreferences | None = None
+
+
+class LearningPlan(BaseModel):
+    headline: str = Field(min_length=3, max_length=120)
+    summary: str = Field(min_length=3, max_length=400)
+    weak_spots: list[PlanWeakSpot] = Field(min_length=1, max_length=4)
+    drills: list[PlanDrill] = Field(min_length=1, max_length=6)
+    milestones: list[PlanMilestone] = Field(min_length=1, max_length=4)
+    next_session: str = Field(min_length=3, max_length=240)
+    generated_for: int = Field(ge=0, le=12)
+    gaps: list[str] = Field(default_factory=list, max_length=3)
+
+
+class PlanResponse(BaseModel):
+    plan: LearningPlan
+    gaps: list[str] = Field(default_factory=list, max_length=3)
+
+
+class PlanBranches(BaseModel):
+    """Schema handed to the model: only the branches it is allowed to write."""
+
+    headline: str = Field(min_length=3, max_length=120)
+    summary: str = Field(min_length=3, max_length=400)
+    drills: list[PlanDrill] = Field(min_length=1, max_length=6)
+    milestones: list[PlanMilestone] = Field(min_length=1, max_length=4)
+    next_session: str = Field(min_length=3, max_length=240)

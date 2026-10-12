@@ -16,9 +16,15 @@ class DebateState(TypedDict, total=False):
     latest: str | None
     preferences: dict | None
     route: Literal["respond", "redirect"]
-    reply: str
-    brief: str | None
+    memory: list[dict]
     memory_brief: str | None
+    brief: str | None
+    draft: str
+    reply: str
+    problems: list[str]
+    revise_count: int
+    verified: bool
+    replaced: bool
 
 
 class AnalysisState(TypedDict, total=False):
@@ -38,6 +44,23 @@ class JudgeState(TypedDict, total=False):
     dimensions: NotRequired[Annotated[list[dict], operator.add]]
     verdict: dict | None
     gaps: list[str]
+
+
+class PlanState(TypedDict, total=False):
+    goals: str | None
+    experience: str | None
+    preferences: dict | None
+    digests: list[dict]
+    averages: dict[str, float]
+    weak_spots: list[dict]
+    use_model: bool
+    model_skipped: bool
+    draft: dict | None
+    problems: list[str]
+    fallback_used: bool
+    plan: dict | None
+    gaps: list[str]
+    repair_count: int
 
 
 class DeliveryState(TypedDict, total=False):

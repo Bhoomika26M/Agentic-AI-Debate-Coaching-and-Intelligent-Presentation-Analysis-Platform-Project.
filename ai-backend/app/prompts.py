@@ -108,7 +108,8 @@ def build_messages(request: DebateRequest) -> list[dict[str, str]]:
         for turn in request.history
     )
     latest = request.learner_argument
-    if latest is None:
+    if latest is None or not latest.strip():
+        # A blank turn means "open the debate", not "reply to nothing".
         latest = "Open the debate with a concise statement of your position and a question for the learner."
     else:
         latest = _learner_turn(latest)

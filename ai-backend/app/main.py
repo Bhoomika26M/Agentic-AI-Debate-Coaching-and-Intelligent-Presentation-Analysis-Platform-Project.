@@ -24,13 +24,29 @@ from .schemas import (
     DebateRequest,
     JudgeRequest,
     JudgeVerdict,
+    PlanRequest,
+    PlanResponse,
     PresentationResponse,
 )
 from .speech import MAX_AUDIO_MB
 
+# The agent graphs log through logging.info; LOG_LEVEL=WARNING silences them.
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(levelname)s %(name)s: %(message)s",
+)
+
 logger = logging.getLogger(__name__)
 MAX_ACTIVE_STREAMS = max(1, int(os.getenv("MAX_ACTIVE_STREAMS", "2")))
 stream_slots = asyncio.Semaphore(MAX_ACTIVE_STREAMS)
+STREAM_DONE = "data: [DONE]\n\n"
+BUSY_MESSAGE = "The opponent could not finish this turn. Please try again."
+
+
+def sse_event(kind: str, text: str) -> str:
+    """One server-sent event; `kind` is the key the browser reads: delta, replace or error."""
+    return f"data: {json.dumps({kind: text}, ensure_ascii=False)}\n\n"
 
 
 @asynccontextmanager
@@ -96,10 +112,11 @@ async def health() -> dict[str, str | bool]:
 
 @app.post("/api/debate/stream", dependencies=[Depends(authenticate_request)])
 async def debate_stream(request: DebateRequest) -> StreamingResponse:
+    # A declined turn never needs the model or a stream slot.
     if route_turn(request.learner_argument) == "redirect":
         async def redirected() -> AsyncIterator[str]:
-            yield f"data: {json.dumps({'delta': redirect_reply(request.topic)}, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
+            yield sse_event("delta", redirect_reply(request.topic))
+            yield STREAM_DONE
 
         return StreamingResponse(
             redirected(),
@@ -126,7 +143,7 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
     async def events() -> AsyncIterator[str]:
         try:
             assembled: list[str] = []
-            async for delta in respond_stream(
+            async for kind, text in respond_stream(
                 {
                     "topic": request.topic,
                     "learner_position": request.learner_position,
@@ -137,6 +154,7 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
                         for t in request.history
                     ],
                     "latest": request.learner_argument,
+                    "memory": [digest.model_dump() for digest in request.memory],
                     "preferences": (
                         request.preferences.model_dump()
                         if request.preferences
@@ -144,15 +162,17 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
                     ),
                 }
             ):
-                assembled.append(delta)
-                yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
+                if kind == "delta":
+                    assembled.append(text)
+                else:
+                    assembled = [text]
+                yield sse_event(kind, text)
             problem = check_reply("".join(assembled), request.topic)
             if problem is not None:
                 logger.info("Streamed reply flagged (%s); see transcript.", problem)
-            yield "data: [DONE]\n\n"
+            yield STREAM_DONE
         except (HTTPError, ValueError) as error:
-            message = "The opponent could not finish this turn. Please try again."
-            yield f"data: {json.dumps({'error': message})}\n\n"
+            yield sse_event("error", BUSY_MESSAGE)
             logger.exception("Ollama streaming failed: %s", error)
         finally:
             stream_slots.release()
@@ -257,6 +277,45 @@ async def debate_challenge(request: ChallengeRequest) -> ChallengeResponse:
 
 
 @app.post(
+    "/api/coach/plan",
+    dependencies=[Depends(authenticate_request)],
+    response_model=PlanResponse,
+)
+async def coach_plan_endpoint(request: PlanRequest) -> PlanResponse:
+    """The coaching agent: archive in, a grounded practice plan out."""
+    from .agents.plan_graph import coach_plan
+
+    # A plan for a learner with nothing saved is deterministic, so it works with the model off.
+    use_model = bool(request.digests) and await is_available()
+    if use_model and stream_slots.locked():
+        raise HTTPException(
+            status_code=429,
+            detail="The local model is busy. Please retry in a moment.",
+        )
+    if use_model:
+        await stream_slots.acquire()
+    try:
+        plan, gaps = await coach_plan(request, use_model=use_model)
+        if plan is None:
+            raise HTTPException(
+                status_code=502,
+                detail=("; ".join(gaps[:3]) if gaps else "The coach could not build a plan.")
+                + " Try again.",
+            )
+        return PlanResponse(plan=plan, gaps=gaps)
+    except HTTPError as error:
+        logger.exception("Ollama plan drafting failed: %s", error)
+        raise HTTPException(
+            status_code=503, detail="The local model could not finish your plan."
+        ) from error
+    except HTTPException:
+        raise
+    finally:
+        if use_model:
+            stream_slots.release()
+
+
+@app.post(
     "/api/debate/judge",
     dependencies=[Depends(authenticate_request)],
     response_model=JudgeVerdict,
@@ -284,7 +343,7 @@ async def presentation_analysis(
     audio: UploadFile = File(...),
     topic: str | None = Form(default=None, min_length=3, max_length=240),
 ) -> PresentationResponse:
-    # Persistence stays in the browser via Supabase RLS; Python holds audio in memory only and discards it.
+    # Persistence stays in the browser; Python holds audio in memory and discards it.
     if stream_slots.locked():
         raise HTTPException(
             status_code=429,

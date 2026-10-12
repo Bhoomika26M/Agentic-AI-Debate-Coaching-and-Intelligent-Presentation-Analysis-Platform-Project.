@@ -16,8 +16,6 @@ from .llm import chat
 from .state import AnalysisState
 
 logger = logging.getLogger(__name__)
-
-logger = logging.getLogger(__name__)
 BRANCH_ATTEMPTS = 2
 
 

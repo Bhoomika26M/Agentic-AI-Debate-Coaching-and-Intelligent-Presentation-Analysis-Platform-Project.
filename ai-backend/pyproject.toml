@@ -16,6 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 stt = ["faster-whisper>=1.0,<2.0", "av>=12,<14"]
 ser = ["speechbrain>=1.0,<2.0"]
+dev = ["pytest>=8.0,<10.0", "ruff>=0.6,<1.0"]
 
 [tool.ruff]
 line-length = 100
@@ -23,3 +24,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
