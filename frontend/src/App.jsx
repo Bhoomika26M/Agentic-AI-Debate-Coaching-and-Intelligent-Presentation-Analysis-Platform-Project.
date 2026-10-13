@@ -18,28 +18,11 @@ import { NotFoundPage } from './pages/common/NotFoundPage';
 // Real Application Pages
 import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { ProfilePage } from './pages/profile/ProfilePage';
-
-// Placeholder Pages for Phase 6
-const TopicsPage = () => (
-  <div className="p-8">
-    <h1 className="text-3xl font-serif font-bold text-white mb-2">Debate Topics</h1>
-    <p className="text-arena-muted text-sm">Browse and explore forensic motions.</p>
-  </div>
-);
-
-const SessionsPage = () => (
-  <div className="p-8">
-    <h1 className="text-3xl font-serif font-bold text-white mb-2">Debate Sessions</h1>
-    <p className="text-arena-muted text-sm">Scheduled and live chamber deliberations.</p>
-  </div>
-);
-
-const AdminPage = () => (
-  <div className="p-8">
-    <h1 className="text-3xl font-serif font-bold text-white mb-2">Platform Administration</h1>
-    <p className="text-arena-muted text-sm">Manage user roster, roles, and chamber governance.</p>
-  </div>
-);
+import { TopicsPage } from './pages/topics/TopicsPage';
+import { SessionsListPage } from './pages/sessions/SessionsListPage';
+import { CreateSessionWizard } from './pages/sessions/CreateSessionWizard';
+import { SessionRoomPage } from './pages/sessions/SessionRoomPage';
+import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -83,7 +66,9 @@ export default function App() {
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="topics" element={<TopicsPage />} />
-              <Route path="sessions" element={<SessionsPage />} />
+              <Route path="sessions" element={<SessionsListPage />} />
+              <Route path="sessions/new" element={<CreateSessionWizard />} />
+              <Route path="sessions/:id" element={<SessionRoomPage />} />
               <Route path="profile" element={<ProfilePage />} />
 
               {/* Admin Protected Route */}
@@ -91,7 +76,7 @@ export default function App() {
                 path="admin"
                 element={
                   <RoleRoute allowedRoles={['ADMIN']}>
-                    <AdminPage />
+                    <AdminUsersPage />
                   </RoleRoute>
                 }
               />
