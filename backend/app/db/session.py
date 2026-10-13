@@ -13,7 +13,7 @@ try:
 except Exception:
     # Fallback in environments where asyncpg/postgres driver is not installed (e.g. testing with sqlite)
     engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
+        "sqlite+aiosqlite:///dev.db",
         echo=False,
         future=True
     )

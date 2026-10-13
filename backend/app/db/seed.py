@@ -170,6 +170,9 @@ TOPICS_DATA = [
 ]
 
 async def seed_data():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     async with AsyncSessionLocal() as session:
         # 1. Create Users & Profiles
         users_map = {}
