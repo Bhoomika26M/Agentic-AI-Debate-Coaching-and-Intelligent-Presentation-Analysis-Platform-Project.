@@ -1,3 +1,4 @@
+
 import re
 
 
@@ -51,25 +52,46 @@ FALLACY_PATTERNS = [
 
 def analyze_argument(text: str) -> dict:
     cleaned_text = re.sub(r"\s+", " ", text).strip()
+
     sentences = re.split(r"(?<=[.!?])\s+", cleaned_text)
     sentences = [s.strip() for s in sentences if s.strip()]
 
     claim = sentences[0] if sentences else cleaned_text
+    supporting_reasons = []
 
-    reason_words = (
-        "because",
-        "since",
-        "therefore",
-        "for example",
-        "due to",
-        "this shows",
+    # Find the claim and reason in sentences containing
+    # connectors such as "because", "since", or "due to".
+    reason_pattern = re.compile(
+        r"\b(because|since|due to)\b",
+        re.IGNORECASE,
     )
 
-    supporting_reasons = [
-        sentence
-        for sentence in sentences
-        if any(word in sentence.lower() for word in reason_words)
-    ]
+    for sentence in sentences:
+        match = reason_pattern.search(sentence)
+
+        if match:
+            possible_claim = sentence[:match.start()].strip()
+            possible_reason = sentence[match.end():].strip()
+
+            # Remove unnecessary punctuation at the boundaries.
+            possible_claim = possible_claim.rstrip(" ,;:")
+            possible_reason = possible_reason.lstrip(" ,;:")
+
+            if possible_claim:
+                claim = possible_claim
+
+            if possible_reason:
+                supporting_reasons.append(possible_reason)
+
+        elif re.search(
+            r"\b(therefore|for example|this shows)\b",
+            sentence,
+            re.IGNORECASE,
+        ):
+            supporting_reasons.append(sentence)
+
+    # Remove duplicate supporting reasons.
+    supporting_reasons = list(dict.fromkeys(supporting_reasons))
 
     possible_fallacies = []
 
