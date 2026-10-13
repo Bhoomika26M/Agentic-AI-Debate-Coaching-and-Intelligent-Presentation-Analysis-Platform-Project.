@@ -8,20 +8,18 @@ import { ProtectedRoute } from './components/guards/ProtectedRoute';
 import { RoleRoute } from './components/guards/RoleRoute';
 import { MainLayout } from './layouts/MainLayout';
 
-// Auth Pages
+// Auth & Onboarding Pages
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
+import { OnboardingPage } from './pages/onboarding/OnboardingPage';
 import { UnauthorizedPage } from './pages/common/UnauthorizedPage';
 import { NotFoundPage } from './pages/common/NotFoundPage';
 
-// Placeholder Pages (will be fully implemented in Phases 5 & 6)
-const DashboardPage = () => (
-  <div className="p-8">
-    <h1 className="text-3xl font-serif font-bold text-white mb-2">Arena Dashboard</h1>
-    <p className="text-arena-muted text-sm">Welcome to the debating chamber.</p>
-  </div>
-);
+// Real Application Pages
+import { DashboardPage } from './pages/dashboard/DashboardPage';
+import { ProfilePage } from './pages/profile/ProfilePage';
 
+// Placeholder Pages for Phase 6
 const TopicsPage = () => (
   <div className="p-8">
     <h1 className="text-3xl font-serif font-bold text-white mb-2">Debate Topics</h1>
@@ -33,13 +31,6 @@ const SessionsPage = () => (
   <div className="p-8">
     <h1 className="text-3xl font-serif font-bold text-white mb-2">Debate Sessions</h1>
     <p className="text-arena-muted text-sm">Scheduled and live chamber deliberations.</p>
-  </div>
-);
-
-const ProfilePage = () => (
-  <div className="p-8">
-    <h1 className="text-3xl font-serif font-bold text-white mb-2">Profile & Skills</h1>
-    <p className="text-arena-muted text-sm">Track your forensics radar and learning goals.</p>
   </div>
 );
 
@@ -69,6 +60,16 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
+
+            {/* Onboarding Flow */}
+            <Route
+              path="/onboarding"
+              element={
+                <ProtectedRoute>
+                  <OnboardingPage />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Protected Routes inside MainLayout */}
             <Route
