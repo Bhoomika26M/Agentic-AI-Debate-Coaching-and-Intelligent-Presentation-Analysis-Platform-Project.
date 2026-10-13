@@ -6,7 +6,7 @@ This document describes what Verdict protects today and what must happen before 
 
 - **AI stays in Python.** The browser sends debate turns and audio to the FastAPI service. Prompt construction, model calls, transcription, and coaching all happen server side. The browser never talks to a model directly.
 - **Explicit trust boundaries.** FastAPI starts only with explicit `WEB_ORIGIN` and `ALLOWED_HOSTS` values. Wildcards are rejected at startup. CORS allows only `GET` and `POST` with `Content-Type` and `Authorization` headers, and the browser client omits cookies.
-- **Authentication with least privilege.** Supabase Auth issues the tokens; Python verifies them against the project's JWKS and never sees passwords. Guest mode (`REQUIRE_AUTH=false`) exists for local testing only.
+- **Authentication with least privilege.** Supabase Auth issues the tokens; Python verifies them against the project's JWKS and never sees passwords. Guest mode (`REQUIRE_AUTH=false`) is for private, single-operator use only.
 - **Owner scoped data.** Every database table enables row level security and grants access to `authenticated` users scoped to their own `auth.uid()`. The Python service holds no database credential at all, so a compromised API token can burn compute but cannot read another learner's archive.
 - **No-store API responses.** Debate and coaching responses carry `no-store` headers. Transcripts live in browser memory for guests and in the owner's Supabase rows for signed-in learners.
 - **Bounded inputs.** Pydantic limits topic, turn, and history sizes. Debate audio is capped at 10MB and 180 seconds, validated by content sniffing (not just MIME labels) before transcription.

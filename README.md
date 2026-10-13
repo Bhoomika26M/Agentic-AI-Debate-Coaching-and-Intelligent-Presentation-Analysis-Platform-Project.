@@ -1,67 +1,86 @@
 # Verdict
 
-Verdict is an AI debate coach for students and self directed learners. You pick a debate motion and a side, argue live against an AI opponent with a distinct personality, then get coaching on both what you argued and how you sounded saying it.
+**Debate practice, with a point of view.**
 
-No account is needed to start. Open the app as a guest, finish a practice round in a few minutes, and leave with clear next steps for your next debate.
+Verdict is an AI debate coach for students and self-directed learners. Choose a motion, take a side, and argue it live against an opponent with a distinct personality — then get coaching on both what you argued and how you sounded saying it.
+
+No account is required. Open the app, finish a practice round in a few minutes, and leave with clear next steps for your next debate.
+
+![The Verdict landing page](docs/screenshots/landing.png)
+
+---
 
 ## What you can do
 
-- **Rehearse live debates.** Choose a motion from your topic bank or write your own, argue for or against, pick one of three opponent personas (Strategist, Skeptic, Diplomat), set the pressure level and a 2 to 10 minute clock, then trade turns with streaming AI replies. The opponent plans against your weakest joint every other turn, remembers what your saved sessions showed was weak, eases or sharpens pressure based on how you argue, and can press Socratic follow-ups up to 2 deep.
-- **Review your arguments.** After a session, get ratings on clarity, relevance, evidence, logic, and persuasion, plus fallacy flags quoted from your exact words and five counterpoints to test your case. Partial results disclose their gaps instead of failing silently.
-- **Get a weighted verdict.** Act VI scores the rehearsal 30/20/20/15/15 across argument, evidence, logic, rebuttal, and communication, with quote and timestamp citations for every dimension.
-- **Review your delivery.** Record or upload a closing take (up to 3 minutes). Get pace, filler, and pause signals with timestamps you can replay, plus short practice drills.
-- **Follow a practice plan.** The Plan tab reads your saved sessions, names the criteria your own scores say are weakest, and drafts a drill for each plus a four-week rhythm and the one thing to work on in your next rehearsal. Rebuild it after a few sessions to keep it current.
-- **Track progress.** The Learner space keeps your archive, a profile with goals and audio opt-in, and a trends tab with sessions, streaks, average scores, and filler direction. Download sessions as CSV or print a report.
-- **Keep your work (optional).** Create a free account with email or Google to save transcripts and reviews in your learner archive. Password recovery is built in. Guests keep everything in the browser.
+**Rehearse a live debate.** Choose a motion from your topic bank or write your own, argue for or against, pick one of three opponents (Strategist, Skeptic, Diplomat), set the pressure and a 2–10 minute clock, then trade turns with streamed replies. The opponent plans against your weakest joint, remembers what your saved sessions showed was weak, adapts its pressure to how you argue, and can press Socratic follow-ups two deep.
 
-## Technologies
+**Review your arguments.** Every rehearsal gets ratings on clarity, relevance, evidence, logic, and persuasion, fallacy flags quoted from your exact words, and five counterpoints that test your case from other angles.
 
-- **Web app:** React 19, TypeScript, Vite. This is what you see and click.
-- **AI backend:** Python 3.12, FastAPI, Pydantic, LangGraph, managed with `uv`. All AI logic lives here. The browser never talks to a model directly.
-- **Local model:** Ollama running `qwen3.5:4b` (about 3.4 GB). Used for debate replies and coaching during development.
-- **Speech (optional):** `faster-whisper` for local transcription. Only needed for delivery review.
-- **Accounts and storage (optional):** Supabase Free (Auth plus Postgres with row level security, plus a private audio bucket). Only needed if you want saved sessions.
-- **Hosting:** Vercel or Render free tiers for the static frontend. The Python API runs locally or on your own machine.
+**Get a weighted verdict.** Argument, evidence, logic, rebuttal, and communication are scored 30/20/20/15/15, each with a line of coaching behind it. The logic score names the fallacy quotes it caught, and communication carries timestamps from your delivery review when there is one.
+
+**Review your delivery.** Record or upload a closing take of up to three minutes. You get pace, filler, and pause signals with timestamps you can replay, plus short drills built around what the recording actually shows. Audio is discarded after the review unless you choose to keep it.
+
+**Follow a practice plan.** The Plan tab reads your saved sessions, names the criteria your own scores say are weakest, and drafts a drill for each, a four-week rhythm, and the one thing to work on next.
+
+**Track your progress.** Your learner space holds your archive, a profile with goals and audio preferences, and trends across sessions, streaks, average scores, and filler direction. Export sessions as CSV or print a report.
+
+**Keep your work.** A free account with email or Google saves transcripts and reviews to your archive; password recovery is built in. Guests keep everything in the browser.
+
+---
+
+## A round, end to end
+
+**Set the terms.** Choose a motion from your bank or write your own, take a side, pick the opponent who attacks a case the way you find hardest, and set the pressure and the clock.
+
+![Setting up a rehearsal: motion, side, opponent, difficulty, and length](docs/screenshots/setup.png)
+
+**Argue it live.** Your turns and the opponent's replies stream into a single transcript, with your own turn and word counts kept beside it and the clock still running.
+
+![A live rehearsal in the arena](docs/screenshots/arena.png)
+
+**Read the verdict.** Five weighted dimensions, each with the reasoning behind the score, followed by the fuller review underneath.
+
+![The weighted verdict with five scored dimensions](docs/screenshots/verdict.png)
+
+---
 
 ## How it works
 
-1. You type an argument in the browser.
-2. The browser sends it as JSON to the Python API (`POST /api/debate/stream`), together with compact digests of your recent rehearsals.
-3. Five agents answer, in order. A deterministic guard routes jailbreaks and off-motion tasks to an in-character redirect with no model call. A memory agent reduces your saved history into a private brief. A planner names the weakest joint in the transcript every other turn. The responder streams an in-persona reply. A verifier then inspects it for length, role labels, character breaks, leaked brief text and whether it engaged your latest point: a flagged turn goes to a reviser once, and a turn that still fails is replaced by the in-character redirect rather than shipped.
-4. For coaching, the analysis graph fans rubric scoring, fallacy detection, and counterpoints into parallel branches with targeted retries, then merges them. Fallacy quotes must match your words exactly, and contact info is redacted from every report.
-5. For your practice plan, a diagnosis agent reads the same memory reduction and names weak spots with the evidence behind them. The coach model writes drills and milestones for exactly those weak spots, a groundedness verifier rejects invented weaknesses, invented scores and next-session lines that say nothing, one repair attempt is allowed, and a plan that still fails is built from your scores directly with the gap disclosed.
-6. For delivery, your audio is transcribed to timestamped words, pure Python counts pace, fillers, pauses, and repeats into delivery states (rushed, hesitant, flat, tense), and the model turns those into practice drills. Audio is discarded right after review unless you explicitly opt into keeping it.
-7. Signed-in work persists owner scoped via Supabase row level security. The Python service never touches the database, so a leaked API token can burn compute but can never read another learner's archive.
+1. You type an argument in the browser and send it to the API.
+2. Five agents answer a turn: a deterministic guard routes jailbreaks and off-motion tasks to an in-character redirect with no model call, a memory agent reduces your saved history into a private brief, a planner names the weakest joint in the transcript, the responder streams an in-persona reply, and a verifier inspects it for length, role labels, character breaks, leaked brief text, and whether it actually engaged your latest point. A flagged turn is repaired once; a turn that still fails is replaced rather than shipped.
+3. Coaching fans rubric scoring, fallacy detection, and counterpoints into parallel branches that merge into one review. Every fallacy quote is matched against your own words, and contact details are redacted from saved reports.
+4. The practice plan diagnoses weak spots from your scores, writes a drill for each, and refuses to invent weaknesses, scores, or session counts that your record does not support.
+5. Delivery review transcribes your audio to timestamped words, counts pace, fillers, pauses, and repeats in pure Python, and turns those signals into drills.
 
-Deployed AI calls use a provider key that you supply yourself. It is passed through Python for that request only and is never stored or logged. Provider routing for hosted generation is designed but not implemented yet.
+The model only ever receives text through the API. The browser never talks to a model directly.
 
-## API endpoints
+---
 
-All endpoints except health checks require a signed-in token when the backend runs with `REQUIRE_AUTH=true`. Guest mode skips verification for local testing.
+## Architecture
 
-| Method and path | Purpose |
-|---|---|
-| `GET /api/health` | Model readiness: ready, warming, or unavailable. |
-| `POST /api/debate/stream` | Streams one opponent reply over SSE, ending with `[DONE]`. Jailbreaks get an in-character redirect with no model call. |
-| `POST /api/debate/analyze` | Returns the argument review envelope: available sections plus disclosed gaps. |
-| `POST /api/debate/challenge` | Returns one Socratic follow-up, or done at depth 2. |
-| `POST /api/debate/judge` | Returns the deterministic weighted verdict with citations. Uses no model call. |
-| `POST /api/coach/plan` | Returns a grounded practice plan: diagnosed weak spots, drills, milestones and the next session focus. Falls back to the deterministic diagnosis instead of inventing weaknesses. |
-| `POST /api/presentation/analyze` | Accepts audio upload plus optional motion. Returns transcript segments, delivery signals, and drills. |
+| Layer | Built with | Notes |
+| --- | --- | --- |
+| Web app | React 19, TypeScript, Vite | Landing, setup, live arena, verdict, delivery room, learner space |
+| API | Python 3.12, FastAPI, Pydantic, LangGraph | All model calls, orchestration, and validation live here |
+| Inference | Ollama (`qwen3.5:4b` by default) | Any endpoint reachable at `OLLAMA_BASE_URL` |
+| Speech | `faster-whisper` (optional) | Local transcription for delivery review |
+| Accounts and storage | Supabase (free tier) | Auth, Postgres with row level security, private audio bucket |
 
-## Run it in 4 steps
+---
 
-You need Node.js 20 or newer, Python 3.12, `uv`, and Ollama installed.
+## Run it locally
 
-**Step 1: start Ollama and pull the model.**
+You need Node.js 20 or newer, Python 3.12, `uv`, and Ollama.
+
+**1. Start Ollama and pull the model**
 
 ```bash
 ollama pull qwen3.5:4b
 ```
 
-If Ollama did not start by itself, run `ollama serve` in a terminal and leave it open. Check it with `curl http://127.0.0.1:11434/api/tags`. You should see `qwen3.5:4b` listed.
+If Ollama does not start on its own, run `ollama serve` in a terminal and leave it open. Confirm it with `curl http://127.0.0.1:11434/api/tags`.
 
-**Step 2: start the Python backend.**
+**2. Start the API**
 
 ```bash
 cd ai-backend
@@ -70,9 +89,9 @@ uv sync
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The defaults already point at your local Ollama and allow the local web app, so there is nothing else to change for guest practice. For delivery review, add the speech extra with `uv sync --extra stt`.
+The defaults already point at your local Ollama and allow the local web app. For delivery review, install the speech extra with `uv sync --extra stt`.
 
-**Step 3: start the web app.**
+**3. Start the web app**
 
 ```bash
 cd web
@@ -80,135 +99,105 @@ npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173` and choose Open the prompt book.
+Open `http://127.0.0.1:5173`.
 
-**Step 4 (optional): enable accounts with Supabase.**
+**4. Optional: enable accounts**
 
-Skip this for guest practice. To save sessions, create a free Supabase project, put its project URL and publishable key in `web/.env`, put the project URL in `ai-backend/.env` as `SUPABASE_URL`, and run the SQL files in `supabase/migrations/` in filename order. Keep email confirmation on, set the password rule to 12 or more characters with uppercase, lowercase, and numbers, and add `http://127.0.0.1:5173` to the redirect allowlist. For Google sign in, add your Google OAuth client ID and secret in the Supabase provider settings and keep the secret there only.
+Practice works without this. To save sessions to an archive, create a Supabase project, put its project URL and publishable key in `web/.env`, put the project URL in `ai-backend/.env` as `SUPABASE_URL`, and run the SQL files in `supabase/migrations/` in filename order. Keep email confirmation on, set the password rule to 12 or more characters with uppercase, lowercase, and numbers, and add `http://127.0.0.1:5173` to the redirect allowlist. Google sign-in is configured in the Supabase provider settings, where the client secret stays.
 
-## Run the whole stack with Docker
+---
 
-One command starts the API, the web app and a local Ollama with the model pulled:
+## Docker
+
+One command starts the API, the web app, and an Ollama service with the model pulled:
 
 ```bash
 docker compose up --build          # then open http://localhost:8080
 ```
 
-The first run downloads the Ollama image and about 3.4 GB of model. The web image serves the built app and proxies `/api` to the API container, so the browser only ever talks to one origin. Accounts stay optional; copy `.env.docker.example` to `.env` and fill in your Supabase values to enable them.
+The first run downloads the Ollama image and about 3.4 GB of model. The web container serves the built app and proxies `/api` to the API, so the browser only ever talks to one origin. Accounts stay optional: copy `.env.docker.example` to `.env` and fill in your Supabase values to enable them.
 
-If you already run Ollama on the host, skip the bundled service and reuse it:
+Already running Ollama on the host? Reuse it instead of the bundled service:
 
 ```bash
 docker compose up api web          # with OLLAMA_BASE_URL=http://host.docker.internal:11434 in .env
 ```
 
-Add `EXTRAS=--extra stt` to the `.env` to build the API with local transcription for delivery review. The API image has a test stage, so the suite can also run inside a clean container:
+Add `EXTRAS=--extra stt` to `.env` to build the API image with local transcription.
 
-```bash
-docker build --target test ./ai-backend
-```
+---
 
-## Milestones and completion status
+## Configuration
 
-Each task and outcome below is a checkbox. A ticked box means the item is shipped in this repository and was exercised; an unticked box is still open, and the reason is named next to it. Every link points at a tracked file. The evidence behind every tick, including what could not be verified, is in [MILESTONE_AUDIT.md](MILESTONE_AUDIT.md).
+Set these in `ai-backend/.env` (see `.env.example`) unless noted.
 
-### Milestone 1: Week 1 & 2 — Project Initialization, Design Process & Core Setup
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Model endpoint the API calls |
+| `OLLAMA_MODEL` | `qwen3.5:4b` | Model name to expect and request |
+| `WEB_ORIGIN` | `http://127.0.0.1:5173` | Exact allowed browser origins, comma separated; wildcards are rejected |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1,0.0.0.0` | Hosts the API will answer for |
+| `REQUIRE_AUTH` | `false` | Set to `true` with Supabase configured before any public deployment |
+| `SUPABASE_URL` | empty | Enables token verification for signed-in requests |
+| `SUPABASE_JWKS_URL` | derived | Override only if you serve JWKS elsewhere |
+| `MAX_ACTIVE_STREAMS` | `2` | Concurrent model streams per process before requests are answered with 429 |
+| `PLANNER_EVERY_N_TURNS` | `2` | How often the opponent re-plans against your weakest joint |
+| `STT_MODEL` | `tiny` | Whisper size for delivery review |
+| `MAX_AUDIO_MB` / `MAX_AUDIO_SEC` | `10` / `180` | Upload caps |
+| `ENABLE_SER` | `false` | Local-only emotion recognition; leave off on anything public |
+| `LOG_LEVEL` | `INFO` | Agent and timing logs |
 
-Status: complete, with role-based access scoped to the learner on purpose.
+In `web/.env`: `VITE_API_BASE_URL` (blank uses the dev proxy or a same-origin `/api`), `VITE_SUPABASE_URL`, and `VITE_SUPABASE_PUBLISHABLE_KEY`. Only public values belong in `VITE_` variables — they ship inside the browser bundle.
 
-Tasks
+---
 
-- [x] Define project objectives and debate coaching workflows — [PRODUCT.md](PRODUCT.md), [README.md](README.md)
-- [x] Design system architecture and database schema — `ai-backend/app/` plus the schema in [supabase/migrations/](supabase/migrations), where every learner-facing table carries row level security policies
-- [x] Create UI wireframes and workflow planning — workflow planning is in [PRODUCT.md](PRODUCT.md); the wireframes and per-screen specs live in local design notes (`DESIGN.md`, `.impeccable/surfaces/`) that are gitignored on purpose, so they are not part of this repository
-- [x] Setup frontend and backend environments — Vite plus TypeScript in `web/`, FastAPI plus uv in `ai-backend/`
-- [x] Implement authentication — email and Google sign-in, password recovery, JWKS-verified tokens, rows readable only by their owner
-- [ ] Role-based access for coach, admin or staff roles — version 1 serves learners only; the learner role is enforced by Supabase row level security rather than a role table
-- [x] Build user profile and skill tracking workflows — `profiles` table, profile form, trends tab, persisted practice plans
-- [x] Create debate session management modules — sessions, turns, saved transcripts, archive and resume
+## API
 
-Outcomes
+| Method and path | Purpose |
+| --- | --- |
+| `GET /api/health` | Model readiness |
+| `POST /api/debate/stream` | Streams one opponent reply over server-sent events, ending with `[DONE]` |
+| `POST /api/debate/analyze` | Argument review: ratings, fallacy flags, counterpoints, disclosed gaps |
+| `POST /api/debate/challenge` | One Socratic follow-up, or done at depth 2 |
+| `POST /api/debate/judge` | Weighted verdict with citations; deterministic, no model call |
+| `POST /api/coach/plan` | Practice plan from your own record, grounded in diagnosed weak spots |
+| `POST /api/presentation/analyze` | Audio upload plus optional motion; returns transcript, delivery signals, and drills |
 
-- [x] Understand AI-powered debate coaching workflows — documented end to end in [PRODUCT.md](PRODUCT.md)
-- [x] Learn system architecture and database design concepts — architecture notes are in the local design doc (`DESIGN.md`, gitignored) and the schema it describes is in [supabase/migrations/](supabase/migrations)
-- [x] Build frontend and backend project initialization — both projects run and are built by CI-style checks below
-- [x] Working authentication and debate session management system
+With `REQUIRE_AUTH=true`, every endpoint except health requires a signed-in token.
 
-### Milestone 2: Week 3 & 4 — Argument Analysis & Fallacy Detection
+---
 
-Status: complete.
+## Deployment
 
-Tasks
+The web app builds to static files, so it can be hosted anywhere. A Render blueprint is included as `render.yaml`, and `web/vercel.json` carries the same headers for Vercel, including a content security policy, immutable caching for hashed assets, and `microphone=(self)` for recording.
 
-- [x] Implement argument analysis engine — [analysis_graph.py](ai-backend/app/agents/analysis_graph.py) fans out rubric, fallacy and counterpoint branches with targeted retries
-- [x] Build logical fallacy detection workflows — eight fallacy types, every quote grounded against the learner's own words
-- [x] Develop reasoning evaluation models — rubric branch over five named criteria
-- [x] Create argument scoring systems — [judge.py](ai-backend/app/agents/judge.py), weighted 30/20/20/15/15, deterministic, no model call
-- [x] Generate debate feedback reports — the verdict view, CSV download and print report
+The API needs a host that can run a container and reach a model endpoint. Point `VITE_API_BASE_URL` at its HTTPS origin, set `WEB_ORIGIN` and `ALLOWED_HOSTS` to the exact origins you serve from, and turn on `REQUIRE_AUTH=true` with Supabase configured.
 
-Outcomes
+Two things are deliberately not in this release: managed multi-tenant inference, and per-learner provider keys for hosted generation. Until a deployment has its own authenticated API in front of a model, keep it private.
 
-- [x] Argument analysis engine operational
-- [x] Fallacy detection workflows functional
-- [x] Reasoning assessment system completed
+---
 
-Partial reviews name their gaps and offer a retry instead of failing silently.
+## Privacy and security
 
-### Milestone 3: Week 5 & 6 — AI Debate Simulation & Coaching
+- Prompt construction, model calls, transcription, and coaching happen server-side. The browser never talks to a model directly.
+- Signed-in data is owner-scoped by Postgres row level security. The API holds no database credential, so a leaked API token cannot read another learner's archive.
+- API replies carry `no-store` headers; the service starts only with explicit origins and hosts, and rejects wildcards.
+- Request sizes are bounded, concurrent streams are capped, and learner text is always treated as data, never as instructions.
+- Recorded audio is discarded immediately after review unless the learner opts into retention, in which case it is stored in a private per-owner bucket.
+- Contact details are redacted from saved coaching reports, and categorical emotion recognition stays local and off by default.
 
-Status: complete.
-
-Tasks
-
-- [x] Implement AI debate simulation engine — [debate.py](ai-backend/app/agents/debate.py): guard to memory to planner to drafter (streamed) to verifier to reviser, with an in-character fallback instead of a discarded turn
-- [x] Build counterargument generation workflows — five counterpoint kinds, each enforced exactly once
-- [x] Develop coaching recommendation engine — [memory.py](ai-backend/app/agents/memory.py) diagnoses weak spots from your own scores
-- [x] Generate personalized learning plans — `POST /api/coach/plan`, the `learning_plans` table, and the Plan tab in the learner space
-- [x] Create performance dashboards — sessions, streaks, averages and filler direction in the trends tab, plus the plan's four-week rhythm
-
-Outcomes
-
-- [x] AI debate simulation operational — streaming opponent with a Socratic follow-up loop capped at 2 deep and adaptive pressure
-- [x] Coaching engine functional — the model may only coach weak spots the deterministic diagnosis found; invented weaknesses, scores or session counts are rejected by [verifier.py](ai-backend/app/agents/verifier.py)
-- [x] Personalized learning workflows completed
-
-### Milestone 4: Week 7 & 8 — Presentation Analytics, Testing & Deployment
-
-Status: every task is done except managed cloud deployment and the presentation, both open on purpose.
-
-Tasks
-
-- [x] Implement presentation analysis engine — transcribe, then delivery signals, then drills in [delivery_graph.py](ai-backend/app/agents/delivery_graph.py), with audio discarded unless you opt in
-- [x] Add reports and visualization modules — delivery signal rows, drills, print and CSV output, CSS bar visualizations
-- [x] Implement testing and validations — 96 pytest tests over the deterministic gates, the agent graphs and the request contracts, with model fakes so no Ollama is needed
-- [x] Deploy the platform with Docker — [ai-backend/Dockerfile](ai-backend/Dockerfile) (runtime and test stages), [web/Dockerfile](web/Dockerfile), [nginx.conf](web/nginx.conf), [docker-compose.yml](docker-compose.yml)
-- [ ] Deploy to cloud services — the frontend has a static deploy config in [render.yaml](render.yaml), but managed hosting for the Python API and the model runtime, plus hosted provider key routing, are still open; do not expose a guest mode API as a public service
-- [x] Prepare final documentation — this file, [PROGRESS.md](PROGRESS.md), [MILESTONE_AUDIT.md](MILESTONE_AUDIT.md) and [SECURITY.md](SECURITY.md); the `personal-guide/` walkthrough is local-only and gitignored
-- [ ] Prepare the final presentation — nothing in this repository yet
-
-Outcomes
-
-- [ ] Fully deployed production-ready platform — Docker packaging is done; managed hosting is not
-- [x] Debate coaching intelligence systems operational
-- [x] Complete end-to-end debate improvement workflow demonstrable
-
-## Checks that should pass
-
-- Backend health at `http://127.0.0.1:8000/api/health` shows `"status": "ready"`.
-- `cd ai-backend` then `uv run --extra dev python -m pytest` passes (96 tests, no model or network needed).
-- `cd ai-backend` then `uv run python -m compileall app` finishes with no errors.
-- `cd web` then `npm run build` finishes with no errors.
-- `docker compose config --quiet` accepts the compose file.
-- `git diff --check` is clean.
-
-If debate streaming fails, Ollama is usually down or still warming the model. Use Check again in the app. If a page is blank after a production build, `VITE_API_BASE_URL` must be set to the HTTPS origin of your deployed API.
+---
 
 ## Project layout
 
-- `web/src/`: landing, setup, live arena, verdict and delivery views, auth screens, API clients, styles.
-- `ai-backend/app/`: routes (`main.py`), prompt frames (`prompts.py`), Ollama client, debate analysis, speech transcription, delivery signals, presentation coaching, request schemas, auth, and the `agents/` graphs (guard, memory, planner, verifier, challenger, analysis, delivery, judge, plan, scrub).
-- `ai-backend/tests/`: the automated suite, including deterministic fakes for the model so the graphs run without Ollama.
-- `supabase/migrations/`: debate sessions, turns, analyses, presentation feedback, profiles, topic bank, learning plans, and the private audio bucket, all with owner scoped access rules.
-- `docker-compose.yml`, `ai-backend/Dockerfile`, `web/Dockerfile`: the whole stack on one command.
+- `web/src/` — views, API clients, session handling, and styles. `features/` holds the arena, verdict, delivery room, learner space, and onboarding; `services/` holds typed API and Supabase clients.
+- `ai-backend/app/` — routes in `main.py`, request schemas, the Ollama client, auth, speech, delivery signals, and the `agents/` graphs that orchestrate a debate turn, a review, a delivery pass, and a practice plan.
+- `supabase/migrations/` — sessions, turns, analyses, delivery feedback, profiles, topic bank, learning plans, and the private audio bucket, each with owner-scoped access rules.
+- `docker-compose.yml`, `ai-backend/Dockerfile`, `web/Dockerfile` — the whole stack in containers, with an nginx front end that proxies `/api` and streams server-sent events unbuffered.
+- `ai-backend/.env.example`, `web/.env.example`, `.env.docker.example` — every setting above with safe defaults.
 
-Never put secrets in `VITE_` variables. They ship inside browser files where anyone can read them.
+---
+
+## License
+
+MIT. See `LICENSE`.

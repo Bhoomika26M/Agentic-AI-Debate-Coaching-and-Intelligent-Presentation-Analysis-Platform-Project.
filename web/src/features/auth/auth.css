@@ -37,7 +37,7 @@
   align-items: center;
   gap: 9px;
   border: 0;
-  color: #e8dfcf;
+  color: #5f584c;
   background: transparent;
   font-size: 11px;
   text-align: left;
@@ -45,7 +45,7 @@
   cursor: pointer;
 }
 
-.auth-guest-link:hover { color: var(--brass); text-decoration: underline; }
+.auth-guest-link:hover { color: var(--cue-deep); text-decoration: underline; }
 
 .auth-workspace {
   width: 100%;
@@ -173,7 +173,7 @@
   cursor: pointer;
 }
 
-.auth-password-toggle:hover { color: var(--cue); }
+.auth-password-toggle:hover { color: var(--cue-deep); }
 .auth-password-field + .auth-field-error { margin-top: 5px; }
 .auth-password-field + .auth-form > label { margin-top: 16px; }
 

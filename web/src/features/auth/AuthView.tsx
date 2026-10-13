@@ -73,7 +73,7 @@ export function AuthView({
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
     if (!supabase) {
-      setError("Account access is not connected yet. You can still continue as a guest.");
+      setError("Account access isn't available right now. You can still continue as a guest.");
       return;
     }
 
@@ -113,7 +113,7 @@ export function AuthView({
     setError("");
     setNotice("");
     if (!supabase) {
-      setError("Account access is not connected yet. You can still continue as a guest.");
+      setError("Account access isn't available right now. You can still continue as a guest.");
       return;
     }
     setSubmitting(true);
@@ -189,7 +189,7 @@ export function AuthView({
       return;
     }
     if (!supabase) {
-      setError("Account access is not connected yet. You can still continue as a guest.");
+      setError("Account access isn't available right now. You can still continue as a guest.");
       return;
     }
     setSubmitting(true);
@@ -338,7 +338,7 @@ export function AuthView({
           {error && <div className="auth-feedback is-error" role="alert">{error}</div>}
           {notice && <div className="auth-feedback is-success" role="status">{notice}</div>}
           {!supabaseConfigured && (
-            <div className="auth-config-note" role="status">Account service needs Supabase setup. Guest practice is ready now.</div>
+            <div className="auth-config-note" role="status">Accounts aren't available right now. Guest practice is ready when you are.</div>
           )}
           <button className="auth-submit" type="submit" disabled={submitting}>
             {submitting ? <LoaderCircle className="spin" size={16} /> : null}

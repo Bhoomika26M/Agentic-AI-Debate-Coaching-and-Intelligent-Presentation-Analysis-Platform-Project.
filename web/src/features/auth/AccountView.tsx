@@ -106,7 +106,7 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
     setLoading(true);
     void listDebateRecords()
       .then((data) => { if (active) setRecords(data); })
-      .catch(() => { if (active) setError("Your archive is not connected yet. Apply the Supabase database migration, then refresh this page."); })
+      .catch(() => { if (active) setError("Your archive didn't load. Try again in a moment."); })
       .finally(() => { if (active) setLoading(false); });
     if (user) {
       void loadProfile(user.id)
@@ -140,7 +140,7 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
     setLoading(true);
     void listDebateRecords()
       .then((data) => setRecords(data))
-      .catch(() => setError("Your archive is not connected yet. Apply the Supabase database migration, then retry."))
+      .catch(() => setError("Your archive didn't load. Try again in a moment."))
       .finally(() => setLoading(false));
   }
 
@@ -200,7 +200,7 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
       const saved = await listLearningPlans(1);
       setStoredPlan(saved[0] ?? null);
     } catch {
-      setPlanError("Your plan library is not connected yet. Apply the Supabase database migration, then reload this page.");
+      setPlanError("Your plan didn't load. Try again in a moment.");
     }
   }
 
@@ -303,7 +303,7 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
         weeks,
       });
     } catch {
-      setProgressError("Your trends are not connected yet. Apply the Supabase database migration, then retry.");
+      setProgressError("Your trends didn't load. Try again in a moment.");
     } finally {
       setProgressLoading(false);
     }

@@ -8,7 +8,7 @@
 
 .account-topline { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .account-back, .account-signout { min-height: 44px; padding: 8px 0; display: inline-flex; align-items: center; gap: 8px; border: 0; color: #514a40; background: transparent; font-size: 11px; cursor: pointer; }
-.account-back:hover, .account-signout:hover { color: var(--cue); text-decoration: underline; text-underline-offset: 4px; }
+.account-back:hover, .account-signout:hover { color: var(--cue-deep); text-decoration: underline; text-underline-offset: 4px; }
 .account-intro { max-width: 650px; margin: 36px 0 34px; }
 .account-seal { width: 39px; height: 39px; margin-bottom: 16px; display: grid; place-items: center; border: 1px solid #a89b84; color: #8d4035; }
 .account-intro h1 { margin: 0 0 13px; font: 500 clamp(3rem, 5.5vw, 4.8rem)/.98 var(--serif); letter-spacing: -.025em; }

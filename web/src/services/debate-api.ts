@@ -132,17 +132,6 @@ export async function requestJudge(
   return (await response.json()) as JudgeVerdict;
 }
 
-export async function checkBackend() {
-  const response = await fetch(apiUrl("/api/health"), { credentials: "omit" });
-  if (!response.ok) throw new Error("The debate service is unavailable.");
-  return (await response.json()) as {
-    status: string;
-    model: string;
-    model_available: boolean;
-    model_loaded: boolean;
-  };
-}
-
 export async function streamOpponentReply(
   options: DebateOptions,
   history: DebateMessage[],

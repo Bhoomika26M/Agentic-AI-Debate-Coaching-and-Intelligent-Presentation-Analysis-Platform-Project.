@@ -29,3 +29,7 @@ DESIGN.md
 .aws/
 .codex/
 .impeccable/
+
+# Assignment and build-journal notes kept locally, not part of the product
+MILESTONE_AUDIT.md
+PROGRESS.md

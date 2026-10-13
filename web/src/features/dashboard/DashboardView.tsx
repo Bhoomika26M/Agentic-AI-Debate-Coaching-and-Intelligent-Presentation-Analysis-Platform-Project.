@@ -314,7 +314,7 @@ export function DashboardView({
         if (active) {
           setRecords([]);
           setAnalyses([]);
-          setError("Your record is not connected yet. Apply the Supabase database migration, then refresh this page.");
+          setError("Your record didn't load. Try again in a moment.");
         }
       })
       .finally(() => { if (active) setLoading(false); });
@@ -364,7 +364,7 @@ export function DashboardView({
           </div>
           <div className="dash-resume-actions">
             <button className="button button-dark" type="button" onClick={resume.onResume}>Resume rehearsal</button>
-            <button className="button" type="button" onClick={resume.onDiscard}>Discard</button>
+            <button className="button button-light" type="button" onClick={resume.onDiscard}>Discard</button>
           </div>
         </div>
       )}

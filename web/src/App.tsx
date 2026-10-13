@@ -10,7 +10,6 @@ import {
   CornerDownLeft,
   LoaderCircle,
   LockKeyhole,
-  Radio,
   RotateCcw,
   Send,
   Sparkles,
@@ -20,7 +19,6 @@ import {
 } from "lucide-react";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  checkBackend,
   streamOpponentReply,
   analyzeDebate,
   requestChallenge,
@@ -52,7 +50,6 @@ const DashboardView = lazy(() => import("./features/dashboard/DashboardView").th
 const PresentationRoom = lazy(() => import("./features/presentation/PresentationRoom").then((m) => ({ default: m.PresentationRoom })));
 
 type View = "landing" | "setup" | "arena" | "verdict" | "auth" | "account" | "present" | "onboarding" | "home";
-type BackendState = "checking" | "warming" | "ready" | "offline";
 
 const pageMotion = {
   initial: { opacity: 0, y: 12 },
@@ -92,8 +89,6 @@ function Header({
             <nav className="desktop-nav" aria-label="Main navigation">
               <a href="#how-it-works">The format</a>
               <a href="#opponents">Opponents</a>
-              <span className="nav-divider" aria-hidden="true" />
-              <span className="local-indicator"><i aria-hidden="true" /> Guest practice open</span>
             </nav>
           )}
           <button className="header-account-link" onClick={onAccount}>{accountLabel}</button>
@@ -111,20 +106,6 @@ function Header({
         </nav>
       )}
     </header>
-  );
-}
-
-function StatusTag({ state }: { state: BackendState }) {
-  const labels: Record<BackendState, string> = {
-    checking: "CHECKING AI OPPONENT",
-    warming: "WARMING AI OPPONENT",
-    ready: "AI OPPONENT READY",
-    offline: "AI OPPONENT NEEDS A NUDGE",
-  };
-  return (
-    <span className={`status-tag is-${state}`}>
-      <i /> {labels[state]}
-    </span>
   );
 }
 
@@ -179,8 +160,7 @@ export default function App() {
   const [messages, setMessages] = useState<DebateMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [backendState, setBackendState] = useState<BackendState>("checking");
-  const [backendMessage, setBackendMessage] = useState("");
+  const [turnError, setTurnError] = useState("");
   const [sessionId, setSessionId] = useState(0);
   const [startedAt, setStartedAt] = useState(0);
   const [cueSequence, setCueSequence] = useState(0);
@@ -201,7 +181,6 @@ export default function App() {
   const [judgeError, setJudgeError] = useState("");
   const [challenging, setChallenging] = useState(false);
   const [challengeError, setChallengeError] = useState("");
-  const pollAttempts = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -222,37 +201,7 @@ export default function App() {
     (count, message) => count + message.content.trim().split(/\s+/).filter(Boolean).length,
     0,
   );
-  const modelStatusLabel = backendState === "ready"
-    ? "READY"
-    : backendState === "warming"
-      ? "WARMING"
-      : backendState === "offline"
-        ? "OFFLINE"
-        : "CHECKING";
-
-  async function refreshBackend() {
-    try {
-      const health = await checkBackend();
-      pollAttempts.current = 0;
-      setBackendState(
-        health.model_loaded ? "ready" : health.model_available ? "warming" : "offline",
-      );
-      setBackendMessage(
-        health.model_loaded
-          ? `Connected to ${health.model}. Your rehearsal runs in this session.`
-          : health.model_available
-            ? `Warming ${health.model} for your first turn.`
-            : `Start Ollama and pull ${health.model} to open the debate room.`,
-      );
-    } catch {
-      pollAttempts.current += 1;
-      setBackendState("offline");
-      setBackendMessage("Start the Python service and Ollama to connect your AI opponent.");
-    }
-  }
-
   useEffect(() => {
-    void refreshBackend();
     const initial = viewFromHash();
     if (initial !== view) setView(initial);
     const onHash = () => {
@@ -262,12 +211,6 @@ export default function App() {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
-
-  useEffect(() => {
-    if (backendState === "ready" || pollAttempts.current >= 12) return;
-    const poll = window.setInterval(() => void refreshBackend(), 2500);
-    return () => window.clearInterval(poll);
-  }, [backendState]);
 
   useEffect(() => {
     if (!user || !supabaseConfigured) {
@@ -354,7 +297,7 @@ export default function App() {
     setCueVisible(true);
     const controller = new AbortController();
     abortRef.current = controller;
-    setBackendMessage("");
+    setTurnError("");
     setStreaming(true);
     setMessages((current) => [
       ...current,
@@ -391,15 +334,14 @@ export default function App() {
           message.id === replyId ? { ...message, pending: false } : message,
         ),
       );
-      setBackendState("ready");
+      setTurnError("");
     } catch (error) {
       if (controller.signal.aborted) return;
       setMessages((current) =>
         current.filter((message) => message.id !== replyId || message.content.length > 0)
           .map((message) => message.id === replyId ? { ...message, pending: false } : message),
       );
-      setBackendState("offline");
-      setBackendMessage(error instanceof Error ? error.message : "The opponent lost the connection.");
+      setTurnError("That turn didn't come through. Send it again.");
     } finally {
       setStreaming(false);
       abortRef.current = null;
@@ -874,7 +816,7 @@ export default function App() {
                 {savedSnapshot && savedSnapshot.messages.length > 0 && (
                   <div className="resume-banner" role="status">
                     <div><span>REHEARSAL IN PROGRESS</span><p>{savedSnapshot.messages.filter((message) => message.speaker === "learner").length} of your turns on “{(savedSnapshot.customTopic.trim() || savedSnapshot.topicChoice).slice(0, 80)}” are still here.</p></div>
-                    <div className="resume-actions"><button className="button button-dark" onClick={() => resumeSnapshot(savedSnapshot)}>Resume rehearsal</button><button className="button" onClick={clearSnapshot}>Discard</button></div>
+                    <div className="resume-actions"><button className="button button-dark" onClick={() => resumeSnapshot(savedSnapshot)}>Resume rehearsal</button><button className="button button-outline" onClick={clearSnapshot}>Discard</button></div>
                   </div>
                 )}
                 <div className="hero-actions">
@@ -912,7 +854,7 @@ export default function App() {
                     <div><span className="case-label">LIVE CUE / 01</span><b>Your opening argument</b></div>
                     <span className="cue-preview-state"><i /> READY</span>
                   </div>
-                  <div className="case-bottomline"><span>STREAMED EXCHANGE</span><span>AI OPPONENT / {modelStatusLabel}</span></div>
+                  <div className="case-bottomline"><span>STREAMED EXCHANGE</span><span>AI OPPONENT / LIVE</span></div>
                 </motion.div>
               </div>
             </section>
@@ -987,7 +929,7 @@ export default function App() {
                   <button className="button button-dark" onClick={() => setView("setup")}>
                     Start a rehearsal <ArrowUpRight size={17} />
                   </button>
-                  <button className="button button-light" onClick={() => setView("present")}>
+                  <button className="button button-outline" onClick={() => setView("present")}>
                     Practice delivery solo <ArrowUpRight size={16} />
                   </button>
                 </div>
@@ -1001,7 +943,6 @@ export default function App() {
           <motion.main key="setup" className="setup-page" {...pageMotion}>
             <div className="setup-topline">
               <button className="back-link" onClick={returnHome}><ArrowLeft size={16} /> Back</button>
-              <StatusTag state={backendState} />
             </div>
             <div className="setup-heading">
               <h1>{learnerName ? `Set up your debate, ${learnerName.split(/\s+/)[0]}.` : "Set up your debate."}</h1>
@@ -1117,12 +1058,6 @@ export default function App() {
             {!activeTopic.trim() && (
               <p className="setup-hint" role="status">Choose a motion above, or write your own, to begin.</p>
             )}
-            {backendState === "offline" && (
-              <div className="backend-help" role="status">
-                <div><Radio size={16} /><span>{backendMessage || "The AI opponent is not connected yet."}</span></div>
-                <button onClick={() => void refreshBackend()}><RotateCcw size={14} /> Check again</button>
-              </div>
-            )}
           </motion.main>
         )}
 
@@ -1131,7 +1066,7 @@ export default function App() {
             <header className="arena-header">
               <button className="arena-brand" onClick={returnHome} aria-label="Return home"><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button>
               <div className="arena-session"><span>LIVE REHEARSAL</span><i /> <span>ACT / {String(sessionId).slice(-4).padStart(4, "0")}</span></div>
-              <div className="arena-header-actions"><span className={`arena-model model-${backendState}`}><i /> {backendState === "ready" ? "OPPONENT READY" : backendState === "warming" ? "OPPONENT WARMING" : backendState === "offline" ? "OPPONENT OFFLINE" : "CHECKING OPPONENT"}</span><button className={`end-button${confirmEnd ? " armed" : ""}`} onClick={requestEndSession}>{confirmEnd ? "Tap again to end" : "End session"} <X size={15} /></button></div>
+              <div className="arena-header-actions"><button className={`end-button${confirmEnd ? " armed" : ""}`} onClick={requestEndSession}>{confirmEnd ? "Tap again to end" : "End session"} <X size={15} /></button></div>
             </header>
 
             <div className="arena-statusbar" role="status" aria-label="Session status">
@@ -1172,17 +1107,17 @@ export default function App() {
                       exit={{ opacity: 0, y: -5 }}
                       transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
                     >
-                      <span>RESPONSE {cueSequence.toString().padStart(2, "0")}</span>
-                      <strong>{activePersona.name} is answering</strong>
-                      <i>WRITING A REPLY</i>
+                      <span aria-hidden="true">RESPONSE {cueSequence.toString().padStart(2, "0")}</span>
+                      <strong aria-hidden="true">{activePersona.name} is answering</strong>
+                      <i aria-hidden="true">WRITING A REPLY</i>
                     </motion.div>
                   )}
                 </AnimatePresence>
-                {backendMessage && (
-                  <div className="inline-notice" role="status"><span>{backendMessage}</span>{backendState === "offline" && <button onClick={() => void refreshBackend()}>Retry connection</button>}</div>
+                {turnError && (
+                  <div className="inline-notice" role="status">{turnError}</div>
                 )}
                 {recordNotice && <div className="inline-notice" role="status">{recordNotice}</div>}
-                <div className="transcript-scroll">
+                <div className="transcript-scroll" role="log" aria-live="polite" aria-relevant="additions text" aria-busy={streaming}>
                   {messages.length === 0 && (
                     <div className="empty-transcript"><span className="empty-marker"><EmptyCueArt label="Opponent preparing an opening statement" /></span><p>The room is set. Your opponent is preparing an opening statement.</p></div>
                   )}
@@ -1277,7 +1212,7 @@ export default function App() {
                       : "Five scores for your argument, the counterpoints you missed, and one thing to fix next. It reads your words only — your voice is reviewed separately under Delivery."}
                   </p>
                 )}
-                {analysisLoading && <p className="review-intro" role="status"><LoaderCircle className="spin" size={14} /> Reading your case. This runs on a local model, so give it a moment.</p>}
+                {analysisLoading && <p className="review-intro" role="status"><LoaderCircle className="spin" size={14} /> Reading your case. Give it a moment.</p>}
                 {analysisError && <div className="analysis-error" role="alert">{analysisError}</div>}
                 {(analysis?.gaps ?? []).length > 0 && (
                   <div className="inline-notice" role="status">
