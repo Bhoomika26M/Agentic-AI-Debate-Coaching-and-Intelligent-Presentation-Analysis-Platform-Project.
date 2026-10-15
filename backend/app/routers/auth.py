@@ -1,41 +1,76 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from app.db.session import get_db
+from app.models.user import User, UserProfile
+from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserOut, ProfileUpdate
+from app.core.security import hash_password, verify_password, create_access_token
+from app.core.deps import get_current_user
 
-from .. import models, schemas, auth
-from ..database import get_db
+router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-@router.post("/register", response_model=schemas.Token, status_code=status.HTTP_201_CREATED)
-def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
-    existing = db.query(models.User).filter(models.User.email == user_in.email).first()
-    if existing:
+@router.post("/register", response_model=TokenResponse)
+def register(payload: UserRegister, db: Session = Depends(get_db)):
+    if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
-
-    valid_roles = {r.value for r in models.RoleEnum}
-    role = user_in.role if user_in.role in valid_roles else "learner"
-
-    user = models.User(
-        full_name=user_in.full_name,
-        email=user_in.email,
-        hashed_password=auth.hash_password(user_in.password),
-        role=role,
+    user = User(
+        email=payload.email,
+        full_name=payload.full_name,
+        password_hash=hash_password(payload.password),
+        role="learner",  # NEVER allow self-registration as admin
     )
     db.add(user)
+    db.flush()
+    db.add(UserProfile(user_id=user.id))
     db.commit()
     db.refresh(user)
+    token = create_access_token({"sub": user.id, "role": user.role})
+    return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 
-    token = auth.create_access_token({"sub": str(user.id)})
-    return schemas.Token(access_token=token, user=schemas.UserOut.model_validate(user))
+@router.post("/login", response_model=TokenResponse)
+def login(payload: UserLogin, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == payload.email).first()
+    if not user or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account disabled")
+    token = create_access_token({"sub": user.id, "role": user.role})
+    return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 
+@router.get("/me", response_model=UserOut)
+def me(user: User = Depends(get_current_user)):
+    return UserOut.model_validate(user)
 
-@router.post("/login", response_model=schemas.Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == form_data.username).first()
-    if not user or not auth.verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
+@router.put("/profile")
+def update_profile(payload: ProfileUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
+    if not profile:
+        profile = UserProfile(user_id=user.id)
+        db.add(profile)
+    if payload.full_name:
+        user.full_name = payload.full_name
+    if payload.experience_level:
+        profile.experience_level = payload.experience_level
+    if payload.preferred_topics is not None:
+        profile.preferred_topics = payload.preferred_topics
+    if payload.presentation_domains is not None:
+        profile.presentation_domains = payload.presentation_domains
+    if payload.learning_goals is not None:
+        profile.learning_goals = payload.learning_goals
+    if payload.coaching_preferences is not None:
+        profile.coaching_preferences = payload.coaching_preferences
+    db.commit()
+    return {"message": "Profile updated"}
 
-    token = auth.create_access_token({"sub": str(user.id)})
-    return schemas.Token(access_token=token, user=schemas.UserOut.model_validate(user))
+@router.get("/profile")
+def get_profile(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
+    return {
+        "user": UserOut.model_validate(user),
+        "profile": {
+            "experience_level": profile.experience_level if profile else "beginner",
+            "preferred_topics": profile.preferred_topics if profile else [],
+            "presentation_domains": profile.presentation_domains if profile else [],
+            "learning_goals": profile.learning_goals if profile else [],
+            "coaching_preferences": profile.coaching_preferences if profile else {},
+        },
+    }

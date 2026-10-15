@@ -1,74 +1,77 @@
-import json
-from collections import Counter
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+from app.db.session import get_db
+from app.models.user import User
+from app.models.debate import DebateSession
+from app.models.analysis import (ArgumentAnalysis, PresentationSession,
+                                 PresentationAnalysis, PerformanceEvaluation)
+from app.core.deps import get_current_user, require_role
+from app.schemas.dashboard import LearnerDashboard, AdminDashboard
 
-from .. import models, schemas, auth
-from ..database import get_db
+router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+@router.get("/learner", response_model=LearnerDashboard)
+def learner_dashboard(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    total_debates = db.query(func.count(DebateSession.id)).filter_by(user_id=user.id).scalar() or 0
+    total_pres = db.query(func.count(PresentationSession.id)).filter_by(user_id=user.id).scalar() or 0
+    evals = db.query(PerformanceEvaluation).filter_by(user_id=user.id).order_by(PerformanceEvaluation.created_at.desc()).all()
+    avg = round(sum(e.overall_score for e in evals) / len(evals), 2) if evals else 0.0
 
+    trend = [{"date": e.created_at.date().isoformat(), "score": e.overall_score} for e in reversed(evals[-20:])]
 
-@router.get("", response_model=schemas.DashboardOut)
-def get_dashboard(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
-):
-    sessions = (
-        db.query(models.DebateSession)
-        .filter(models.DebateSession.owner_id == current_user.id)
-        .all()
+    recent_debates = db.query(DebateSession).filter_by(user_id=user.id).order_by(DebateSession.created_at.desc()).limit(5).all()
+    recent_sessions = [
+        {"id": s.id, "topic": s.topic, "status": s.status,
+         "created_at": s.created_at.isoformat()} for s in recent_debates
+    ]
+
+    strengths, weaknesses = [], []
+    if evals:
+        strengths = evals[0].strengths or []
+        weaknesses = evals[0].weaknesses or []
+
+    feedback = [{"score": e.overall_score, "date": e.created_at.isoformat()} for e in evals[:5]]
+
+    return LearnerDashboard(
+        total_debates=total_debates,
+        total_presentations=total_pres,
+        average_score=avg,
+        recent_sessions=recent_sessions,
+        score_trend=trend,
+        strengths=strengths,
+        weaknesses=weaknesses,
+        recent_feedback=feedback,
     )
 
-    all_analyses = []
-    for s in sessions:
-        for a in s.arguments:
-            if a.analysis:
-                all_analyses.append(a.analysis)
+@router.get("/coach")
+def coach_dashboard(user: User = Depends(require_role("debate_coach", "educator", "admin")), db: Session = Depends(get_db)):
+    learners = db.query(User).filter(User.role == "learner").all()
+    data = []
+    for l in learners:
+        evals = db.query(PerformanceEvaluation).filter_by(user_id=l.id).all()
+        avg = round(sum(e.overall_score for e in evals) / len(evals), 2) if evals else 0.0
+        data.append({"id": l.id, "name": l.full_name, "email": l.email,
+                     "avg_score": avg, "evaluations": len(evals)})
+    return {"learners": data}
 
-    all_analyses.sort(key=lambda x: x.created_at)
+@router.get("/educator")
+def educator_dashboard(user: User = Depends(require_role("educator", "admin")), db: Session = Depends(get_db)):
+    return coach_dashboard(user, db)
 
-    total_arguments = sum(len(s.arguments) for s in sessions)
-
-    if not all_analyses:
-        return schemas.DashboardOut(
-            total_sessions=len(sessions),
-            total_arguments=total_arguments,
-            average_overall_score=0.0,
-            average_scores_by_criterion={},
-            fallacy_frequency={},
-            score_trend=[],
-            top_recommendations=[],
-        )
-
-    def avg(field):
-        return round(sum(getattr(a, field) for a in all_analyses) / len(all_analyses), 1)
-
-    avg_scores = {
-        "clarity": avg("clarity"),
-        "relevance": avg("relevance"),
-        "evidence_strength": avg("evidence_strength"),
-        "logical_consistency": avg("logical_consistency"),
-        "persuasiveness": avg("persuasiveness"),
-    }
-
-    fallacy_counter = Counter()
-    rec_counter = Counter()
-    for a in all_analyses:
-        for f in json.loads(a.fallacies_json):
-            fallacy_counter[f["type"]] += 1
-        for r in json.loads(a.recommendations_json):
-            rec_counter[r] += 1
-
-    top_recs = [rec for rec, _ in rec_counter.most_common(5)]
-
-    return schemas.DashboardOut(
-        total_sessions=len(sessions),
-        total_arguments=total_arguments,
-        average_overall_score=avg("overall_score"),
-        average_scores_by_criterion=avg_scores,
-        fallacy_frequency=dict(fallacy_counter),
-        score_trend=[a.overall_score for a in all_analyses],
-        top_recommendations=top_recs,
+@router.get("/admin", response_model=AdminDashboard)
+def admin_dashboard(user: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    total_users = db.query(func.count(User.id)).scalar() or 0
+    role_rows = db.query(User.role, func.count(User.id)).group_by(User.role).all()
+    role_counts = {r: c for r, c in role_rows}
+    total_debates = db.query(func.count(DebateSession.id)).scalar() or 0
+    total_pres = db.query(func.count(PresentationSession.id)).scalar() or 0
+    total_analyses = db.query(func.count(ArgumentAnalysis.id)).scalar() or 0
+    recent = db.query(User).order_by(User.created_at.desc()).limit(10).all()
+    recent_users = [{"id": u.id, "email": u.email, "role": u.role,
+                     "created_at": u.created_at.isoformat()} for u in recent]
+    return AdminDashboard(
+        total_users=total_users, role_counts=role_counts,
+        total_debates=total_debates, total_presentations=total_pres,
+        total_analyses=total_analyses, recent_users=recent_users,
     )

@@ -1,95 +1,62 @@
-import { useEffect, useState } from "react";
-import { api, setToken } from "./api";
-import Auth from "./pages/Auth";
-import Dashboard from "./pages/Dashboard";
-import Sessions from "./pages/Sessions";
-import SessionDetail from "./pages/SessionDetail";
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import AppLayout from './layouts/AppLayout';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Dashboard from './pages/Dashboard';
+import Profile from './pages/Profile';
+import CreateDebate from './pages/CreateDebate';
+import DebateSession from './pages/DebateSession';
+import DebateHistory from './pages/DebateHistory';
+import ArgumentAnalysis from './pages/ArgumentAnalysis';
+import FallacyDetection from './pages/FallacyDetection';
+import CounterArguments from './pages/CounterArguments';
+import PresentationAnalysis from './pages/PresentationAnalysis';
+import PerformanceReport from './pages/PerformanceReport';
+import Coaching from './pages/Coaching';
+import CoachDashboard from './pages/CoachDashboard';
+import EducatorDashboard from './pages/EducatorDashboard';
+import AdminDashboard from './pages/AdminDashboard';
+
+function Protected({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="center">Loading…</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function RoleGate({ roles, children }) {
+  const { user } = useAuth();
+  if (!user || !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
+  return children;
+}
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [checkingAuth, setCheckingAuth] = useState(true);
-  const [view, setView] = useState("dashboard"); // dashboard | sessions | session-detail
-  const [activeSessionId, setActiveSessionId] = useState(null);
-  const [sessionsCache, setSessionsCache] = useState([]);
-
-  useEffect(() => {
-    api
-      .me()
-      .then(setUser)
-      .catch(() => setToken(null))
-      .finally(() => setCheckingAuth(false));
-  }, []);
-
-  useEffect(() => {
-    if (user) {
-      api.listSessions().then(setSessionsCache).catch(() => {});
-    }
-  }, [user, view]);
-
-  function logout() {
-    setToken(null);
-    setUser(null);
-  }
-
-  function openSession(id) {
-    setActiveSessionId(id);
-    setView("session-detail");
-  }
-
-  if (checkingAuth) {
-    return <div className="content empty-state">Loading…</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="app-shell">
-        <header className="masthead">
-          <div>
-            <div className="kicker">INTERNSHIP BUILD · FREE / LOCAL AI</div>
-            <h1>The Debate Coach</h1>
-          </div>
-        </header>
-        <Auth onAuthed={setUser} />
-      </div>
-    );
-  }
-
   return (
-    <div className="app-shell">
-      <header className="masthead">
-        <div>
-          <div className="kicker">AGENTIC AI DEBATE COACH &amp; PRESENTATION ANALYSIS</div>
-          <h1>The Debate Coach</h1>
-        </div>
-        <nav>
-          <button
-            className={view === "dashboard" ? "active" : ""}
-            onClick={() => setView("dashboard")}
-          >
-            Dashboard
-          </button>
-          <button
-            className={view === "sessions" || view === "session-detail" ? "active" : ""}
-            onClick={() => setView("sessions")}
-          >
-            Debate Sessions
-          </button>
-          <span className="user-chip">
-            {user.full_name} · {user.role.replace("_", " ")}
-          </span>
-          <button onClick={logout}>Sign out</button>
-        </nav>
-      </header>
-
-      {view === "dashboard" && <Dashboard user={user} />}
-      {view === "sessions" && <Sessions onOpenSession={openSession} />}
-      {view === "session-detail" && (
-        <SessionDetail
-          sessionId={activeSessionId}
-          sessions={sessionsCache}
-          onBack={() => setView("sessions")}
-        />
-      )}
-    </div>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route element={<Protected><AppLayout /></Protected>}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/debates/new" element={<CreateDebate />} />
+            <Route path="/debates/:id" element={<DebateSession />} />
+            <Route path="/debates" element={<DebateHistory />} />
+            <Route path="/analysis/argument" element={<ArgumentAnalysis />} />
+            <Route path="/analysis/fallacy" element={<FallacyDetection />} />
+            <Route path="/analysis/counterargument" element={<CounterArguments />} />
+            <Route path="/presentation" element={<PresentationAnalysis />} />
+            <Route path="/reports" element={<PerformanceReport />} />
+            <Route path="/coaching" element={<Coaching />} />
+            <Route path="/coach" element={<RoleGate roles={['debate_coach','admin']}><CoachDashboard /></RoleGate>} />
+            <Route path="/educator" element={<RoleGate roles={['educator','admin']}><EducatorDashboard /></RoleGate>} />
+            <Route path="/admin" element={<RoleGate roles={['admin']}><AdminDashboard /></RoleGate>} />
+          </Route>
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
