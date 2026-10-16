@@ -38,6 +38,9 @@ __pycache__/
 # Node
 node_modules/
 **/node_modules/
-dist/
-**/dist/
-
+# Legacy / temporary workspace artifacts
+debate_coach_platform/
+convert.py
+generate_hero_only.py
+generate_html.py
+src/
