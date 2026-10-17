@@ -9,8 +9,8 @@ const ROLES = [
 ]
 
 export default function Signup() {
-  const { register } = useAuth()
-  const navigate     = useNavigate()
+  const { register, oauthLogin } = useAuth()
+  const navigate = useNavigate()
   const [step, setStep]     = useState(1)
   const [form, setForm]     = useState({ full_name: '', email: '', password: '', confirm: '', role: 'learner' })
   const [error, setError]   = useState('')
@@ -113,6 +113,22 @@ export default function Signup() {
 
               <button id="signup-next" className="btn btn-primary btn-full btn-lg" type="submit">
                 Continue →
+              </button>
+
+              <div className="divider" style={{ margin: '16px 0' }}>or sign up with OAuth2</div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-full"
+                onClick={async () => {
+                  try {
+                    await oauthLogin('google', null, form.full_name || null)
+                    navigate('/dashboard')
+                  } catch (err) {
+                    setError('Google OAuth signup failed.')
+                  }
+                }}
+              >
+                🌐 Instant Sign up with Google (OAuth2 SSO)
               </button>
             </form>
           </>

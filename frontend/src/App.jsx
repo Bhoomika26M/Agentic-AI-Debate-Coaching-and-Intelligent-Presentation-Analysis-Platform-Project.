@@ -8,6 +8,10 @@ import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
 import DebateSessions from './pages/DebateSessions'
 import ArgumentAnalysis from './pages/ArgumentAnalysis'
+import DebateSimulation from './pages/DebateSimulation'
+import Coaching from './pages/Coaching'
+import PresentationAnalysis from './pages/PresentationAnalysis'
+import Reports from './pages/Reports'
 import './index.css'
 import './App.css'
 
@@ -23,10 +27,18 @@ function App() {
 
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/dashboard"  element={<Dashboard />} />
-            <Route path="/analysis"   element={<ArgumentAnalysis />} />
-            <Route path="/profile"    element={<Profile />} />
-            <Route path="/sessions"   element={<DebateSessions />} />
+            {/* M1 */}
+            <Route path="/dashboard"   element={<Dashboard />} />
+            <Route path="/sessions"    element={<DebateSessions />} />
+            <Route path="/profile"     element={<Profile />} />
+            {/* M2 */}
+            <Route path="/analysis"    element={<ArgumentAnalysis />} />
+            {/* M3 */}
+            <Route path="/simulation"  element={<DebateSimulation />} />
+            <Route path="/coaching"    element={<Coaching />} />
+            {/* M4 */}
+            <Route path="/presentation" element={<PresentationAnalysis />} />
+            <Route path="/reports"     element={<Reports />} />
           </Route>
 
           {/* Fallback */}

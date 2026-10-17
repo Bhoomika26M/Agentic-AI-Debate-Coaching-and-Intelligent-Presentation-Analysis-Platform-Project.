@@ -11,7 +11,7 @@ class SessionCreate(BaseModel):
     format:           str = Field(..., min_length=3, max_length=60)
     position:         str | None = Field(None, max_length=60)
     notes:            str | None = None
-    scheduled_at:     datetime
+    scheduled_at:     datetime | None = Field(default_factory=datetime.utcnow)
     round_count:      int = 1
     duration_minutes: int = 15
     transcript:       str | None = None

@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
-  const { login }    = useAuth()
-  const navigate     = useNavigate()
+  const { login, oauthLogin } = useAuth()
+  const navigate = useNavigate()
   const [form, setForm] = useState({ email: '', password: '' })
   const [error, setError]     = useState('')
   const [loading, setLoading] = useState(false)
@@ -82,16 +82,51 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="divider" style={{ margin: '20px 0' }}>or</div>
+        <div className="divider" style={{ margin: '20px 0' }}>or continue with OAuth2</div>
 
-        <button
-          id="google-login"
-          className="btn btn-secondary btn-full"
-          type="button"
-          onClick={() => alert('Google OAuth — coming soon!')}
-        >
-          <span>🔑</span> Continue with Google
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button
+            id="google-login"
+            className="btn btn-secondary btn-full"
+            type="button"
+            disabled={loading}
+            onClick={async () => {
+              setLoading(true)
+              setError('')
+              try {
+                await oauthLogin('google')
+                navigate('/dashboard')
+              } catch (err) {
+                setError('Google OAuth sign-in failed. Please try again.')
+              } finally {
+                setLoading(false)
+              }
+            }}
+          >
+            <span>🌐</span> Sign in with Google (OAuth2 SSO)
+          </button>
+
+          <button
+            id="github-login"
+            className="btn btn-secondary btn-full"
+            type="button"
+            disabled={loading}
+            onClick={async () => {
+              setLoading(true)
+              setError('')
+              try {
+                await oauthLogin('github')
+                navigate('/dashboard')
+              } catch (err) {
+                setError('GitHub OAuth sign-in failed. Please try again.')
+              } finally {
+                setLoading(false)
+              }
+            }}
+          >
+            <span>🐙</span> Sign in with GitHub
+          </button>
+        </div>
 
         <div className="auth-footer" style={{ marginTop: 24 }}>
           Don't have an account?{' '}

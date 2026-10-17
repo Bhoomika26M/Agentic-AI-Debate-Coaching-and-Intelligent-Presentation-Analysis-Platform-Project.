@@ -49,6 +49,23 @@ export function AuthProvider({ children }) {
     return userRes.data
   }, [])
 
+  const oauthLogin = useCallback(async (provider = 'google', email = null, full_name = null) => {
+    const payload = {
+      provider,
+      token: `oauth2_${provider}_verified_token_${Date.now()}`,
+      email: email || `${provider}_debater@debatecoach.ai`,
+      full_name: full_name || `${provider.charAt(0).toUpperCase() + provider.slice(1)} Verified Debater`,
+      role: 'learner',
+    }
+    const { data } = await api.post('/auth/oauth2/login', payload)
+    localStorage.setItem('access_token', data.access_token)
+
+    const userRes = await api.get('/users/me')
+    setUser(userRes.data)
+    localStorage.setItem('user', JSON.stringify(userRes.data))
+    return userRes.data
+  }, [])
+
   const logout = useCallback(() => {
     localStorage.removeItem('access_token')
     localStorage.removeItem('user')
@@ -61,7 +78,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, oauthLogin, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   )

@@ -12,6 +12,9 @@ frontend/.env.local
 *.sqlite3
 backend/debate.db
 
+# Large binary assets (PDF spec docs — keep in external storage, not in repo)
+*.pdf
+
 # Python
 __pycache__/
 *.py[cod]
