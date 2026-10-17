@@ -103,11 +103,20 @@ def rebuttal_comm_node(state: JudgeState) -> JudgeState:
     return {"dimensions": dims}
 
 
+def _clip_note(note: str, limit: int = 280) -> str:
+    note = " ".join(str(note).split())
+    return note if len(note) <= limit else note[: limit - 1].rstrip() + "…"
+
+
 def merge_node(state: JudgeState) -> JudgeState:
     dims = sorted(state.get("dimensions", []), key=lambda d: list(WEIGHTS).index(d["key"]))
     gaps = list(state.get("gaps", []))
     if not dims:
         return {"verdict": None, "gaps": gaps or ["no scored dimensions"]}
+    for d in dims:
+        # Rating notes arrive verbatim from the analysis model and can exceed
+        # the display cap, so clip before schema validation.
+        d["note"] = _clip_note(d.get("note") or "Scored from this rehearsal.")
     validated = [JudgeDimension.model_validate(d).model_dump() for d in dims]
     overall = round(sum(d["score"] * d["weight_pct"] for d in validated) / 100, 1)
     for d in validated:
