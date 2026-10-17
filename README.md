@@ -68,6 +68,74 @@ The model only ever receives text through the API. The browser never talks to a 
 
 ---
 
+## Milestone Checklist
+
+| Milestone | Scope | Status |
+| :--- | :--- | :--- |
+| M1 — Week 1 & 2: Project Initialization, Design Process & Core Setup | Workflows definition, system architecture & database schema, UI wireframes, frontend & backend setup, authentication & role-based access, user profiles & skill tracking, debate session management | Complete |
+| M2 — Week 3 & 4: Argument Analysis & Fallacy Detection | Argument analysis engine, logical fallacy detection workflows, reasoning evaluation models, argument scoring systems, debate feedback reports | Complete |
+| M3 — Week 5 & 6: AI Debate Simulation & Coaching | AI debate simulation engine, counterargument generation workflows, coaching recommendation engine, personalized learning plans, performance dashboards | Complete |
+| M4 — Week 7 & 8: Presentation Analytics, Testing & Deployment | Presentation analysis engine, reports & visualization modules, automated testing & validations, Docker containerization & deployment, final documentation | Complete |
+
+### Detailed Milestone Breakdown
+
+#### Milestone 1: Week 1 & 2 — Project Initialization, Design Process & Core Setup
+
+- **Tasks**
+  - [x] Define project objectives and debate coaching workflows.
+  - [x] Design system architecture and database schema.
+  - [x] Create UI wireframes and workflow planning.
+  - [x] Setup frontend and backend environments.
+  - [x] Implement authentication and role-based access system.
+  - [x] Build user profile and skill tracking workflows.
+  - [x] Create debate session management modules.
+- **Outcomes**
+  - [x] Understand AI-powered debate coaching workflows.
+  - [x] Learn system architecture and database design concepts.
+  - [x] Build frontend and backend project initialization.
+  - [x] Working authentication and debate session management system.
+
+#### Milestone 2: Week 3 & 4 — Argument Analysis & Fallacy Detection
+
+- **Tasks**
+  - [x] Implement argument analysis engine.
+  - [x] Build logical fallacy detection workflows.
+  - [x] Develop reasoning evaluation models.
+  - [x] Create argument scoring systems.
+  - [x] Generate debate feedback reports.
+- **Outcomes**
+  - [x] Argument analysis engine operational.
+  - [x] Fallacy detection workflows functional.
+  - [x] Reasoning assessment system completed.
+
+#### Milestone 3: Week 5 & 6 — AI Debate Simulation & Coaching
+
+- **Tasks**
+  - [x] Implement AI debate simulation engine.
+  - [x] Build counterargument generation workflows.
+  - [x] Develop coaching recommendation engine.
+  - [x] Generate personalized learning plans.
+  - [x] Create performance dashboards.
+- **Outcomes**
+  - [x] AI debate simulation operational.
+  - [x] Coaching engine functional.
+  - [x] Personalized learning workflows completed.
+
+#### Milestone 4: Week 7 & 8 — Presentation Analytics, Testing & Deployment
+
+- **Tasks**
+  - [x] Implement presentation analysis engine.
+  - [x] Add reports and visualization modules.
+  - [x] Implement testing and validations.
+  - [x] Deploy platform using Docker and cloud services.
+  - [x] Prepare final documentation and presentation.
+- **Outcomes**
+  - [x] Fully deployed production-ready platform.
+  - [x] Debate coaching intelligence systems operational.
+  - [x] Complete end-to-end debate improvement workflow demonstrable.
+
+---
+
 ## Run it locally
 
 You need Node.js 20 or newer, Python 3.12, `uv`, and Ollama.
