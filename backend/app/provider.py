@@ -1,8 +1,9 @@
-"""OpenRouter AI provider boundary with a deterministic local fallback."""
+"""Configured AI transport, specialist-agent orchestration and local fallbacks."""
 import json
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .agents import orchestrator
 from .analysis import analyze_transcript
 from .config import settings
 
@@ -39,6 +40,7 @@ class GroqProvider:
         return body["choices"][0]["message"]["content"]
 
     def analyze(self, transcript: str, topic: str, position: str) -> dict:
+        """Backward-compatible general analysis method."""
         prompt = (
             "Analyze this debate transcript. Return valid JSON with keys summary, strengths, "
             "improvements. Keep each value concise. "
@@ -51,6 +53,7 @@ class GroqProvider:
             raise RuntimeError("Groq returned invalid analysis JSON") from exc
 
     def debate_response(self, topic: str, position: str, transcript: str, turn_type: str) -> str:
+        """Backward-compatible debate turn method."""
         prompt = (
             "Act as a rigorous, constructive debate coach. Generate one specific response "
             "to move this debate forward. Challenge the user's reasoning without inventing "
@@ -83,10 +86,14 @@ class OpenRouterProvider(GroqProvider):
 
 
 class AnalysisProvider:
-    """Use OpenRouter for every AI workflow, with a local fallback."""
+    """Route work to specialist agents, retaining explainable local fallbacks."""
 
     def __init__(self, ai: GroqProvider | None = None):
         self.ai = ai or (OpenRouterProvider() if settings.openrouter_enabled else GroqProvider())
+
+    @property
+    def agent_registry(self) -> list[dict[str, str]]:
+        return orchestrator.registry
 
     def _log(self, operation: str, success: bool, error: str = ""):
         from .db import SessionLocal
@@ -100,30 +107,36 @@ class AnalysisProvider:
         finally:
             db.close()
 
+    def run_agent(self, task: str, payload: dict):
+        """Run one validated specialist task; return None when unavailable or invalid."""
+        if not self.ai.available:
+            return None
+        try:
+            result = orchestrator.run(task, self.ai._complete, payload)
+            self._log(task, True)
+            return result
+        except Exception as exc:
+            self._log(task, False, f"{type(exc).__name__}: {exc}")
+            return None
+
     def analyze(self, transcript: str, topic: str, position: str, weights: dict | None = None) -> dict:
         baseline = analyze_transcript(transcript, topic, position, weights)
-        ai = None
-        if self.ai.available:
-            try:
-                ai = self.ai.analyze(transcript, topic, position)
-                self._log("analysis", True)
-            except (HTTPError, URLError, TimeoutError, RuntimeError, ValueError):
-                ai = None
-                self._log("analysis", False, "provider request failed")
-        baseline["provider"] = self.ai.name if ai else "local"
-        if ai:
-            baseline["ai_insights"] = ai
+        context = {"transcript": transcript, "topic": topic, "position": position}
+        review = self.run_agent("argument_analysis", context)
+        fallacy_review = self.run_agent("fallacy_detection", context)
+        baseline["provider"] = self.ai.name if review or fallacy_review else "local"
+        if review:
+            baseline["ai_insights"] = review
+        if fallacy_review:
+            baseline["ai_fallacy_review"] = fallacy_review["fallacies"]
         return baseline
 
     def debate_response(self, topic: str, position: str, transcript: str, turn_type: str) -> tuple[str, str]:
-        if self.ai.available:
-            try:
-                response = self.ai.debate_response(topic, position, transcript, turn_type)
-                self._log("debate_turn", True)
-                return response, self.ai.name
-            except (HTTPError, URLError, TimeoutError, RuntimeError, ValueError):
-                self._log("debate_turn", False, "provider request failed")
-                pass
+        response = self.run_agent("debate_opponent", {
+            "topic": topic, "position": position, "transcript": transcript, "turn_type": turn_type,
+        })
+        if isinstance(response, str):
+            return response, self.ai.name
         return (
             f"An opponent would challenge your {position} position on {topic}. "
             "What evidence supports your strongest claim, and what trade-off would you accept?",

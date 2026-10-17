@@ -43,6 +43,10 @@ For frontend development, run `cd frontend; npm install; npm run dev`; Vite prox
 - `POST /api/media/upload`, `GET /api/media` - validated audio/video uploads and transcript analysis
 - `GET /api/role-dashboard` - role-aware capability and progress view
 - `PATCH /api/admin/users/{id}/role`, `GET /api/admin/users` - administrator-only role management
+- `GET /api/notifications` - reminders, feedback alerts, milestones, and announcements
+- `PATCH /api/notifications/{id}/read`, `POST /api/notifications/read-all` - notification state
+- `POST /api/admin/notifications` - administrator announcements
+- `GET /api/analytics/metrics` - completion, score growth, fallacy, pace, and filler metrics
 
 All session, profile, dashboard, and report routes require a bearer token returned by the authentication endpoints.
 
@@ -84,6 +88,27 @@ that status. Reports can be downloaded as PDF or Excel workbooks.
 Install `langgraph` separately when desired—the debate endpoint remains usable
 without it.
 
+Scheduled debates and assignments automatically create reminder notifications
+within 24 hours. Coaches create feedback notifications when evaluating
+assignments, and administrators can publish announcements to individual users.
+The metrics endpoint labels scores as coaching estimates rather than validated
+scientific accuracy benchmarks.
+
 Render deployment can use the included `render.yaml`. For production media,
 configure object storage and PostgreSQL by setting `DATABASE_URL`; local SQLite
 and filesystem storage remain the default for development.
+
+
+### Specialist-agent routing
+
+AI-backed requests are routed to focused specialists for argument analysis,
+fallacy detection, counterargument generation, live debate turns, presentation
+delivery coaching, and personalized learning plans. Each structured response is
+validated before it is returned or persisted. Session reports keep specialist
+recommendations and only accept AI fallacy excerpts that occur in the submitted
+transcript. Set `OPENROUTER_API_KEY` or `GROQ_API_KEY` in the server environment
+to enable hosted agent responses; never put provider keys in frontend code.
+When no provider is configured or a request/response fails validation, the API
+continues with its deterministic local analysis and coaching fallbacks.
+Administrators can inspect the registered agents, provider configuration, and
+per-task request/failure logs at `GET /api/admin/ai-monitoring`.

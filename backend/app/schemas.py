@@ -153,6 +153,14 @@ class CounterargumentCreate(BaseModel):
     response: str = Field(min_length=1, max_length=5000)
 
 
+class NotificationCreate(BaseModel):
+    user_id: int
+    notification_type: str = Field(default="announcement", pattern="^(reminder|feedback|milestone|announcement)$")
+    title: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1, max_length=2000)
+    link: str = Field(default="", max_length=200)
+
+
 class DebateTurnRequest(BaseModel):
     session_id: int | None = None
     topic: str = Field(min_length=3, max_length=500)

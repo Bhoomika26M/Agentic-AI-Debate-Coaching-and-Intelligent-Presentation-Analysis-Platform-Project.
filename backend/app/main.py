@@ -1,6 +1,7 @@
 import json
 import csv
 import io
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
@@ -13,13 +14,13 @@ from sqlalchemy.orm import Session
 from .analysis import analyze_transcript, serial_analysis, transcribe_media
 from .config import settings
 from .db import Base, engine, get_db
-from .models import AIUsageLog, Analysis, AuditLog, ClassGroup, ClassMember, CounterargumentPractice, CurriculumItem, DebateSession, DebateTurn, FallacyFinding, LearningAssignment, MediaAsset, Presentation, User
+from .models import AIUsageLog, Analysis, AuditLog, ClassGroup, ClassMember, CounterargumentPractice, CurriculumItem, DebateSession, DebateTurn, FallacyFinding, LearningAssignment, MediaAsset, Notification, Presentation, User
 from .provider import provider
 from .debate_graph import simulate_turn
 from .schemas import (CounterargumentRequest, PresentationCreate, ProfileUpdate, SessionCreate,
                        SessionOut, Token, UserCreate, UserLogin, UserOut, DebateTurnRequest, RoleUpdate, SessionUpdate,
                        AssignmentCreate, SubmissionCreate, EvaluationCreate, ClassCreate, ClassMemberCreate)
-from .schemas import CurriculumCreate, FallacyCreate, CounterargumentCreate
+from .schemas import CurriculumCreate, FallacyCreate, CounterargumentCreate, NotificationCreate
 from .security import current_user, hash_password, make_token, verify_password, require_roles
 
 Base.metadata.create_all(bind=engine)
@@ -48,6 +49,105 @@ app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_credent
 
 @app.get("/api/health")
 def health(): return {"status": "ok", "service": "debate-coach"}
+
+
+def add_notification(db: Session, user_id: int, notification_type: str, title: str,
+                     message: str, link: str = ""):
+    db.add(Notification(user_id=user_id, notification_type=notification_type, title=title,
+                        message=message, link=link))
+
+
+def notification_view(item: Notification):
+    return {"id": item.id, "notification_type": item.notification_type, "title": item.title,
+            "message": item.message, "link": item.link, "read": item.read,
+            "created_at": item.created_at}
+
+
+@app.get("/api/notifications")
+def notifications(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    now = datetime.utcnow()
+    scheduled = db.query(DebateSession).filter(
+        DebateSession.user_id == user.id, DebateSession.status == "scheduled",
+        DebateSession.scheduled_at != None, DebateSession.scheduled_at >= now,
+        DebateSession.scheduled_at <= now + timedelta(hours=24)).all()
+    for item in scheduled:
+        marker = f"session-reminder:{item.id}"
+        if not db.query(Notification).filter_by(user_id=user.id, link=marker).first():
+            add_notification(db, user.id, "reminder", "Debate reminder",
+                             f"Your scheduled debate '{item.title}' starts within 24 hours.", marker)
+    due_assignments = db.query(LearningAssignment).filter(
+        LearningAssignment.learner_id == user.id, LearningAssignment.status == "assigned",
+        LearningAssignment.due_at != None, LearningAssignment.due_at >= now,
+        LearningAssignment.due_at <= now + timedelta(hours=24)).all()
+    for item in due_assignments:
+        marker = f"assignment-reminder:{item.id}"
+        if not db.query(Notification).filter_by(user_id=user.id, link=marker).first():
+            add_notification(db, user.id, "reminder", "Assignment due soon",
+                             f"'{item.title}' is due within 24 hours.", marker)
+    db.commit()
+    items = db.query(Notification).filter_by(user_id=user.id).order_by(
+        desc(Notification.created_at)).limit(100).all()
+    return {"unread_count": sum(not item.read for item in items),
+            "items": [notification_view(item) for item in items]}
+
+
+@app.patch("/api/notifications/{notification_id}/read")
+def mark_notification_read(notification_id: int, user: User = Depends(current_user),
+                            db: Session = Depends(get_db)):
+    item = db.query(Notification).filter_by(id=notification_id, user_id=user.id).first()
+    if not item:
+        raise HTTPException(404, "Notification not found")
+    item.read = True
+    db.commit()
+    return notification_view(item)
+
+
+@app.post("/api/notifications/read-all")
+def mark_all_notifications_read(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    db.query(Notification).filter_by(user_id=user.id, read=False).update({"read": True})
+    db.commit()
+    return {"updated": True}
+
+
+@app.post("/api/admin/notifications", status_code=201)
+def create_notification(payload: NotificationCreate,
+                        admin: User = Depends(require_roles("administrator")),
+                        db: Session = Depends(get_db)):
+    if not db.get(User, payload.user_id):
+        raise HTTPException(404, "User not found")
+    add_notification(db, payload.user_id, payload.notification_type, payload.title,
+                     payload.message, payload.link)
+    db.add(AuditLog(actor_id=admin.id, action="notification_created",
+                    target=f"user:{payload.user_id}"))
+    db.commit()
+    return {"created": True}
+
+
+@app.get("/api/analytics/metrics")
+def analytics_metrics(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    query = db.query(DebateSession)
+    if user.role != "administrator":
+        query = query.filter_by(user_id=user.id)
+    sessions = query.order_by(DebateSession.created_at).all()
+    scores = [item.overall_score for item in sessions]
+    completed = [item for item in sessions if item.status == "completed"]
+    analyses = [analysis for item in completed
+                for analysis in [db.query(Analysis).filter_by(session_id=item.id).first()]
+                if analysis]
+    return {
+        "sessions_total": len(sessions),
+        "sessions_completed": len(completed),
+        "completion_rate": round(len(completed) / len(sessions) * 100, 1) if sessions else 0,
+        "average_score": round(sum(scores) / len(scores), 1) if scores else 0,
+        "score_growth": round(completed[-1].overall_score - completed[0].overall_score, 1)
+        if len(completed) > 1 else 0,
+        "fallacy_findings": sum(len(json.loads(item.fallacies or "[]")) for item in analyses),
+        "average_pacing_wpm": round(sum(item.pacing_wpm for item in analyses) / len(analyses), 1)
+        if analyses else 0,
+        "average_filler_words": round(sum(item.filler_words for item in analyses) / len(analyses), 1)
+        if analyses else 0,
+        "measurement_note": "Scores are coaching estimates from deterministic or configured AI analysis.",
+    }
 
 
 @app.post("/api/auth/register", response_model=Token, status_code=201)
@@ -127,6 +227,9 @@ def coach_assign(learner_id: int, payload: AssignmentCreate, coach: User = Depen
                               assignment_type=payload.assignment_type, instructions=payload.instructions,
                               due_at=payload.due_at, class_id=payload.class_id)
     db.add(item); db.commit(); db.refresh(item)
+    add_notification(db, learner_id, "feedback", "New coaching assignment",
+                     f"{payload.title} has been assigned to you.", f"/assignments/{item.id}")
+    db.commit()
     return assignment_view(item)
 
 
@@ -141,6 +244,8 @@ def evaluate_assignment(assignment_id: int, payload: EvaluationCreate, coach: Us
     if not item: raise HTTPException(404, "Assignment not found")
     item.evaluation = json.dumps({"score": payload.score, "feedback": payload.feedback, "evaluated_by": coach.id})
     item.status = "evaluated"
+    add_notification(db, item.learner_id, "feedback", "Assignment feedback is ready",
+                     f"Your coach evaluated '{item.title}'.", f"/assignments/{item.id}")
     db.commit(); db.refresh(item)
     return assignment_view(item)
 
@@ -240,6 +345,8 @@ def audit_logs(admin: User = Depends(require_roles("administrator")), db: Sessio
 @app.get("/api/admin/ai-monitoring")
 def ai_monitoring(admin: User = Depends(require_roles("administrator")), db: Session = Depends(get_db)):
     return {"provider": provider.ai.name, "model": provider.ai.model, "configured": provider.ai.available,
+            "fallback": "deterministic", "agents": [{**agent, "configured": provider.ai.available}
+                                                       for agent in provider.agent_registry],
             "requests": db.query(AIUsageLog).count(), "failures": db.query(AIUsageLog).filter_by(success=False).count(),
             "recent": [{"operation": item.operation, "success": item.success, "error": item.error, "created_at": item.created_at}
                        for item in db.query(AIUsageLog).order_by(desc(AIUsageLog.created_at)).limit(50).all()]}
@@ -278,8 +385,28 @@ def create_session(payload: SessionCreate, user: User = Depends(current_user), d
                             debate_format=payload.debate_format, scheduled_at=payload.scheduled_at,
                             status="scheduled" if payload.scheduled_at else "completed", transcript=payload.transcript)
     result = provider.analyze(payload.transcript, payload.topic, payload.position, payload.scoring_weights)
+    persisted_fallacies = list(result["fallacies"])
+    for finding in result.get("ai_fallacy_review", []):
+        excerpt = finding.get("excerpt", "")
+        identity = (finding.get("type", "").casefold(), excerpt.casefold())
+        if excerpt and excerpt.casefold() in payload.transcript.casefold() and not any(
+            (item["type"].casefold(), item["excerpt"].casefold()) == identity for item in persisted_fallacies
+        ):
+            persisted_fallacies.append(finding)
+    persisted_recommendations = list(result["recommendations"])
+    if result.get("ai_insights"):
+        for improvement in result["ai_insights"].get("improvements", []):
+            if improvement and improvement not in persisted_recommendations:
+                persisted_recommendations.append(improvement)
+        summary = result["ai_insights"].get("summary")
+        if summary and summary not in persisted_recommendations:
+            persisted_recommendations.append(summary)
     session.overall_score = result["overall_score"]; db.add(session); db.flush()
-    db.add(Analysis(session_id=session.id, clarity=result["clarity"], evidence=result["evidence"], persuasiveness=result["persuasiveness"], delivery=result["delivery"], fallacies=json.dumps(result["fallacies"]), counterarguments=json.dumps(result["counterarguments"]), recommendations=json.dumps(result["recommendations"]), pacing_wpm=result["pacing_wpm"], filler_words=result["filler_words"]))
+    db.add(Analysis(session_id=session.id, clarity=result["clarity"], evidence=result["evidence"], persuasiveness=result["persuasiveness"], delivery=result["delivery"], fallacies=json.dumps(persisted_fallacies), counterarguments=json.dumps(result["counterarguments"]), recommendations=json.dumps(persisted_recommendations), pacing_wpm=result["pacing_wpm"], filler_words=result["filler_words"]))
+    if session.scheduled_at:
+        add_notification(db, user.id, "reminder", "Debate scheduled",
+                         f"'{session.title}' is scheduled for {session.scheduled_at.isoformat()}.",
+                         f"/sessions/{session.id}")
     db.commit(); db.refresh(session); return session
 
 
@@ -317,7 +444,11 @@ def session_detail(session_id: int, user: User = Depends(current_user), db: Sess
     detail = serial_analysis(analysis) if analysis else None
     if detail:
         # Recompute the explainable enrichment from the original transcript.
+        persisted_fallacies = detail["fallacies"]
+        persisted_recommendations = detail["recommendations"]
         detail.update(analyze_transcript(session.transcript, session.topic, session.position))
+        detail["fallacies"] = persisted_fallacies
+        detail["recommendations"] = persisted_recommendations
     return {"session": SessionOut.model_validate(session), "analysis": detail}
 
 
@@ -402,7 +533,13 @@ def counterarguments(session_id: int, payload: CounterargumentRequest, user: Use
                      db: Session = Depends(get_db)):
     session = db.query(DebateSession).filter_by(id=session_id, user_id=user.id).first()
     if not session: raise HTTPException(404, "Session not found")
-    return {"claim": payload.claim, "counterargument": f"A strong opponent could challenge '{payload.claim}' by asking for its evidence, scope, and trade-offs.",
+    generated = provider.run_agent("counterarguments", {"claim": payload.claim, "topic": session.topic,
+                                                          "position": session.position})
+    items = generated["counterarguments"] if generated else [
+        {"type": "evidence_based_rebuttal", "response": f"A strong opponent could challenge '{payload.claim}' by asking for its evidence, scope, and trade-offs."}
+    ]
+    return {"claim": payload.claim, "counterargument": items[0]["response"],
+            "counterarguments": items,
             "coaching_prompt": "Steelman that objection, then answer it with one source and one concrete example."}
 
 
@@ -537,9 +674,15 @@ def coaching_plan(user: User = Depends(current_user), db: Session = Depends(get_
               "evidence": "Add one verifiable source and one specific example to each claim.",
               "persuasiveness": "Steelman the opposing view before stating your strongest trade-off.",
               "delivery": "Practice once while replacing filler words with intentional pauses."}
-    return {"focus": focus, "baseline": dict(priorities), "weeks": [{"week": 1, "goal": drills[focus]},
+    plan = {"focus": focus, "baseline": dict(priorities), "weeks": [{"week": 1, "goal": drills[focus]},
             {"week": 2, "goal": "Repeat a timed practice and compare your trend."},
             {"week": 3, "goal": "Rehearse a counterargument without notes."}]}
+    guidance = provider.run_agent("learning_plan", {"focus": focus, "baseline": plan["baseline"],
+                                                       "current_plan": plan["weeks"],
+                                                       "learning_goals": json.loads(user.learning_goals)})
+    if guidance:
+        plan["agent_guidance"] = guidance
+    return plan
 
 
 @app.post("/api/presentations/analyze")
@@ -556,6 +699,15 @@ def presentation_analysis(payload: PresentationCreate, user: User = Depends(curr
                               "speech_pace_wpm": result["pacing_wpm"], "filler_word_usage": result["filler_words"],
                               "confidence_score": result["confidence_score"], "clarity_score": result["clarity"],
                               "audience_engagement_score": result["engagement_score"]}
+    coaching = provider.run_agent("presentation_coaching", {
+        "title": payload.title, "audience": payload.audience, "transcript": payload.transcript,
+        "duration_seconds": duration, "pacing_wpm": result["pacing_wpm"],
+        "filler_words": result["filler_words"], "clarity_score": result["clarity"],
+        "confidence_score": result["confidence_score"], "engagement_score": result["engagement_score"],
+    })
+    if coaching:
+        result["agent_feedback"] = coaching
+        result["recommendations"] = list(dict.fromkeys(result["recommendations"] + coaching["recommendations"]))
     presentation = Presentation(user_id=user.id, title=payload.title, audience=payload.audience,
                                 transcript=payload.transcript, duration_seconds=duration or 0,
                                 analysis_json=json.dumps(result))
@@ -584,19 +736,33 @@ def presentation_detail(presentation_id: int, user: User = Depends(current_user)
 @app.post("/api/analysis/arguments")
 def argument_analysis(payload: PresentationCreate, user: User = Depends(current_user)):
     result = analyze_transcript(payload.transcript, payload.title, "for")
+    agent_review = provider.run_agent("argument_analysis", {"transcript": payload.transcript,
+                                                               "topic": payload.title, "position": "for"})
     return {"arguments": result["arguments"], "score_dimensions": result["score_dimensions"],
-            "reasoning_score": result["reasoning_score"], "recommendations": result["recommendations"]}
+            "reasoning_score": result["reasoning_score"], "recommendations": result["recommendations"],
+            "agent_review": agent_review}
 
 
 @app.post("/api/analysis/fallacies")
 def fallacy_analysis(payload: PresentationCreate, user: User = Depends(current_user)):
     result = analyze_transcript(payload.transcript, payload.title, "for")
-    return {"fallacies": result["fallacies"], "corrections": [item["correction"] for item in result["fallacies"]]}
+    specialist = provider.run_agent("fallacy_detection", {"transcript": payload.transcript,
+                                                             "topic": payload.title, "position": "for"})
+    fallacies = result["fallacies"]
+    if specialist:
+        seen = {(item["type"].casefold(), item["excerpt"].casefold()) for item in fallacies}
+        for item in specialist["fallacies"]:
+            key = (item["type"].casefold(), item["excerpt"].casefold())
+            if item["excerpt"].casefold() in payload.transcript.casefold() and key not in seen:
+                fallacies.append(item)
+                seen.add(key)
+    return {"fallacies": fallacies, "corrections": [item["correction"] for item in fallacies]}
 
 
 @app.post("/api/analysis/counterarguments")
 def counterargument_analysis(payload: CounterargumentRequest, user: User = Depends(current_user)):
-    return {"claim": payload.claim, "counterarguments": [
+    generated = provider.run_agent("counterarguments", {"claim": payload.claim})
+    return {"claim": payload.claim, "counterarguments": generated["counterarguments"] if generated else [
         {"type": "logical_rebuttal", "response": f"Test the assumptions behind '{payload.claim}' and identify the missing condition."},
         {"type": "evidence_based_rebuttal", "response": "Request a verifiable source, then compare its scope and quality with the claim."},
         {"type": "alternative_perspective", "response": "Steelman the strongest opposing perspective before defending the claim."},
