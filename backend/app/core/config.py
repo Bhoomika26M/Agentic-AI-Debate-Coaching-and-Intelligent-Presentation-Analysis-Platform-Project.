@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.0-flash"
     FRONTEND_ORIGIN: str = "http://localhost:5173"
 
+    NVIDIA_API_KEY: str = ""
+    NVIDIA_TEXT_MODEL: str = "nvidia/nemotron-3.5-super-vl-120b-a12b"
+
     class Config:
         env_file = ".env"
         extra = "ignore"

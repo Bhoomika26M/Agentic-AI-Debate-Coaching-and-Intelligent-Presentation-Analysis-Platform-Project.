@@ -31,3 +31,9 @@ class ProfileUpdate(BaseModel):
     presentation_domains: Optional[List[str]] = None
     learning_goals: Optional[List[str]] = None
     coaching_preferences: Optional[dict] = None
+
+class AdminCreateUser(BaseModel):
+    email: EmailStr
+    full_name: str = Field(min_length=2, max_length=150)
+    password: str = Field(min_length=8, max_length=128)
+    role: str = Field(pattern="^(learner|debate_coach|educator|admin)$")

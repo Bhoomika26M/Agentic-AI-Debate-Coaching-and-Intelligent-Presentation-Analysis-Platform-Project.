@@ -8,12 +8,16 @@ from typing import Any
 from google import genai
 from google.genai import types
 from app.core.config import get_settings
+from app.services import nvidia_text_service
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 _client: genai.Client | None = None
 
+
+class GeminiError(Exception):
+    """Raised when Gemini API fails. Never silently return fabricated content."""
 def get_client() -> genai.Client:
     global _client
     if _client is None:
@@ -22,8 +26,10 @@ def get_client() -> genai.Client:
         _client = genai.Client(api_key=settings.GEMINI_API_KEY)
     return _client
 
-class GeminiError(Exception):
-    """Raised when Gemini API fails. Never silently return fabricated content."""
+def _is_busy_error(exc: Exception) -> bool:
+    """Detect Gemini transient/busy errors that warrant fallback."""
+    msg = str(exc).lower()
+    return any(kw in msg for kw in ["503", "unavailable", "429", "resource_exhausted", "timeout", "deadline"])
 
 def _generate(prompt: str, system_instruction: str | None = None, json_mode: bool = False) -> str:
     """Low-level generation call. Raises GeminiError on failure."""
@@ -45,6 +51,15 @@ def _generate(prompt: str, system_instruction: str | None = None, json_mode: boo
     except GeminiError:
         raise
     except Exception as e:
+        if _is_busy_error(e) and settings.NVIDIA_API_KEY:
+            logger.warning("Gemini busy (%s), falling back to NVIDIA NIM", e)
+            try:
+                return nvidia_text_service.generate_text(prompt, system_instruction, json_mode)
+            except nvidia_text_service.NvidiaFallbackError as nve:
+                raise GeminiError(f"Gemini busy and NVIDIA fallback failed: {str(nve)}")
+        # Non-busy errors propagate as before
+        if isinstance(e, GeminiError):
+            raise
         logger.error("Gemini call failed: %s", e)
         raise GeminiError(f"AI service error: {str(e)}")
 

@@ -17,6 +17,7 @@ import Coaching from './pages/Coaching';
 import CoachDashboard from './pages/CoachDashboard';
 import EducatorDashboard from './pages/EducatorDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminUsers from './pages/AdminUsers';
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -25,10 +26,24 @@ function Protected({ children }) {
   return children;
 }
 
+// RoleGate: only allow specific roles to see this route
 function RoleGate({ roles, children }) {
   const { user } = useAuth();
-  if (!user || !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!roles.includes(user.role)) {
+    // send them to their proper home
+    const home = { learner: '/dashboard', debate_coach: '/coach', educator: '/educator', admin: '/admin' }[user.role] || '/dashboard';
+    return <Navigate to={home} replace />;
+  }
   return children;
+}
+
+// HomeRedirect: root "/" sends each role to their own home
+function HomeRedirect() {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  const home = { learner: '/dashboard', debate_coach: '/coach', educator: '/educator', admin: '/admin' }[user.role] || '/dashboard';
+  return <Navigate to={home} replace />;
 }
 
 export default function App() {
@@ -39,22 +54,33 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route element={<Protected><AppLayout /></Protected>}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/debates/new" element={<CreateDebate />} />
-            <Route path="/debates/:id" element={<DebateSession />} />
-            <Route path="/debates" element={<DebateHistory />} />
-            <Route path="/analysis/argument" element={<ArgumentAnalysis />} />
-            <Route path="/analysis/fallacy" element={<FallacyDetection />} />
-            <Route path="/analysis/counterargument" element={<CounterArguments />} />
-            <Route path="/presentation" element={<PresentationAnalysis />} />
-            <Route path="/reports" element={<PerformanceReport />} />
-            <Route path="/coaching" element={<Coaching />} />
-            <Route path="/coach" element={<RoleGate roles={['debate_coach','admin']}><CoachDashboard /></RoleGate>} />
-            <Route path="/educator" element={<RoleGate roles={['educator','admin']}><EducatorDashboard /></RoleGate>} />
+            {/* Learner-only */}
+            <Route path="/dashboard" element={<RoleGate roles={['learner']}><Dashboard /></RoleGate>} />
+            <Route path="/debates" element={<RoleGate roles={['learner']}><DebateHistory /></RoleGate>} />
+            <Route path="/debates/new" element={<RoleGate roles={['learner']}><CreateDebate /></RoleGate>} />
+            <Route path="/debates/:id" element={<RoleGate roles={['learner']}><DebateSession /></RoleGate>} />
+            <Route path="/analysis/argument" element={<RoleGate roles={['learner']}><ArgumentAnalysis /></RoleGate>} />
+            <Route path="/analysis/fallacy" element={<RoleGate roles={['learner']}><FallacyDetection /></RoleGate>} />
+            <Route path="/analysis/counterargument" element={<RoleGate roles={['learner']}><CounterArguments /></RoleGate>} />
+            <Route path="/presentation" element={<RoleGate roles={['learner']}><PresentationAnalysis /></RoleGate>} />
+            <Route path="/reports" element={<RoleGate roles={['learner']}><PerformanceReport /></RoleGate>} />
+            <Route path="/coaching" element={<RoleGate roles={['learner']}><Coaching /></RoleGate>} />
+
+            {/* Coach-only */}
+            <Route path="/coach" element={<RoleGate roles={['debate_coach']}><CoachDashboard /></RoleGate>} />
+
+            {/* Educator-only */}
+            <Route path="/educator" element={<RoleGate roles={['educator']}><EducatorDashboard /></RoleGate>} />
+
+            {/* Admin-only */}
             <Route path="/admin" element={<RoleGate roles={['admin']}><AdminDashboard /></RoleGate>} />
+            <Route path="/admin/users" element={<RoleGate roles={['admin']}><AdminUsers /></RoleGate>} />
+
+            {/* Shared */}
+            <Route path="/profile" element={<Profile />} />
           </Route>
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<HomeRedirect />} />
+          <Route path="*" element={<HomeRedirect />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

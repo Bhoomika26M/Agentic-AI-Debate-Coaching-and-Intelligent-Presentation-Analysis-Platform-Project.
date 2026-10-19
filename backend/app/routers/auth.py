@@ -74,3 +74,28 @@ def get_profile(user: User = Depends(get_current_user), db: Session = Depends(ge
             "coaching_preferences": profile.coaching_preferences if profile else {},
         },
     }
+
+from app.schemas.auth import AdminCreateUser
+from app.core.deps import require_role
+
+@router.post("/admin/users", response_model=UserOut, status_code=201)
+def admin_create_user(
+    payload: AdminCreateUser,
+    admin: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Only admins can create coach/educator/admin accounts."""
+    if db.query(User).filter(User.email == payload.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user = User(
+        email=payload.email,
+        full_name=payload.full_name,
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+    )
+    db.add(user)
+    db.flush()
+    db.add(UserProfile(user_id=user.id))
+    db.commit()
+    db.refresh(user)
+    return UserOut.model_validate(user)

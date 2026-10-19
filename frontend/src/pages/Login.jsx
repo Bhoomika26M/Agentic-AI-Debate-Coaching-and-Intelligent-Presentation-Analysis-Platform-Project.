@@ -11,15 +11,16 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   const submit = async (e) => {
-    e.preventDefault();
-    setErr(''); setBusy(true);
-    try {
-      await login(email, password);
-      nav('/dashboard');
-    } catch (e) {
-      setErr(e.response?.data?.detail || 'Login failed');
-    } finally { setBusy(false); }
-  };
+  e.preventDefault();
+  setErr(''); setBusy(true);
+  try {
+    const u = await login(email, password);
+    const home = { learner: '/dashboard', debate_coach: '/coach', educator: '/educator', admin: '/admin' }[u.role] || '/dashboard';
+    nav(home);
+  } catch (e) {
+    setErr(e.response?.data?.detail || 'Login failed');
+  } finally { setBusy(false); }
+};
 
   return (
     <div className="auth-wrap">
