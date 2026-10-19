@@ -11,6 +11,7 @@ from app.schemas.debate_session import SessionCreate, SessionUpdate, SessionOut,
 router = APIRouter(prefix="/sessions", tags=["Debate Sessions"])
 
 
+@router.get("", response_model=list[SessionOut])
 @router.get("/", response_model=list[SessionOut])
 async def list_sessions(
     current_user: User = Depends(get_current_user),
@@ -30,6 +31,7 @@ async def list_sessions(
     return result.scalars().all()
 
 
+@router.post("", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
 @router.post("/", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
 async def create_session(
     payload: SessionCreate,

@@ -3,17 +3,18 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 const ROLES = [
-  { value: 'learner',  icon: '🎓', label: 'Learner',  desc: 'Improve debate skills' },
-  { value: 'coach',    icon: '🏆', label: 'Coach',    desc: 'Guide & evaluate students' },
+  { value: 'learner', icon: '🎓', label: 'Learner', desc: 'Improve debate skills' },
+  { value: 'coach', icon: '🏆', label: 'Coach', desc: 'Guide & evaluate students' },
   { value: 'educator', icon: '📚', label: 'Educator', desc: 'Manage classes & reports' },
+  { value: 'admin', icon: '⚙️', label: 'Admin', desc: 'Platform management' },
 ]
 
 export default function Signup() {
-  const { register, oauthLogin } = useAuth()
+  const { register } = useAuth()
   const navigate = useNavigate()
-  const [step, setStep]     = useState(1)
-  const [form, setForm]     = useState({ full_name: '', email: '', password: '', confirm: '', role: 'learner' })
-  const [error, setError]   = useState('')
+  const [step, setStep] = useState(1)
+  const [form, setForm] = useState({ full_name: '', email: '', password: '', confirm: '', role: 'learner' })
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const onChange = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }))
@@ -44,6 +45,7 @@ export default function Signup() {
   return (
     <div className="auth-page">
       <div className="auth-card" style={{ maxWidth: 500 }}>
+        {/* Logo + Step indicators */}
         <div className="auth-logo">
           <div className="auth-logo-icon">🧠</div>
           <span className="auth-logo-text">
@@ -87,15 +89,6 @@ export default function Signup() {
                       <div className="role-desc">{r.desc}</div>
                     </div>
                   ))}
-                  <div
-                    id="role-admin"
-                    className={`role-card ${form.role === 'admin' ? 'selected' : ''}`}
-                    onClick={() => setForm(f => ({ ...f, role: 'admin' }))}
-                  >
-                    <div className="role-icon">⚙️</div>
-                    <div className="role-label">Admin</div>
-                    <div className="role-desc">Platform management</div>
-                  </div>
                 </div>
               </div>
 
@@ -113,22 +106,6 @@ export default function Signup() {
 
               <button id="signup-next" className="btn btn-primary btn-full btn-lg" type="submit">
                 Continue →
-              </button>
-
-              <div className="divider" style={{ margin: '16px 0' }}>or sign up with OAuth2</div>
-              <button
-                type="button"
-                className="btn btn-secondary btn-full"
-                onClick={async () => {
-                  try {
-                    await oauthLogin('google', null, form.full_name || null)
-                    navigate('/dashboard')
-                  } catch (err) {
-                    setError('Google OAuth signup failed.')
-                  }
-                }}
-              >
-                🌐 Instant Sign up with Google (OAuth2 SSO)
               </button>
             </form>
           </>
@@ -155,17 +132,25 @@ export default function Signup() {
                   placeholder="Re-enter your password" required value={form.confirm} onChange={onChange} />
               </div>
 
-              {/* Password strength */}
+              {/* Password strength indicator */}
               {form.password && (
                 <div>
                   <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
-                    {[1,2,3,4].map(n => {
-                      const strength = [form.password.length >= 8, /[A-Z]/.test(form.password), /[0-9]/.test(form.password), /[^A-Za-z0-9]/.test(form.password)].filter(Boolean).length
+                    {[1, 2, 3, 4].map(n => {
+                      const strength = [
+                        form.password.length >= 8,
+                        /[A-Z]/.test(form.password),
+                        /[0-9]/.test(form.password),
+                        /[^A-Za-z0-9]/.test(form.password),
+                      ].filter(Boolean).length
                       return (
                         <div key={n} style={{
                           flex: 1, height: 4, borderRadius: 2,
                           background: strength >= n
-                            ? strength <= 1 ? '#EF4444' : strength <= 2 ? '#F59E0B' : strength <= 3 ? '#10B981' : '#6C63FF'
+                            ? strength <= 1 ? '#EF4444'
+                              : strength <= 2 ? '#F59E0B'
+                                : strength <= 3 ? '#10B981'
+                                  : 'var(--brand-primary)'
                             : 'var(--border-subtle)',
                           transition: 'background 0.2s',
                         }} />

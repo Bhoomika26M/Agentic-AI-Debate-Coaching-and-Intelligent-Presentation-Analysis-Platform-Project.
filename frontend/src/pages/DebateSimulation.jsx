@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../api/client'
-import Sidebar from '../components/Sidebar'
 
 const PERSONAS = [
   { key: 'balanced',       icon: '⚖️',  label: 'Balanced Moderator',    color: '#6366f1' },
@@ -150,9 +149,7 @@ export default function DebateSimulation() {
   const progressPct = Math.min(100, (currentTurn / totalTurns) * 100)
 
   return (
-    <div className="app-layout">
-      <Sidebar />
-      <main className="main-content">
+    <div style={{ animation: 'fadeIn 0.4s ease' }}>
         <div className="page-header">
           <div>
             <h1 className="page-title">🤖 AI Debate Simulation</h1>
@@ -360,7 +357,6 @@ export default function DebateSimulation() {
             </div>
           </div>
         )}
-      </main>
     </div>
   )
 }

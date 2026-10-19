@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import api from '../api/client'
-import Sidebar from '../components/Sidebar'
 
 export default function Reports() {
   const [performance, setPerformance]       = useState(null)
@@ -100,22 +99,14 @@ export default function Reports() {
 
   if (loading) {
     return (
-      <div className="app-layout">
-        <Sidebar />
-        <main className="main-content">
-          <div className="loading-state">
-            <div className="loading-spinner" />
-            <p>Loading your platform reports & analytics...</p>
-          </div>
-        </main>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}>
+        <div className="spinner" style={{ width: 36, height: 36, borderWidth: 3 }} />
       </div>
     )
   }
 
   return (
-    <div className="app-layout">
-      <Sidebar />
-      <main className="main-content">
+    <div style={{ animation: 'fadeIn 0.4s ease' }}>
         {/* Header with Export Action Toolbar */}
         <div className="page-header" style={{ flexWrap: 'wrap', gap: 16 }}>
           <div>
@@ -540,7 +531,6 @@ export default function Reports() {
             )}
           </div>
         )}
-      </main>
     </div>
   )
 }

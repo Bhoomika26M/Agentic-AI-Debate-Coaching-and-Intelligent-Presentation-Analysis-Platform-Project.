@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import api from '../api/client'
-import Sidebar from '../components/Sidebar'
 
 const SKILL_LABELS = {
   argument_quality:       { label: 'Argument Quality',       icon: '🎯', weight: '30%' },
@@ -89,9 +88,7 @@ export default function Coaching() {
   }
 
   return (
-    <div className="app-layout">
-      <Sidebar />
-      <main className="main-content">
+    <div style={{ animation: 'fadeIn 0.4s ease' }}>
         <div className="page-header">
           <div>
             <h1 className="page-title">🏆 Coaching & Learning</h1>
@@ -321,7 +318,6 @@ export default function Coaching() {
             </div>
           </div>
         )}
-      </main>
     </div>
   )
 }

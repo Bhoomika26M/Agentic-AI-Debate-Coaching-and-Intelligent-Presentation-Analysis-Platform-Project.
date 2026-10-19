@@ -3,28 +3,23 @@ import { useAuth } from '../context/AuthContext'
 
 const NAV_SECTIONS = [
   {
-    label: 'Main',
+    label: 'Workspace',
     items: [
       { to: '/dashboard',    icon: '🏠', label: 'Dashboard' },
       { to: '/sessions',     icon: '📋', label: 'Debate Sessions' },
-      { to: '/profile',      icon: '👤', label: 'Profile' },
+      { to: '/profile',      icon: '👤', label: 'Profile & Skills' },
     ],
   },
   {
-    label: 'Milestone 2 — Analysis',
+    label: 'AI Debate & Training',
     items: [
-      { to: '/analysis',     icon: '🔍', label: 'Argument Analysis' },
-    ],
-  },
-  {
-    label: 'Milestone 3 — AI Coaching',
-    items: [
+      { to: '/analysis',     icon: '⚡', label: 'Argument & Fallacy Lab' },
       { to: '/simulation',   icon: '🤖', label: 'AI Debate Simulation' },
       { to: '/coaching',     icon: '🏆', label: 'Coaching & Learning' },
     ],
   },
   {
-    label: 'Milestone 4 — Analytics',
+    label: 'Intelligence & Insights',
     items: [
       { to: '/presentation', icon: '🎤', label: 'Presentation Analysis' },
       { to: '/reports',      icon: '📊', label: 'Reports & Analytics' },
@@ -38,14 +33,16 @@ export default function Sidebar() {
 
   const handleLogout = () => {
     logout()
-    navigate('/')
+    navigate('/login')
   }
 
   const roleColors = {
-    admin: '#ef4444', coach: '#f59e0b', educator: '#a855f7',
-    debater: '#6366f1', student: '#0ea5e9', corporate: '#10b981',
+    learner: '#176b68',
+    coach: '#b36b32',
+    educator: '#7c3aed',
+    admin: '#b84c4c',
   }
-  const roleColor = roleColors[user?.role] || '#6366f1'
+  const roleColor = roleColors[user?.role] || '#176b68'
 
   return (
     <aside className="sidebar">
@@ -54,7 +51,7 @@ export default function Sidebar() {
         <div className="brand-icon">🧠</div>
         <div>
           <div className="brand-name">DebateCoach AI</div>
-          <div className="brand-tagline">Agentic Platform</div>
+          <div className="brand-tagline">Intelligent Platform</div>
         </div>
       </div>
 
@@ -66,7 +63,10 @@ export default function Sidebar() {
           </div>
           <div className="user-info">
             <div className="user-name">{user.full_name}</div>
-            <div className="user-role" style={{ color: roleColor }}>{user.role}</div>
+            <div className="user-role" style={{ color: roleColor }}>
+              <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: roleColor, marginRight: 4 }} />
+              {user.role}
+            </div>
           </div>
         </div>
       )}

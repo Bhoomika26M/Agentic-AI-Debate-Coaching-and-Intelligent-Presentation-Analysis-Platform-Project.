@@ -59,7 +59,7 @@ async def _seed_default_notifications_if_empty(db: AsyncSession, current_user: U
         defaults = [
             Notification(
                 user_id=current_user.id,
-                title="🏆 Skill Milestone Unlocked",
+                title="Skill Milestone Unlocked",
                 message="Congratulations! Your Argument Consistency metric has reached the top 15% tier among peer debaters.",
                 type=NotificationType.SKILL_MILESTONE,
                 link="/profile",
@@ -67,7 +67,7 @@ async def _seed_default_notifications_if_empty(db: AsyncSession, current_user: U
             ),
             Notification(
                 user_id=current_user.id,
-                title="🎤 Scheduled Debate Reminder",
+                title="Scheduled Debate Reminder",
                 message="Your Parliamentary debate session is coming up. Review key definitions and counterpoints before round 1.",
                 type=NotificationType.DEBATE_REMINDER,
                 link="/sessions",
@@ -75,7 +75,7 @@ async def _seed_default_notifications_if_empty(db: AsyncSession, current_user: U
             ),
             Notification(
                 user_id=current_user.id,
-                title="📝 AI Coaching Feedback Available",
+                title="AI Coaching Feedback Available",
                 message="Coach Williams completed evaluation on your recent speech transcript. 4 actionable rebuttals suggested.",
                 type=NotificationType.COACHING_FEEDBACK,
                 link="/coaching",
@@ -83,7 +83,7 @@ async def _seed_default_notifications_if_empty(db: AsyncSession, current_user: U
             ),
             Notification(
                 user_id=current_user.id,
-                title="⏱️ Daily Practice Session",
+                title="Daily Practice Session",
                 message="Spend 5 minutes today on the '2-Minute Drill' to trim filler words and refine speaking pace.",
                 type=NotificationType.PRACTICE_REMINDER,
                 link="/presentation",
@@ -95,6 +95,7 @@ async def _seed_default_notifications_if_empty(db: AsyncSession, current_user: U
         await db.flush()
 
 
+@router.get("", response_model=NotificationListResponse)
 @router.get("/", response_model=NotificationListResponse)
 async def list_notifications(
     current_user: User = Depends(get_current_user),

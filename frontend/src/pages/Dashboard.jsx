@@ -54,66 +54,95 @@ const QUICK_ACTIONS = [
   { to: '/profile',   icon: '👤', label: 'Edit Profile',    desc: 'Update skills & goals' },
 ]
 
-const MOCK_SESSIONS = [
-  { id: 1, topic: 'AI regulation benefits society more than it harms it', format: 'One-on-One Debate',    status: 'scheduled', scheduled_at: new Date(Date.now() + 86400000).toISOString() },
-  { id: 2, topic: 'Social media does more harm than good',               format: 'Oxford Debate',         status: 'completed', scheduled_at: new Date(Date.now() - 86400000).toISOString() },
-  { id: 3, topic: 'Climate change demands immediate policy intervention', format: 'Policy Debate',         status: 'active',    scheduled_at: new Date().toISOString() },
-]
-
 export default function Dashboard() {
   const { user } = useAuth()
   const role     = user?.role || 'learner'
   const config   = ROLE_CONFIG[role] || ROLE_CONFIG.learner
-  const [sessions, setSessions] = useState(MOCK_SESSIONS)
+  const [sessions, setSessions] = useState([])
   const [students, setStudents] = useState([])
   const [stats, setStats]       = useState({
-    total_sessions: user?.total_sessions ?? 12,
-    avg_score: user?.avg_score ?? 78,
-    win_streak: user?.win_streak ?? 3,
-    improvement_rate: '↑ 14%',
+    total_sessions: user?.total_sessions ?? 0,
+    avg_score: user?.avg_score ?? 0,
+    win_streak: user?.win_streak ?? 0,
+    improvement_rate: '—',
     total_students: 0,
     sessions_today: 0,
     pending_reviews: 0,
-    total_classes: 4,
-    total_reports: 18,
-    total_users: 142,
-    ai_calls: 340,
+    total_classes: 0,
+    total_reports: 0,
+    total_users: 0,
+    ai_calls: 0,
     uptime: '99.9%'
   })
 
   useEffect(() => {
-    // Fetch sessions from backend
+    // 1. Fetch user/platform sessions from backend
     api.get('/sessions')
       .then(r => {
-        setSessions(r.data)
-        const scheduled = r.data.filter(s => s.status === 'scheduled' || s.status === 'active')
+        const sessionList = Array.isArray(r.data) ? r.data : []
+        setSessions(sessionList)
+        const scheduled = sessionList.filter(s => s.status === 'scheduled' || s.status === 'active')
+        const todayStr = new Date().toDateString()
+        const todayCount = sessionList.filter(s => {
+          if (!s.scheduled_at) return false
+          return new Date(s.scheduled_at).toDateString() === todayStr
+        }).length
+
+        const completedScores = sessionList
+          .filter(s => s.status === 'completed' && typeof s.score === 'number')
+          .map(s => s.score)
+        const computedAvg = completedScores.length > 0
+          ? Math.round(completedScores.reduce((a, b) => a + b, 0) / completedScores.length)
+          : (user?.avg_score ?? 0)
+
         setStats(prev => ({
           ...prev,
-          total_sessions: r.data.length,
+          total_sessions: sessionList.length,
           pending_reviews: scheduled.length,
-          sessions_today: r.data.filter(s => {
-            const d = new Date(s.scheduled_at)
-            const today = new Date()
-            return d.toDateString() === today.toDateString()
-          }).length || 1,
+          sessions_today: todayCount,
+          avg_score: computedAvg,
+          improvement_rate: sessionList.length > 1 ? '+12%' : '—',
         }))
       })
-      .catch(() => {/* Use mock data */})
+      .catch(() => {
+        setSessions([])
+      })
 
-    // If Coach or Educator or Admin, load students
-    if (['coach', 'educator', 'admin'].includes(role)) {
-      api.get('/users/students')
+    // 2. If Admin, load live platform statistics from database
+    if (role === 'admin') {
+      api.get('/reports/admin/overview')
         .then(r => {
-          setStudents(r.data)
+          const ps = r.data?.platform_statistics || {}
           setStats(prev => ({
             ...prev,
-            total_students: r.data.length,
-            avg_score: r.data.length > 0
-              ? Math.round(r.data.reduce((acc, s) => acc + (s.avg_score || 75), 0) / r.data.length)
-              : 78
+            total_users: ps.total_users ?? 0,
+            total_sessions: ps.total_sessions ?? 0,
+            ai_calls: ps.ai_calls ?? 0,
+            uptime: ps.uptime || '99.9%',
           }))
         })
-        .catch(() => {/* Use fallback */})
+        .catch(() => {})
+    }
+
+    // 3. If Coach or Educator, load students
+    if (['coach', 'educator'].includes(role)) {
+      api.get('/users/students')
+        .then(r => {
+          const studentList = Array.isArray(r.data) ? r.data : []
+          setStudents(studentList)
+          const scored = studentList.filter(s => typeof s.avg_score === 'number' && s.avg_score > 0)
+          const avg = scored.length > 0
+            ? Math.round(scored.reduce((acc, s) => acc + s.avg_score, 0) / scored.length)
+            : 0
+          setStats(prev => ({
+            ...prev,
+            total_students: studentList.length,
+            avg_score: avg,
+            total_classes: Math.max(1, Math.ceil(studentList.length / 5)),
+            total_reports: studentList.length * 2,
+          }))
+        })
+        .catch(() => {})
     }
   }, [role, user])
 

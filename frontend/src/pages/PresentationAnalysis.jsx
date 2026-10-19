@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import api from '../api/client'
-import Sidebar from '../components/Sidebar'
 
 const SAMPLE_SPEECHES = [
   {
@@ -107,9 +106,7 @@ export default function PresentationAnalysis() {
   const wc = transcript.split(/\s+/).filter(Boolean).length
 
   return (
-    <div className="app-layout">
-      <Sidebar />
-      <main className="main-content">
+    <div style={{ animation: 'fadeIn 0.4s ease' }}>
         <div className="page-header">
           <div>
             <h1 className="page-title">🎤 Presentation & Speech Analytics</h1>
@@ -387,7 +384,6 @@ export default function PresentationAnalysis() {
             </div>
           </div>
         )}
-      </main>
     </div>
   )
 }
