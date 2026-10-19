@@ -85,7 +85,7 @@ export default function ArgumentAnalysis() {
             <h1 style={{ margin: 0 }}>Argument & Fallacy Lab</h1>
           </div>
           <p style={{ marginTop: 4, color: 'var(--text-secondary)' }}>
-            Milestone 2 AI Engine: 8-Fallacy Detection, Premise-Evidence Mining, and 5-Factor Weighted Scoring
+            Automated claim extraction, fallacy detection, and multi-factor argument scoring
           </p>
         </div>
         <button
@@ -104,9 +104,8 @@ export default function ArgumentAnalysis() {
           <button
             key={idx}
             type="button"
-            className="btn btn-secondary btn-sm"
+            className="chip"
             onClick={() => handleLoadSample(s)}
-            style={{ fontSize: '0.8rem', background: 'var(--bg-surface)' }}
           >
             {s.title}
           </button>
@@ -114,7 +113,7 @@ export default function ArgumentAnalysis() {
       </div>
 
       {/* Input Section */}
-      <div className="card" style={{ marginBottom: 28, border: '1px solid var(--border-medium)', background: 'var(--bg-surface)' }}>
+      <div className="card" style={{ marginBottom: 28, background: 'var(--bg-surface)' }}>
         <form onSubmit={handleAnalyzeClick} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="grid-2" style={{ gap: 16 }}>
             <div className="form-group">
@@ -187,15 +186,15 @@ export default function ArgumentAnalysis() {
           {/* Top Score Ribbon */}
           <div className="grid-3" style={{ gap: 16 }}>
             <div className="card" style={{
-              background: 'linear-gradient(135deg, rgba(108,99,255,0.15), rgba(79,70,229,0.08))',
-              border: '1px solid rgba(108,99,255,0.3)',
+              background: 'rgba(23,107,104,0.06)',
+              border: '1px solid rgba(23,107,104,0.2)',
               display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
               padding: '24px 16px', textAlign: 'center'
             }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.06em', color: 'var(--brand-secondary)' }}>
-                OVERALL DEBATE PERFORMANCE
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.06em', color: 'var(--brand-primary)' }}>
+                OVERALL PERFORMANCE
               </span>
-              <div style={{ fontSize: '3.2rem', fontWeight: 900, color: '#fff', lineHeight: 1.1, margin: '8px 0' }}>
+              <div style={{ fontSize: '3rem', fontWeight: 900, color: 'var(--text-primary)', lineHeight: 1.1, margin: '8px 0' }}>
                 {report.overall_score}
                 <span style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-muted)' }}>/100</span>
               </div>
@@ -205,25 +204,24 @@ export default function ArgumentAnalysis() {
             </div>
 
             <div className="card" style={{
-              background: report.fallacies.length > 0 ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
-              border: `1px solid ${report.fallacies.length > 0 ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)'}`,
+              background: report.fallacies.length > 0 ? 'rgba(184,76,76,0.06)' : 'rgba(47,125,91,0.06)',
+              border: `1px solid ${report.fallacies.length > 0 ? 'rgba(184,76,76,0.25)' : 'rgba(47,125,91,0.25)'}`,
               display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
               padding: '24px 16px', textAlign: 'center'
             }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.06em', color: report.fallacies.length > 0 ? '#EF4444' : '#10B981' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.06em', color: report.fallacies.length > 0 ? 'var(--brand-danger)' : 'var(--brand-success)' }}>
                 LOGICAL FALLACIES
               </span>
-              <div style={{ fontSize: '3.2rem', fontWeight: 900, color: report.fallacies.length > 0 ? '#EF4444' : '#10B981', lineHeight: 1.1, margin: '8px 0' }}>
+              <div style={{ fontSize: '3rem', fontWeight: 900, color: report.fallacies.length > 0 ? 'var(--brand-danger)' : 'var(--brand-success)', lineHeight: 1.1, margin: '8px 0' }}>
                 {report.fallacies.length}
               </div>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {report.fallacies.length === 0 ? 'Flawless reasoning integrity' : 'Violations detected requiring fix'}
+                {report.fallacies.length === 0 ? 'Clean deductive logic' : 'Flaws detected in argument'}
               </span>
             </div>
 
             <div className="card" style={{
               background: 'var(--bg-surface)',
-              border: '1px solid var(--border-medium)',
               display: 'flex', flexDirection: 'column', justifyContent: 'center',
               padding: '20px 24px'
             }}>
@@ -233,11 +231,11 @@ export default function ArgumentAnalysis() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.88rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Claim Orientation:</span>
-                  <strong style={{ color: 'var(--brand-secondary)', textTransform: 'capitalize' }}>{report.arguments.claim_type}</strong>
+                  <strong style={{ color: 'var(--brand-primary)', textTransform: 'capitalize' }}>{report.arguments.claim_type}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Evidence Strength:</span>
-                  <strong style={{ textTransform: 'capitalize', color: report.arguments.evidence_strength_rating === 'strong' ? 'var(--brand-success)' : '#F59E0B' }}>
+                  <strong style={{ textTransform: 'capitalize', color: report.arguments.evidence_strength_rating === 'strong' ? 'var(--brand-success)' : 'var(--brand-accent)' }}>
                     {report.arguments.evidence_strength_rating}
                   </strong>
                 </div>
@@ -249,26 +247,26 @@ export default function ArgumentAnalysis() {
             </div>
           </div>
 
-          {/* 5-Dimensional Weighted Scoring Breakdown Model */}
-          <div className="card" style={{ border: '1px solid var(--border-medium)' }}>
+          {/* 5-Dimensional Weighted Scoring Breakdown */}
+          <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
-                  📊 Weighted Performance Scoring Model (Page 6-7 Specification)
+                  📊 Weighted Scoring Breakdown
                 </h3>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Debate Performance Score = AQ(30%) + EU(20%) + LC(20%) + RE(15%) + CS(15%)
+                  AQ (30%) + EU (20%) + LC (20%) + RE (15%) + CS (15%)
                 </span>
               </div>
             </div>
 
             <div className="grid-5" style={{ gap: 12 }}>
               {[
-                { label: 'Argument Quality', weight: '30%', score: report.weighted_scores.argument_quality, color: '#6C63FF' },
-                { label: 'Evidence Usage', weight: '20%', score: report.weighted_scores.evidence_usage, color: '#10B981' },
-                { label: 'Logical Consistency', weight: '20%', score: report.weighted_scores.logical_consistency, color: '#06B6D4' },
-                { label: 'Rebuttal Effectiveness', weight: '15%', score: report.weighted_scores.rebuttal_effectiveness, color: '#F59E0B' },
-                { label: 'Communication Skills', weight: '15%', score: report.weighted_scores.communication_skills, color: '#EC4899' },
+                { label: 'Argument Quality', weight: '30%', score: report.weighted_scores.argument_quality, color: 'var(--brand-primary)' },
+                { label: 'Evidence Usage', weight: '20%', score: report.weighted_scores.evidence_usage, color: 'var(--brand-success)' },
+                { label: 'Logical Consistency', weight: '20%', score: report.weighted_scores.logical_consistency, color: '#0d9488' },
+                { label: 'Rebuttal Effectiveness', weight: '15%', score: report.weighted_scores.rebuttal_effectiveness, color: 'var(--brand-accent)' },
+                { label: 'Communication Skills', weight: '15%', score: report.weighted_scores.communication_skills, color: '#7c3aed' },
               ].map((item, idx) => (
                 <div key={idx} style={{
                   background: 'var(--bg-overlay)',
