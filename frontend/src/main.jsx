@@ -9,12 +9,32 @@ const api = async (path, options = {}) => {
   const headers = options.body instanceof FormData ? {} : { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
   try {
-    const response = await fetch(`/api${path}`, { ...options, headers: { ...headers, ...(options.headers || {}) } });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(Array.isArray(body.detail) ? body.detail.map((item) => item.msg).join(", ") : body.detail || "Request failed");
+    const request = { ...options, headers: { ...headers, ...(options.headers || {}) } };
+    const attempts = request.method && request.method !== "GET" ? 1 : 3;
+    let lastError;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const response = await fetch(`/api${path}`, request);
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          const message = Array.isArray(body.detail) ? body.detail.map((item) => item.msg).join(", ") : body.detail || "Request failed";
+          if (response.status >= 500 && attempt < attempts - 1) {
+            await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+            continue;
+          }
+          throw new Error(message);
+        }
+        return response.status === 204 ? null : response.json();
+      } catch (err) {
+        lastError = err;
+        if (attempt < attempts - 1 && (err.name === "TypeError" || /failed|network/i.test(err.message))) {
+          await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+          continue;
+        }
+        throw err;
+      }
     }
-    return response.json();
+    throw lastError || new Error("Request failed");
   } finally {
     if (tracked) window.dispatchEvent(new CustomEvent("app:loading", { detail: -1 }));
   }
@@ -138,7 +158,7 @@ function Reports({ sessions, setPage }) { return <><Header eyebrow="REPORT CENTE
 function Report({ id }) { const [data, setData] = useState(null); useEffect(() => { api(`/sessions/${id}`).then(setData); }, [id]); if (!data) return <div className="loading">Loading report...</div>; const a = data.analysis || {}; return <><Header eyebrow="SESSION REPORT" title={data.session.title} subtitle={data.session.topic} action={<div className="export-actions"><a className="button secondary" href={`/api/sessions/${id}/export?format=pdf`} target="_blank">PDF</a><a className="button secondary" href={`/api/sessions/${id}/export?format=xlsx`}>Excel</a></div>}/><div className="report-grid"><section className="panel"><p className="eyebrow">SCORECARD</p><div className="metrics-grid">{["clarity", "evidence", "persuasiveness", "delivery"].map((key) => <Metric key={key} label={key} value={a[key]} />)}</div></section><section className="panel"><p className="eyebrow">FALLACIES DETECTED</p>{(a.fallacies || []).length ? a.fallacies.map((f, i) => <div className="fallacy" key={i}><b>{f.type}</b><span>{f.explanation || f.excerpt}</span></div>) : <div className="success">No major fallacies detected.</div>}</section></div><section className="panel"><p className="eyebrow">COACHING RECOMMENDATIONS</p><ul className="recommendations">{(a.recommendations || []).map((x) => <li key={x}>{x}</li>)}</ul></section></>; }
 
 function RoleAnalytics({ user, data, setPage }) {
-  if (!data) return <div className="loading">Loading dashboard...</div>;
+  if (!data) return <section className="panel loading-state" role="status"><span className="spinner" /><div><h2>Loading your workspace</h2><p className="muted">Connecting to the latest dashboard data...</p></div></section>;
   if (user.role === "learner") { const scoreLabel = (value) => Number(value) > 0 ? `${value}/100` : "Pending"; const trends = data.improvement_trends || []; return <><Header eyebrow="LEARNER DASHBOARD" title="Your progress" subtitle="Review your debate history and next practice steps." action={<button className="button primary" onClick={() => setPage("debate")}>New debate</button>} /><section className="panel"><div className="panel-heading"><div><p className="eyebrow">PERFORMANCE</p><h2>Score snapshot</h2></div><span className="muted">{data.debate_history.length} recorded sessions</span></div><div className="metrics-grid"><Metric label="Average" value={data.performance_scores.average} /><Metric label="Best" value={data.performance_scores.best} />{Object.entries(data.performance_scores.skills || {}).map(([key, value]) => <Metric key={key} label={key} value={value} />)}</div></section><section className="panel"><div className="panel-heading"><div><p className="eyebrow">YOUR PRACTICE</p><h2>Debate history</h2></div><button className="text-button" onClick={() => setPage("reports")}>See all →</button></div>{data.debate_history.length ? data.debate_history.map((item) => <div className="session-row" key={item.id}><div className="session-icon">◈</div><div className="session-info"><b>{item.title}</b><span>{item.topic}</span></div><span className="score-pill">{scoreLabel(item.overall_score)}</span><button className="small-button" onClick={() => setPage(`report:${item.id}`)}>Open report</button></div>) : <div className="empty">No debate sessions yet. Start your first practice above.</div>}</section><div className="dashboard-grid"><section className="panel"><div className="panel-heading"><div><p className="eyebrow">SCORE HISTORY</p><h2>Improvement trends</h2></div></div>{trends.length ? <div className="trend-list">{trends.map((item) => <div className="trend-item" key={item.id || `${item.date}-${item.title}`}><div><b>{item.title || "Practice session"}</b><span>{item.date}</span></div><strong className={Number(item.score) > 0 ? "" : "pending-score"}>{scoreLabel(item.score)}</strong></div>)}</div> : <div className="empty">Complete a debate to start tracking improvement.</div>}</section><section className="panel"><p className="eyebrow">NEXT STEPS</p><h2>Recommended exercises</h2>{data.recommended_exercises.map((item) => <div className="exercise-item" key={item.week}><span>0{item.week}</span><p>{item.goal}</p></div>)}<div className="coaching-insight"><span>COACHING FOCUS</span><b>{data.coaching_insights.focus}</b></div></section></div></>; }
   if (user.role === "debate_coach") return <><Header eyebrow="DEBATE COACH DASHBOARD" title="Student coaching" subtitle="Monitor progress and target skill gaps." /><section className="panel"><h2>Student progress monitoring</h2>{data.student_progress.map((item) => <div className="session-row" key={item.student_id}><div className="session-info"><b>{item.student_name}</b><span>{item.sessions} sessions</span></div><span className="score-pill">{item.average_score}/100</span></div>)}</section><div className="dashboard-grid"><section className="panel"><h2>Debate evaluations</h2>{data.debate_evaluations.map((item) => <p key={item.student_id}>Student {item.student_id}: {item.average_score}/100 average</p>)}</section><section className="panel"><h2>Skill gap analysis</h2>{data.skill_gap_analysis.map((item) => <p key={item.student_id}>Student {item.student_id}: {item.gaps.join(", ") || "No current gaps"}</p>)}</section></div><section className="panel"><h2>Coaching recommendations</h2>{data.coaching_recommendations.map((item) => <p key={item.student_id}>Student {item.student_id}: {item.recommendation}</p>)}</section></>;
   if (user.role === "educator") return <><Header eyebrow="EDUCATOR DASHBOARD" title="Class analytics" subtitle="Compare learners and review assessment reports." /><section className="panel"><h2>Class analytics</h2><div className="result-list"><div><b>{data.class_analytics.learners}</b><span>Learners</span></div><div><b>{data.class_analytics.sessions}</b><span>Debate sessions</span></div></div></section><section className="panel"><h2>Student rankings</h2>{data.student_rankings.map((item, index) => <div className="session-row" key={item.student_id}><span>#{index + 1}</span><div className="session-info"><b>{item.student_name}</b><span>{item.sessions} sessions</span></div><span className="score-pill">{item.average_score}/100</span></div>)}</section><div className="dashboard-grid"><section className="panel"><h2>Debate performance reports</h2>{data.debate_performance_reports.map((item) => <p key={item.student_id}>Student {item.student_id}: {item.average_score}/100</p>)}</section><section className="panel"><h2>Presentation assessment reports</h2>{data.presentation_assessment_reports.map((item) => <p key={item.student_id}>Student {item.student_id}: {item.presentations} presentations</p>)}</section></div></>;
@@ -150,7 +170,7 @@ function App() {
   const setPage = (next) => { setPageState(next); if (user) window.history.pushState({}, "", pagePath(user, next)); };
   useEffect(() => { const onPopState = () => setPageState(pathPage()); window.addEventListener("popstate", onPopState); return () => window.removeEventListener("popstate", onPopState); }, []);
   useEffect(() => { if (!user || !localStorage.getItem("token")) return; api("/auth/me").then((fresh) => { localStorage.setItem("user", JSON.stringify(fresh)); setUser(fresh); const requestedRole = window.location.pathname.split("/").filter(Boolean)[0]; if (requestedRole && requestedRole !== roleBase[fresh.role]) window.history.replaceState({}, "", `/${roleBase[fresh.role]}`); }).catch(() => { localStorage.clear(); setUser(null); setData(null); }); }, []);
-  const refresh = () => { if (user) { const endpoint = { learner: "/dashboard/learner", debate_coach: "/dashboard/coach", educator: "/dashboard/educator", administrator: "/dashboard/admin" }[user.role]; Promise.all([api(endpoint), api("/coaching/plan"), api("/sessions")]).then(([role, plan, list]) => { setData({ ...role, plan }); setSessions(list); }).catch(() => {}); } };
+  const refresh = () => { if (user) { const endpoint = { learner: "/dashboard/learner", debate_coach: "/dashboard/coach", educator: "/dashboard/educator", administrator: "/dashboard/admin" }[user.role]; Promise.allSettled([api(endpoint), api("/coaching/plan"), api("/sessions")]).then(([roleResult, planResult, sessionsResult]) => { if (roleResult.status === "fulfilled") setData((current) => ({ ...(current || {}), ...roleResult.value, plan: planResult.status === "fulfilled" ? planResult.value : current?.plan })); if (sessionsResult.status === "fulfilled") setSessions(sessionsResult.value); }); } };
   useEffect(refresh, [user]);
   if (!user) return <Auth onLogin={(nextUser) => { setUser(nextUser); setPageState("dashboard"); window.history.pushState({}, "", `/${roleBase[nextUser.role]}`); }} />;
   const logout = () => { localStorage.clear(); setUser(null); };
@@ -179,4 +199,22 @@ function PracticePage() { const [findings, setFindings] = useState([]); const [c
 
 function SessionControls({ id }) { const [status, setStatus] = useState(""); const [busy, setBusy] = useState(false); useEffect(() => { api(`/sessions/${id}`).then((result) => setStatus(result.session.status)).catch(() => {}); }, [id]); const act = async (action) => { setBusy(true); try { const result = await api(`/sessions/${id}/lifecycle/${action}`, { method: "POST" }); setStatus(result.status); } finally { setBusy(false); } }; const actions = status === "scheduled" ? ["start", "cancel"] : status === "active" ? ["pause", "complete", "cancel"] : status === "paused" ? ["resume", "complete", "cancel"] : []; return <div className="panel session-controls"><b>Session status: {status || "loading"}</b>{actions.map((action) => <button key={action} className="small-button" disabled={busy} onClick={() => act(action)}>{action[0].toUpperCase() + action.slice(1)}</button>)}</div>; }
 
-createRoot(document.getElementById("root")).render(<App />);
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return <main className="app-error"><div className="panel"><p className="eyebrow">APPLICATION ERROR</p><h1>The workspace could not be displayed.</h1><p className="muted">{this.state.error.message || "Please reload the page."}</p><button className="button primary" onClick={() => window.location.reload()}>Reload workspace</button></div></main>;
+    }
+    return this.props.children;
+  }
+}
+
+createRoot(document.getElementById("root")).render(<AppErrorBoundary><App /></AppErrorBoundary>);
