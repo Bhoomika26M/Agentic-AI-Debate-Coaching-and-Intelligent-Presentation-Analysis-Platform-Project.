@@ -1,5 +1,5 @@
 import os
-import json
+import logging
 from typing import List, Dict, Any
 from google import genai
 from google.genai import types
@@ -12,6 +12,9 @@ from .schemas import (
     RebuttalEvaluationResult
 )
 from .mock_service import MockAIService
+from .argument_analysis import apply_overall_score
+
+logger = logging.getLogger(__name__)
 
 class GeminiAIService(BaseAIService):
     """
@@ -42,9 +45,10 @@ Deconstruct the user's argument using the rigorous 6-part Toulmin model:
 5. Qualifier: The scope or degree of certainty (e.g., 'under specific circumstances', 'in most instances', 'universally').
 6. Rebuttal (Reservation): Anticipated counter-conditions or edge cases where the claim does not hold.
 
-Detect any formal or informal logical fallacies (e.g. Slippery Slope, Straw Man, Ad Hominem, False Dilemma, Circular Reasoning, Begging the Question, Post Hoc, Red Herring, Equivocation, Hasty Generalization).
-Provide exact verbatim excerpts from the argument for each detected fallacy.
-Score each dimension from 0 to 100 according to collegiate debate rubrics and formulate targeted counter-arguments.
+Detect only well-supported instances of Ad Hominem, Straw Man, False Dilemma, Slippery Slope, Appeal to Authority, Circular Reasoning, Hasty Generalization, and Red Herring. If evidence is insufficient, return no fallacy. Provide exact excerpts and confidence from 0 to 100.
+Extract the main claim, supporting claims, explicit evidence, reasoning weaknesses, recommendations, and an improved argument without introducing facts.
+Do not invent citations, facts, or examples. Score clarity, relevance, evidence strength, logical consistency, and persuasiveness from 0 to 100. The application calculates the weighted overall score.
+Set analysis_method to "gemini".
 
 Argument to analyze:
 "{argument_text}"
@@ -62,9 +66,10 @@ Context/Topic:
                     temperature=0.2,
                 ),
             )
-            return ArgumentAnalysisResult.model_validate_json(response.text)
-        except Exception as e:
-            print(f"[GeminiAIService.analyze_argument] Error: {e}, falling back to mock.")
+            result = ArgumentAnalysisResult.model_validate_json(response.text)
+            return apply_overall_score(result, "gemini")
+        except Exception:
+            logger.exception('Gemini argument analysis failed; using the disclosed rule-based baseline.')
             return self.mock_fallback.analyze_argument(argument_text, context)
 
     def generate_debate_turn(
@@ -183,4 +188,3 @@ Instructions:
         except Exception as e:
             print(f"[GeminiAIService.evaluate_rebuttal] Error: {e}, falling back to mock.")
             return self.mock_fallback.evaluate_rebuttal(target_claim, fallacy_type, user_rebuttal, context)
-

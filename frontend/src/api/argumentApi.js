@@ -8,6 +8,13 @@ export const argumentApi = {
     });
     return response.data;
   },
+  detectFallacies: async (argumentText, context = '') => {
+    const response = await axiosClient.post('/arguments/fallacies/', {
+      argument_text: argumentText,
+      context,
+    });
+    return response.data;
+  },
   getHistory: async () => {
     const response = await axiosClient.get('/arguments/history/');
     return response.data;

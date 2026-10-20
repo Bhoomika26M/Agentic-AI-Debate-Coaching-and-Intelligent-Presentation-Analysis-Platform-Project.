@@ -8,7 +8,7 @@ An enterprise-grade, college-level full-stack AI platform built to train users i
 
 1. **Pluggable AI Service Layer**: Abstract provider design (`BaseAIService`) supporting **Gemini API** with rigid Pydantic structured output validation, alongside deterministic **MockAIService** for offline testing.
 2. **Toulmin Argument Decomposition**: Dissects arguments into Claim, Grounds, Warrant, and Qualifiers with formal rubric scoring (Logic, Evidence, Persuasiveness, Clarity).
-3. **20+ Logical Fallacy Detector**: Automatically spots informal and formal fallacies (Slippery Slope, False Dilemma, Straw Man, Ad Hominem, Circular Reasoning) with excerpt pinpointing and fix suggestions.
+3. **Argument Analysis & Fallacy Review**: Evaluates claim structure, evidence, clarity, relevance, logical consistency, and persuasiveness. Checks for eight specified fallacy types and provides excerpts and suggested corrections. Uses Gemini when configured, otherwise a transparent rule-based baseline.
 4. **Interactive AI Debate Opponent Arena**: Real-time multi-turn debate simulation with adjustable styles (Oxford Parliamentary, Lincoln-Douglas) and Socratic opponent personas. Supports Web Speech API for voice input.
 5. **Speech & Verbal Cadence Studio**: Analyzes speaking pace (Words Per Minute), detects filler words ("um", "like", "basically"), and critiques verbal articulation.
 6. **Presentation Slide Deck Analyzer**: Upload PDF slide decks to evaluate text density, visual hierarchy, bullet-point overload, and clarity.
@@ -59,6 +59,25 @@ npm run dev
 ```
 
 The frontend will run at `http://localhost:5173` and communicate with `http://localhost:8000/api/v1`.
+
+### Argument analysis configuration
+
+Argument analysis uses the Gemini provider when `AI_PROVIDER=gemini` and a valid `GEMINI_API_KEY` is configured. Otherwise, `AI_PROVIDER=mock` uses deterministic text heuristics. The baseline does not verify facts and may miss context or fallacy patterns; its scores are coaching estimates, not objective measurements.
+
+`ARGUMENT_SCORE_WEIGHTS` optionally sets the normalized overall score weights as a JSON object. The dimensions must be `clarity`, `relevance`, `evidence`, `logic`, and `persuasiveness`; values must be non-negative and at least one must be positive. The default is 15%, 15%, 25%, 30%, and 15%, respectively.
+
+Authenticated argument analyses are saved to the existing SQLite database and can be listed or retrieved by their owner. Run `python manage.py migrate` from `backend` to apply the additive argument-report migration; it preserves existing records.
+
+The argument API endpoints are:
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/arguments/analyze/` | Analyze an argument; saves a report for authenticated users |
+| `POST` | `/api/v1/arguments/fallacies/` | Return possible supported fallacies and an uncertain/no-match status |
+| `GET` | `/api/v1/arguments/history/` | List the authenticated user's saved reports |
+| `GET` | `/api/v1/arguments/<uuid>/` | Retrieve one of the authenticated user's reports |
+
+Analysis requests accept `argument_text` (required, up to 10,000 characters), optional `context` (up to 2,000 characters), and an optional `debate_session_id` belonging to the authenticated user.
 
 ---
 

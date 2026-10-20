@@ -160,5 +160,6 @@ CORS_ALLOW_CREDENTIALS = True
 
 # AI Engine Configuration
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
 AI_PROVIDER = os.getenv('AI_PROVIDER', 'gemini') # 'gemini' or 'mock'
-
+ARGUMENT_SCORE_WEIGHTS = os.getenv('ARGUMENT_SCORE_WEIGHTS', '')

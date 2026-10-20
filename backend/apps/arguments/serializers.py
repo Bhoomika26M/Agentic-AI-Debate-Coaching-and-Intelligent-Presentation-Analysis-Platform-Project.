@@ -7,7 +7,7 @@ class LogicalFallacySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = LogicalFallacyInstance
-        fields = ['type', 'excerpt', 'explanation', 'correction']
+        fields = ['type', 'excerpt', 'explanation', 'correction', 'confidence']
 
 class CounterArgumentSerializer(serializers.ModelSerializer):
     claim = serializers.CharField(source='counter_claim')
@@ -26,8 +26,10 @@ class ArgumentAnalysisSerializer(serializers.ModelSerializer):
     class Meta:
         model = ArgumentAnalysis
         fields = [
-            'id', 'raw_text', 'context', 'toulmin', 'scores',
-            'fallacies', 'counterarguments', 'feedback', 'created_at'
+            'id', 'raw_text', 'context', 'debate_session', 'analysis_method',
+            'toulmin', 'supporting_claims', 'evidence', 'scores', 'fallacies',
+            'reasoning_weaknesses', 'recommendations', 'improved_argument',
+            'counterarguments', 'feedback', 'created_at'
         ]
 
     def get_toulmin(self, obj):
@@ -44,6 +46,7 @@ class ArgumentAnalysisSerializer(serializers.ModelSerializer):
         return {
             'logic': obj.logic_score,
             'evidence': obj.evidence_score,
+            'relevance': obj.relevance_score,
             'persuasiveness': obj.persuasiveness_score,
             'clarity': obj.clarity_score,
             'overall': obj.overall_score,

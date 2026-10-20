@@ -12,6 +12,7 @@ from .schemas import (
     SlideCritiqueItem,
     RebuttalEvaluationResult
 )
+from .argument_analysis import analyze_argument_rule_based
 
 class MockAIService(BaseAIService):
     """
@@ -20,48 +21,7 @@ class MockAIService(BaseAIService):
     """
 
     def analyze_argument(self, argument_text: str, context: str = "") -> ArgumentAnalysisResult:
-        has_slope = "will" in argument_text.lower() or "inevitably" in argument_text.lower() or "replace" in argument_text.lower()
-        
-        fallacies = []
-        if has_slope:
-            fallacies.append(
-                FallacyItem(
-                    type="Slippery Slope / Overreach",
-                    excerpt=argument_text[:80] + "...",
-                    explanation="Causal link assumes an inevitable sequence of extreme outcomes without substantiating intermediate dependencies.",
-                    correction="Qualify the proposition and support each causal mechanism with independent empirical citations."
-                )
-            )
-
-        return ArgumentAnalysisResult(
-            toulmin=ToulminModel(
-                claim="The asserted proposition posits fundamental systemic change.",
-                grounds="Empirical observation of recent technological and societal trends.",
-                warrant="Societal institutions must adapt proactively when technical efficiency shifts.",
-                backing="Sociotechnical transition theory establishes that technological shocks require institutional re-evaluations.",
-                qualifier="Conditionally asserted subject to institutional oversight.",
-                rebuttal="Unless countervailing human discretionary rights are statutorily codified as inalienable."
-            ),
-            scores=ArgumentScoreRubric(
-                logic=78 if not fallacies else 65,
-                evidence=72,
-                persuasiveness=80,
-                clarity=85,
-                overall=78 if not fallacies else 71
-            ),
-            fallacies=fallacies,
-            counterarguments=[
-                CounterArgumentItem(
-                    perspective="Empirical Counterpoint",
-                    claim="Historical evidence suggests institutional lag creates unmanageable transitional costs."
-                ),
-                CounterArgumentItem(
-                    perspective="Ethical Considerations",
-                    claim="Deontological principles prioritize human agency over raw computational efficiency."
-                )
-            ],
-            feedback="Your argument presents a clear thesis and articulate syntax. Ensure all causal predictions have direct supporting premises."
-        )
+        return analyze_argument_rule_based(argument_text, context)
 
     def generate_debate_turn(
         self,
@@ -195,4 +155,3 @@ class MockAIService(BaseAIService):
             improved_version=improved,
             coach_tip=f"When refuting {fallacy_type or 'flawed reasoning'}, isolate the unstated warrant and demonstrate an exception where the premise fails."
         )
-

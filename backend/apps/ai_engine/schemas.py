@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Literal
 from pydantic import BaseModel, Field
 
 class ToulminModel(BaseModel):
@@ -9,11 +9,24 @@ class ToulminModel(BaseModel):
     qualifier: str = Field(default="Universal", description="Scope or degree of certainty (e.g. definitely, in most cases, conditionally)")
     rebuttal: str = Field(default="", description="Anticipated counter-conditions, edge cases, or reservations where the claim would not hold")
 
+FallacyType = Literal[
+    "Ad Hominem",
+    "Straw Man",
+    "False Dilemma",
+    "Slippery Slope",
+    "Appeal to Authority",
+    "Circular Reasoning",
+    "Hasty Generalization",
+    "Red Herring",
+]
+
+
 class FallacyItem(BaseModel):
-    type: str = Field(description="Formal or informal fallacy name (e.g., Slippery Slope, Straw Man, Ad Hominem, False Dilemma)")
+    type: FallacyType = Field(description="One of the supported logical fallacy categories")
     excerpt: str = Field(description="Direct snippet from user text containing the fallacy")
     explanation: str = Field(description="Detailed explanation of why this reasoning is logically invalid")
     correction: str = Field(description="How to rephrase or substantiate the argument without the fallacy")
+    confidence: int = Field(default=75, ge=0, le=100)
 
 class CounterArgumentItem(BaseModel):
     perspective: str = Field(description="Category or philosophical framework of the rebuttal (e.g., Empirical, Ethical, Deontological)")
@@ -26,6 +39,7 @@ class ArgumentScoreRubric(BaseModel):
     persuasiveness: int = Field(ge=0, le=100, description="Rhetorical and persuasive efficacy")
     clarity: int = Field(ge=0, le=100, description="Structural and linguistic clarity score")
     overall: int = Field(ge=0, le=100, description="Composite normalized score")
+    relevance: int = Field(default=70, ge=0, le=100)
 
 class ArgumentAnalysisResult(BaseModel):
     toulmin: ToulminModel
@@ -33,6 +47,12 @@ class ArgumentAnalysisResult(BaseModel):
     fallacies: List[FallacyItem] = Field(default_factory=list)
     counterarguments: List[CounterArgumentItem] = Field(default_factory=list)
     feedback: str = Field(description="Actionable qualitative coach guidance")
+    analysis_method: Literal["gemini", "rule_based"] = "rule_based"
+    supporting_claims: List[str] = Field(default_factory=list)
+    evidence: List[str] = Field(default_factory=list)
+    reasoning_weaknesses: List[str] = Field(default_factory=list)
+    recommendations: List[str] = Field(default_factory=list)
+    improved_argument: str = ""
 
 class DebateTurnResponse(BaseModel):
     analysis: ArgumentAnalysisResult
