@@ -35,6 +35,9 @@ def current_user(token: str = Depends(oauth2), db: Session = Depends(get_db)) ->
     user = db.get(User, user_id)
     if not user:
         raise error
+    if user.approval_status != "approved":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Your account is not approved")
     return user
 
 

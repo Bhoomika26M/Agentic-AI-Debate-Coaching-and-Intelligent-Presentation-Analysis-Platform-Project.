@@ -56,8 +56,10 @@ class GroqProvider:
         """Backward-compatible debate turn method."""
         prompt = (
             "Act as a rigorous, constructive debate coach. Generate one specific response "
-            "to move this debate forward. Challenge the user's reasoning without inventing "
-            "facts. Return only the response, no labels or markdown. "
+            "to the learner's latest argument. Explicitly address its claim, evidence, "
+            "assumptions, or trade-offs before asking a focused follow-up question. "
+            "Challenge the user's reasoning without inventing facts. Return only the "
+            "response, no labels or markdown. "
             f"Topic: {topic}\nPosition: {position}\nTurn type: {turn_type}\n"
             f"Prior turns: {transcript or '(none)'}"
         )
@@ -89,7 +91,9 @@ class AnalysisProvider:
     """Route work to specialist agents, retaining explainable local fallbacks."""
 
     def __init__(self, ai: GroqProvider | None = None):
-        self.ai = ai or (OpenRouterProvider() if settings.openrouter_enabled else GroqProvider())
+        # OpenRouter is the single hosted provider for every AI workflow.
+        # Tests may still inject a provider to exercise fallback behavior.
+        self.ai = ai or OpenRouterProvider()
 
     @property
     def agent_registry(self) -> list[dict[str, str]]:

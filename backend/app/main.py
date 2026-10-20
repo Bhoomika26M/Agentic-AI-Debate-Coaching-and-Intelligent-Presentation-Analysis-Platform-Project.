@@ -28,6 +28,7 @@ Base.metadata.create_all(bind=engine)
 with engine.begin() as connection:
     user_columns = {c["name"] for c in inspect(engine).get_columns("users")}
     user_additions = {
+        "approval_status": "VARCHAR(20) DEFAULT 'approved'",
         "experience_level": "VARCHAR(30) DEFAULT 'beginner'",
         "preferred_debate_topics": "TEXT DEFAULT '[]'",
         "presentation_domains": "TEXT DEFAULT '[]'",
@@ -43,6 +44,9 @@ with engine.begin() as connection:
     for name, definition in session_additions.items():
         if name not in session_columns:
             connection.execute(text(f"ALTER TABLE debate_sessions ADD COLUMN {name} {definition}"))
+    assignment_columns = {c["name"] for c in inspect(engine).get_columns("learning_assignments")}
+    if "curriculum_id" not in assignment_columns:
+        connection.execute(text("ALTER TABLE learning_assignments ADD COLUMN curriculum_id INTEGER"))
 app = FastAPI(title="Debate Coach API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -153,16 +157,20 @@ def analytics_metrics(user: User = Depends(current_user), db: Session = Depends(
 @app.post("/api/auth/register", response_model=Token, status_code=201)
 def register(payload: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter_by(email=payload.email.lower()).first(): raise HTTPException(409, "Email already registered")
+    approval_status = "pending" if payload.role in ("educator", "debate_coach") else "approved"
     user = User(email=payload.email.lower(), name=payload.name, role=payload.role,
-                password_hash=hash_password(payload.password))
+                approval_status=approval_status, password_hash=hash_password(payload.password))
     db.add(user); db.commit(); db.refresh(user)
-    return {"access_token": make_token(user.id), "user": user}
+    return {"access_token": make_token(user.id) if approval_status == "approved" else "",
+            "user": user}
 
 
 @app.post("/api/auth/login", response_model=Token)
 def login(payload: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter_by(email=payload.email.lower()).first()
     if not user or not verify_password(payload.password, user.password_hash): raise HTTPException(401, "Incorrect email or password")
+    if user.approval_status != "approved":
+        raise HTTPException(403, "Your account is awaiting administrator approval")
     return {"access_token": make_token(user.id), "user": user}
 
 
@@ -171,6 +179,8 @@ def oauth2_login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depe
     user = db.query(User).filter_by(email=form.username.lower()).first()
     if not user or not verify_password(form.password, user.password_hash):
         raise HTTPException(401, "Incorrect email or password", headers={"WWW-Authenticate": "Bearer"})
+    if user.approval_status != "approved":
+        raise HTTPException(403, "Your account is awaiting administrator approval", headers={"WWW-Authenticate": "Bearer"})
     return {"access_token": make_token(user.id), "token_type": "bearer"}
 
 
@@ -206,9 +216,31 @@ def update_role(user_id: int, payload: RoleUpdate, admin: User = Depends(require
     return target
 
 
+@app.get("/api/admin/approval-requests")
+def approval_requests(admin: User = Depends(require_roles("administrator")), db: Session = Depends(get_db)):
+    return [{"id": item.id, "name": item.name, "email": item.email, "role": item.role,
+             "approval_status": item.approval_status, "created_at": item.created_at}
+            for item in db.query(User).filter(User.approval_status == "pending")
+            .order_by(User.created_at).all()]
+
+
+@app.patch("/api/admin/users/{user_id}/approval")
+def update_approval(user_id: int, approved: bool,
+                    admin: User = Depends(require_roles("administrator")),
+                    db: Session = Depends(get_db)):
+    target = db.get(User, user_id)
+    if not target or target.role not in ("educator", "debate_coach"):
+        raise HTTPException(404, "Approval request not found")
+    target.approval_status = "approved" if approved else "rejected"
+    db.add(AuditLog(actor_id=admin.id, action="account_approved" if approved else "account_rejected",
+                    target=f"user:{target.id}:{target.role}"))
+    db.commit(); db.refresh(target)
+    return {"id": target.id, "approval_status": target.approval_status}
+
+
 def assignment_view(item: LearningAssignment):
     return {"id": item.id, "creator_id": item.creator_id, "learner_id": item.learner_id,
-            "class_id": item.class_id, "title": item.title, "assignment_type": item.assignment_type,
+            "class_id": item.class_id, "curriculum_id": item.curriculum_id, "title": item.title, "assignment_type": item.assignment_type,
             "instructions": item.instructions, "due_at": item.due_at, "status": item.status,
             "submission": item.submission, "evaluation": json.loads(item.evaluation), "created_at": item.created_at}
 
@@ -216,16 +248,63 @@ def assignment_view(item: LearningAssignment):
 @app.get("/api/coach/learners")
 def coach_learners(coach: User = Depends(require_roles("debate_coach")), db: Session = Depends(get_db)):
     learners = db.query(User).filter_by(role="learner").order_by(User.name).all()
-    return [{"id": learner.id, "name": learner.name, "email": learner.email} for learner in learners]
+    result = []
+    for learner in learners:
+        sessions = db.query(DebateSession).filter_by(user_id=learner.id).all()
+        scores = [item.overall_score for item in sessions]
+        result.append({
+            "id": learner.id,
+            "name": learner.name,
+            "email": learner.email,
+            "bio": learner.bio,
+            "experience_level": learner.experience_level,
+            "preferred_debate_topics": json.loads(learner.preferred_debate_topics),
+            "presentation_domains": json.loads(learner.presentation_domains),
+            "learning_goals": json.loads(learner.learning_goals),
+            "tracked_skills": json.loads(learner.tracked_skills),
+            "sessions_count": len(sessions),
+            "average_score": round(sum(scores) / len(scores), 1) if scores else 0,
+            "latest_score": scores[-1] if scores else 0,
+        })
+    return result
+
+
+@app.get("/api/coach/learners/{learner_id}")
+def coach_learner_detail(learner_id: int, coach: User = Depends(require_roles("debate_coach")),
+                         db: Session = Depends(get_db)):
+    learner = db.query(User).filter_by(id=learner_id, role="learner").first()
+    if not learner:
+        raise HTTPException(404, "Learner not found")
+    sessions = db.query(DebateSession).filter_by(user_id=learner.id).order_by(desc(DebateSession.created_at)).limit(10).all()
+    return {
+        "id": learner.id,
+        "name": learner.name,
+        "email": learner.email,
+        "bio": learner.bio,
+        "experience_level": learner.experience_level,
+        "preferred_debate_topics": json.loads(learner.preferred_debate_topics),
+        "presentation_domains": json.loads(learner.presentation_domains),
+        "learning_goals": json.loads(learner.learning_goals),
+        "coaching_preferences": json.loads(learner.coaching_preferences),
+        "tracked_skills": json.loads(learner.tracked_skills),
+        "recent_sessions": [SessionOut.model_validate(item) for item in sessions],
+        "assignments": [
+            assignment_view(item) for item in db.query(LearningAssignment)
+            .filter_by(learner_id=learner.id, creator_id=coach.id)
+            .order_by(desc(LearningAssignment.created_at)).limit(10).all()
+        ],
+    }
 
 
 @app.post("/api/coach/learners/{learner_id}/assign", status_code=201)
 def coach_assign(learner_id: int, payload: AssignmentCreate, coach: User = Depends(require_roles("debate_coach")), db: Session = Depends(get_db)):
     learner = db.query(User).filter_by(id=learner_id, role="learner").first()
     if not learner: raise HTTPException(404, "Learner not found")
+    if payload.learner_id != learner_id:
+        raise HTTPException(400, "Learner selection does not match the assignment URL")
     item = LearningAssignment(creator_id=coach.id, learner_id=learner_id, title=payload.title,
                               assignment_type=payload.assignment_type, instructions=payload.instructions,
-                              due_at=payload.due_at, class_id=payload.class_id)
+                              due_at=payload.due_at, class_id=payload.class_id, curriculum_id=payload.curriculum_id)
     db.add(item); db.commit(); db.refresh(item)
     add_notification(db, learner_id, "feedback", "New coaching assignment",
                      f"{payload.title} has been assigned to you.", f"/assignments/{item.id}")
@@ -261,7 +340,16 @@ def create_class(payload: ClassCreate, educator: User = Depends(require_roles("e
 def educator_classes(educator: User = Depends(require_roles("educator")), db: Session = Depends(get_db)):
     groups = db.query(ClassGroup).filter_by(educator_id=educator.id).all()
     return [{"id": item.id, "name": item.name, "description": item.description,
-             "learners": db.query(ClassMember).filter_by(class_id=item.id).count()} for item in groups]
+             "learners": [{"id": learner.id, "name": learner.name, "email": learner.email}
+                          for learner in db.query(User).join(ClassMember, ClassMember.learner_id == User.id)
+                          .filter(ClassMember.class_id == item.id).order_by(User.name).all()]} for item in groups]
+
+
+@app.get("/api/educator/learners")
+def educator_learners(educator: User = Depends(require_roles("educator")), db: Session = Depends(get_db)):
+    learners = db.query(User).filter_by(role="learner").order_by(User.name).all()
+    return [{"id": learner.id, "name": learner.name, "email": learner.email}
+            for learner in learners]
 
 
 @app.post("/api/educator/curriculum", status_code=201)
@@ -305,15 +393,48 @@ def educator_assignment(payload: AssignmentCreate, educator: User = Depends(requ
         for member in members:
             item = LearningAssignment(creator_id=educator.id, learner_id=member.learner_id, class_id=payload.class_id,
                                       title=payload.title, assignment_type=payload.assignment_type,
-                                      instructions=payload.instructions, due_at=payload.due_at)
+                                      instructions=payload.instructions, due_at=payload.due_at,
+                                      curriculum_id=payload.curriculum_id)
             db.add(item); created.append(item)
+            add_notification(db, member.learner_id, "feedback", "New class assignment",
+                             f"{payload.title} has been assigned to your class.", f"/assignments/{item.id}")
         db.commit()
         return [assignment_view(item) for item in created]
+    if payload.learner_id is None:
+        raise HTTPException(400, "Choose a class or learner")
     learner = db.query(User).filter_by(id=payload.learner_id, role="learner").first()
     if not learner: raise HTTPException(404, "Learner not found")
     item = LearningAssignment(creator_id=educator.id, learner_id=learner.id, title=payload.title,
-                              assignment_type=payload.assignment_type, instructions=payload.instructions, due_at=payload.due_at)
+                              assignment_type=payload.assignment_type, instructions=payload.instructions,
+                              due_at=payload.due_at, curriculum_id=payload.curriculum_id)
     db.add(item); db.commit(); db.refresh(item)
+    add_notification(db, learner.id, "feedback", "New educator assignment",
+                     f"{payload.title} has been assigned to you.", f"/assignments/{item.id}")
+    db.commit()
+    return assignment_view(item)
+
+
+@app.get("/api/educator/assignments")
+def educator_assignments(educator: User = Depends(require_roles("educator")), db: Session = Depends(get_db)):
+    return [assignment_view(item) for item in db.query(LearningAssignment)
+            .filter_by(creator_id=educator.id).order_by(desc(LearningAssignment.created_at)).all()]
+
+
+@app.post("/api/educator/assignments/{assignment_id}/evaluate")
+def evaluate_educator_assignment(assignment_id: int, payload: EvaluationCreate,
+                                 educator: User = Depends(require_roles("educator")),
+                                 db: Session = Depends(get_db)):
+    item = db.query(LearningAssignment).filter_by(id=assignment_id, creator_id=educator.id).first()
+    if not item:
+        raise HTTPException(404, "Assignment not found")
+    if not item.submission:
+        raise HTTPException(400, "This assignment has not been submitted yet")
+    item.evaluation = json.dumps({"score": payload.score, "feedback": payload.feedback,
+                                  "evaluated_by": educator.id})
+    item.status = "evaluated"
+    add_notification(db, item.learner_id, "feedback", "Class assignment feedback is ready",
+                     f"Your educator evaluated '{item.title}'.", f"/assignments/{item.id}")
+    db.commit(); db.refresh(item)
     return assignment_view(item)
 
 
@@ -322,11 +443,24 @@ def learner_assignments(learner: User = Depends(require_roles("learner")), db: S
     return [assignment_view(item) for item in db.query(LearningAssignment).filter_by(learner_id=learner.id).order_by(desc(LearningAssignment.created_at)).all()]
 
 
+@app.get("/api/learner/classes")
+def learner_classes(learner: User = Depends(require_roles("learner")), db: Session = Depends(get_db)):
+    memberships = db.query(ClassMember).filter_by(learner_id=learner.id).all()
+    return [{"id": group.id, "name": group.name, "description": group.description,
+             "educator_id": group.educator_id}
+            for membership in memberships
+            if (group := db.get(ClassGroup, membership.class_id))]
+
+
 @app.post("/api/learner/assignments/{assignment_id}/submit")
 def submit_assignment(assignment_id: int, payload: SubmissionCreate, learner: User = Depends(require_roles("learner")), db: Session = Depends(get_db)):
     item = db.query(LearningAssignment).filter_by(id=assignment_id, learner_id=learner.id).first()
     if not item: raise HTTPException(404, "Assignment not found")
     item.submission = payload.submission; item.status = "submitted"
+    creator = db.get(User, item.creator_id)
+    if creator:
+        add_notification(db, creator.id, "feedback", "Assignment submission received",
+                         f"{learner.name} submitted '{item.title}' for review.", f"/assignments/{item.id}")
     db.commit(); db.refresh(item)
     return assignment_view(item)
 
@@ -465,16 +599,26 @@ def dashboard(user: User = Depends(current_user), db: Session = Depends(get_db))
     skills = {key: round(sum(values) / len(values), 1) if values else 0 for key, values in skill_totals.items()}
     return {"sessions_count": len(rows), "average_score": round(sum(scores) / len(scores), 1) if scores else 0,
             "best_score": max(scores) if scores else 0, "skills": skills,
-            "trend": [{"date": s.created_at.date().isoformat(), "score": s.overall_score} for s in ordered[-10:]],
+            "trend": [{"id": s.id, "date": s.created_at.date().isoformat(), "title": s.title, "score": s.overall_score} for s in ordered[-10:]],
             "recent_sessions": [SessionOut.model_validate(s) for s in ordered[-5:][::-1]]}
 
 
 @app.get("/api/dashboard/learner")
 def learner_dashboard(user: User = Depends(require_roles("learner")), db: Session = Depends(get_db)):
     base = dashboard(user, db)
+    memberships = db.query(ClassMember).filter_by(learner_id=user.id).all()
+    classes = []
+    for membership in memberships:
+        group = db.get(ClassGroup, membership.class_id)
+        if group:
+            classes.append({"id": group.id, "name": group.name, "description": group.description,
+                            "educator_id": group.educator_id})
     return {"role": "learner", "debate_history": base["recent_sessions"],
             "performance_scores": {"average": base["average_score"], "best": base["best_score"], "skills": base["skills"]},
             "improvement_trends": base["trend"],
+            "classes": classes,
+            "assignments": [assignment_view(item) for item in db.query(LearningAssignment)
+                            .filter_by(learner_id=user.id).order_by(desc(LearningAssignment.created_at)).limit(10).all()],
             "recommended_exercises": coaching_plan(user, db)["weeks"],
             "coaching_insights": {"focus": coaching_plan(user, db)["focus"], "goals": json.loads(user.learning_goals)}}
 
@@ -506,7 +650,19 @@ def educator_dashboard(user: User = Depends(require_roles("educator")), db: Sess
                         "average_score": round(sum(scores) / len(scores), 1) if scores else 0,
                         "sessions": len(scores)})
     ranking.sort(key=lambda item: item["average_score"], reverse=True)
-    return {"role": "educator", "class_analytics": {"learners": len(learners), "sessions": db.query(DebateSession).count()},
+    owned_classes = db.query(ClassGroup).filter_by(educator_id=user.id).all()
+    educator_assignments = db.query(LearningAssignment).filter_by(creator_id=user.id).all()
+    return {"role": "educator", "class_analytics": {
+                "learners": sum(db.query(ClassMember).filter_by(class_id=item.id).count() for item in owned_classes),
+                "classes": len(owned_classes),
+                "sessions": db.query(DebateSession).count(),
+                "pending_reviews": sum(item.status == "submitted" for item in educator_assignments)},
+            "classes": [{"id": item.id, "name": item.name,
+                         "learners": db.query(ClassMember).filter_by(class_id=item.id).count()}
+                        for item in owned_classes],
+            "assignment_reviews": [{"id": item.id, "title": item.title, "status": item.status,
+                                    "learner_id": item.learner_id}
+                                   for item in educator_assignments],
             "student_rankings": ranking,
             "debate_performance_reports": [{"student_id": item["student_id"], "average_score": item["average_score"]} for item in ranking],
             "presentation_assessment_reports": [{"student_id": learner.id, "presentations": db.query(Presentation).filter_by(user_id=learner.id).count()} for learner in learners]}
@@ -514,8 +670,12 @@ def educator_dashboard(user: User = Depends(require_roles("educator")), db: Sess
 
 @app.get("/api/dashboard/admin")
 def administrator_dashboard(admin: User = Depends(require_roles("administrator")), db: Session = Depends(get_db)):
-    return {"role": "administrator", "user_management": {"users": db.query(User).count(), "roles": {
+    pending = db.query(User).filter(User.approval_status == "pending").order_by(User.created_at).all()
+    return {"role": "administrator", "user_management": {"users": db.query(User).count(), "pending_approvals": len(pending), "roles": {
                 role: db.query(User).filter_by(role=role).count() for role in ("learner", "debate_coach", "educator", "administrator")}},
+            "pending_approvals": [{"id": item.id, "name": item.name, "email": item.email,
+                                  "role": item.role, "created_at": item.created_at}
+                                 for item in pending],
             "platform_analytics": {"sessions": db.query(DebateSession).count(), "presentations": db.query(Presentation).count(),
                                     "media_assets": db.query(MediaAsset).count()},
             "ai_model_monitoring": {"provider": provider.ai.name, "model": provider.ai.model, "configured": provider.ai.available},
@@ -548,18 +708,22 @@ def debate_turn(payload: DebateTurnRequest, user: User = Depends(current_user), 
     """Persist a multi-turn simulation; OpenRouter is optional with a local fallback."""
     session = db.get(DebateSession, payload.session_id) if payload.session_id else None
     if session and session.user_id != user.id: raise HTTPException(404, "Simulation not found")
-    if not session:
-        session = DebateSession(user_id=user.id, title=f"Debate: {payload.topic}", topic=payload.topic,
-                                position=payload.position, status="active", transcript="")
-        db.add(session); db.flush()
-    existing = db.query(DebateTurn).filter_by(session_id=session.id).count()
+    topic = session.topic if session else payload.topic
+    position = session.position if session else payload.position
+    existing = db.query(DebateTurn).filter_by(session_id=session.id).count() if session else 0
     turn_number = existing + 1
-    prior = "\n".join(t.content for t in session.turns)
-    state = {"topic": session.topic, "position": session.position, "transcript": prior,
+    prior = "\n".join(t.content for t in session.turns) if session else ""
+    state = {"topic": topic, "position": position, "transcript": prior,
              "turn": existing, "messages": []}
-    response, engine = provider.debate_response(session.topic, session.position, prior, payload.turn_type)
+    current_turn = f"Learner's current {payload.turn_type}: {payload.content}".strip()
+    provider_context = "\n".join(item for item in (prior, current_turn) if item)
+    response, engine = provider.debate_response(topic, position, provider_context, payload.turn_type)
     if engine == "deterministic_fallback":
         response = simulate_turn(state)["response"]
+    if not session:
+        session = DebateSession(user_id=user.id, title=f"Debate: {topic}", topic=topic,
+                                position=position, status="active", transcript="")
+        db.add(session); db.flush()
     if payload.content:
         db.add(DebateTurn(session_id=session.id, turn_number=turn_number, speaker="learner",
                           turn_type=payload.turn_type, content=payload.content, evaluation=json.dumps({"engine": engine})))
@@ -632,6 +796,8 @@ async def upload_media(file: UploadFile = File(...), transcript: str = Form(""),
     analysis = provider.analyze(transcript, topic, position) if transcript else {
         "provider": transcription_engine, "overall_score": 0, "metrics": {}
     }
+    if transcript:
+        analysis["transcript"] = transcript
     analysis["transcription_engine"] = transcription_engine
     asset = MediaAsset(user_id=user.id, filename=file.filename or safe_name, stored_path=str(destination),
                        media_type=media_type, content_type=content_type, size_bytes=len(data),
@@ -642,7 +808,7 @@ async def upload_media(file: UploadFile = File(...), transcript: str = Form(""),
             "content_type": content_type, "size_bytes": asset.size_bytes, "status": asset.status,
             "transcript_available": bool(transcript), "analysis": analysis,
             "transcription_engine": transcription_engine,
-            "message": "Upload stored; no transcript was available. Install/configure Whisper or provide a transcript."
+            "message": "Upload stored; no transcript was available. Install/configure Whisper and FFmpeg, or provide a transcript."
             if not transcript else "Upload transcribed and analyzed."}
 
 
@@ -770,6 +936,32 @@ def counterargument_analysis(payload: CounterargumentRequest, user: User = Depen
     ]}
 
 
+@app.post("/api/analysis/counterargument-feedback")
+def counterargument_feedback(payload: CounterargumentCreate, user: User = Depends(current_user)):
+    review = provider.run_agent("argument_analysis", {
+        "claim": payload.claim,
+        "counterargument_type": payload.counter_type,
+        "learner_rebuttal": payload.response,
+    })
+    if review:
+        return {"score": None, "summary": review["summary"],
+                "strengths": review["strengths"], "improvements": review["improvements"],
+                "engine": provider.ai.name}
+    response = payload.response.casefold()
+    strengths = []
+    improvements = []
+    if len(payload.response.split()) >= 20:
+        strengths.append("Your rebuttal gives enough detail to evaluate.")
+    else:
+        improvements.append("Develop the rebuttal with a reason and a concrete example.")
+    if any(marker in response for marker in ("because", "evidence", "source", "however", "although")):
+        strengths.append("You included reasoning or qualification rather than only repeating the claim.")
+    else:
+        improvements.append("Explain why your response follows; do not rely on assertion alone.")
+    return {"score": None, "summary": "Your rebuttal is saved. Strengthen the reasoning before using it in a live debate.",
+            "strengths": strengths, "improvements": improvements, "engine": "deterministic_fallback"}
+
+
 @app.get("/api/sessions/{session_id}/export")
 def export_report(session_id: int, format: str = "json", user: User = Depends(current_user), db: Session = Depends(get_db)):
     result = report(session_id, user, db)
@@ -814,4 +1006,17 @@ def export_report(session_id: int, format: str = "json", user: User = Depends(cu
 
 
 frontend_dist = Path("frontend/dist")
-app.mount("/", StaticFiles(directory=str(frontend_dist if frontend_dist.exists() else Path("frontend")), html=True), name="frontend")
+frontend_root = frontend_dist if frontend_dist.exists() else Path("frontend")
+
+
+@app.get("/{full_path:path}")
+def frontend_route(full_path: str):
+    if full_path == "" or full_path.endswith("/"):
+        requested = frontend_root / full_path / "index.html"
+    else:
+        requested = frontend_root / full_path
+    if requested.is_file():
+        return FileResponse(requested)
+    if full_path == "" or not full_path.startswith("api/"):
+        return FileResponse(frontend_root / "index.html")
+    raise HTTPException(404, "Not found")

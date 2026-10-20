@@ -22,6 +22,7 @@ class UserOut(BaseModel):
     name: str
     bio: str
     role: str
+    approval_status: str
     experience_level: str
     preferred_debate_topics: list[str]
     presentation_domains: list[str]
@@ -106,12 +107,13 @@ class RoleUpdate(BaseModel):
 
 
 class AssignmentCreate(BaseModel):
-    learner_id: int
+    learner_id: int | None = None
     title: str = Field(min_length=1, max_length=200)
     assignment_type: str = Field(default="debate", pattern="^(debate|presentation|exercise)$")
     instructions: str = Field(default="", max_length=5000)
     due_at: datetime | None = None
     class_id: int | None = None
+    curriculum_id: int | None = None
 
 
 class SubmissionCreate(BaseModel):

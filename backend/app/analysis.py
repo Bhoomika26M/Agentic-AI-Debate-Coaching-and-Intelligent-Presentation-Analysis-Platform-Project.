@@ -1,6 +1,9 @@
 """Explainable, local analysis primitives used by the API."""
 import json
+import logging
 import re
+import shutil
+from functools import lru_cache
 from pathlib import Path
 from collections import Counter
 
@@ -17,6 +20,7 @@ FALLACY_PATTERNS = {
 FILLERS = re.compile(r"\b(um+|uh+|like|you know|basically|actually)\b", re.I)
 EVIDENCE = ("study", "data", "research", "source", "evidence", "according", "%", "survey", "example")
 REASONING = ("because", "therefore", "so that", "leads to", "consequently", "if ", "then ")
+logger = logging.getLogger(__name__)
 
 
 def _sentences(text):
@@ -111,15 +115,22 @@ def transcribe_media(path: str, supplied: str = "") -> tuple[str, str]:
     """
     if supplied.strip():
         return supplied.strip()[:30000], "supplied_transcript"
+    if shutil.which("ffmpeg") is None:
+        return "", "deterministic_no_transcript"
     try:
-        import whisper  # type: ignore
-        from .config import settings
-        model_name = getattr(settings, "whisper_model", "") or "base"
-        model = whisper.load_model(model_name)
+        model = _whisper_model()
         result = model.transcribe(str(Path(path)), fp16=False)
         text = str(result.get("text", "")).strip()[:30000]
         if text:
             return text, "local_whisper"
-    except Exception:
-        pass
+    except (ImportError, OSError, RuntimeError, ValueError) as exc:
+        logger.warning("Local Whisper transcription unavailable: %s", exc)
     return "", "deterministic_no_transcript"
+
+
+@lru_cache(maxsize=1)
+def _whisper_model():
+    import whisper  # type: ignore
+    from .config import settings
+    model_name = getattr(settings, "whisper_model", "") or "base"
+    return whisper.load_model(model_name)
