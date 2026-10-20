@@ -89,7 +89,7 @@ Context/Topic:
 
         history_str = "\n".join(
             [f"{t.get('speaker', 'Debater')}: {t.get('transcript', '')}" for t in turn_history]
-        )
+        )[-12000:]
 
         prompt = f"""
 You are an expert collegiate debate opponent in a {format_type} debate match.
@@ -105,8 +105,12 @@ User's Latest Argument:
 "{user_argument}"
 
 Task:
-1. Deconstruct the user's latest argument, score its logic and detect fallacies.
-2. Deliver your next speech turn: challenge their premises, cite counter-evidence, and ask a pointed cross-examination question.
+1. Stay in the assigned {ai_stance} position and directly answer the user's latest argument, accounting for previous turns without repeating yourself.
+2. Deconstruct the latest argument and provide its strongest counterargument, a logical rebuttal, and an alternative perspective.
+3. Do not invent citations, statistics, research, or factual evidence. If external evidence is unavailable, say what evidence should be checked and label examples hypothetical.
+4. Ask one challenging follow-up question and give concrete suggestions for the user's next response.
+5. Avoid treating the user's position as automatically wrong. Keep the response relevant to the topic and appropriately challenging for {format_type}.
+6. Set response_method to "gemini".
 """
         try:
             response = self.client.models.generate_content(
@@ -118,9 +122,13 @@ Task:
                     temperature=0.6,
                 ),
             )
-            return DebateTurnResponse.model_validate_json(response.text)
-        except Exception as e:
-            print(f"[GeminiAIService.generate_debate_turn] Error: {e}, falling back to mock.")
+            result = DebateTurnResponse.model_validate_json(response.text)
+            return result.model_copy(update={
+                "response_method": "gemini",
+                "analysis": apply_overall_score(result.analysis, "gemini"),
+            })
+        except Exception:
+            logger.exception("Gemini debate response failed; using the disclosed rule-based baseline.")
             return self.mock_fallback.generate_debate_turn(
                 topic, format_type, user_stance, ai_stance, ai_persona, user_argument, turn_history
             )
@@ -173,6 +181,7 @@ Instructions:
 4. List 1-3 specific flaws, missing warrants, or lingering weaknesses.
 5. Provide an improved exemplar version demonstrating collegiate precision.
 6. Provide an actionable strategic coach tip.
+7. Do not invent facts, sources, statistics, or citations; recommend what evidence to verify when needed.
 """
         try:
             response = self.client.models.generate_content(
@@ -184,7 +193,8 @@ Instructions:
                     temperature=0.3,
                 ),
             )
-            return RebuttalEvaluationResult.model_validate_json(response.text)
-        except Exception as e:
-            print(f"[GeminiAIService.evaluate_rebuttal] Error: {e}, falling back to mock.")
+            result = RebuttalEvaluationResult.model_validate_json(response.text)
+            return result.model_copy(update={"analysis_method": "gemini"})
+        except Exception:
+            logger.exception("Gemini rebuttal evaluation failed; using the disclosed rule-based baseline.")
             return self.mock_fallback.evaluate_rebuttal(target_claim, fallacy_type, user_rebuttal, context)

@@ -1,340 +1,178 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { analyticsApi } from '../../api/analyticsApi';
-import { Card } from '../../components/common/Card';
-import { ScoreCard } from '../../components/common/ScoreCard';
-import { Button } from '../../components/common/Button';
+import { coachingApi } from '../../api/coachingApi';
 import { Badge } from '../../components/common/Badge';
-import {
-  Swords,
-  Scale,
-  Mic,
-  Presentation,
-  TrendingUp,
-  ArrowRight,
-  Sparkles,
-  CheckCircle2,
-  Clock,
-  Award,
-  Zap,
-  Target
-} from 'lucide-react';
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid
-} from 'recharts';
+import { Button } from '../../components/common/Button';
+import { Card } from '../../components/common/Card';
+import { ProgressBar } from '../../components/common/ProgressBar';
+import { AlertTriangle, ArrowRight, BookOpen, Scale, Swords, TrendingUp } from 'lucide-react';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+
+const Metric = ({ label, value, note }) => (
+  <Card>
+    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+    <p className="mt-2 text-3xl font-extrabold text-[#172554]">{value ?? '—'}</p>
+    <p className="mt-1 text-xs text-slate-500">{note}</p>
+  </Card>
+);
 
 export const LearnerDashboard = () => {
   const { user } = useAuth();
-
-  const [scores, setScores] = useState({
-    debateScore: 84,
-    argumentScore: 78,
-    speakingScore: 82,
-    presentationScore: 86,
-  });
-
-  const [progressData, setProgressData] = useState([
-    { round: 'Week 1', score: 68, logic: 65, delivery: 70 },
-    { round: 'Week 2', score: 72, logic: 70, delivery: 73 },
-    { round: 'Week 3', score: 75, logic: 72, delivery: 77 },
-    { round: 'Week 4', score: 80, logic: 78, delivery: 81 },
-    { round: 'Week 5', score: 83, logic: 81, delivery: 84 },
-    { round: 'Current', score: 86, logic: 84, delivery: 87 },
-  ]);
+  const [overview, setOverview] = useState(null);
+  const [plan, setPlan] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    const loadOverview = async () => {
-      try {
-        const data = await analyticsApi.getOverview();
-        if (data?.avg_score) {
-          setScores((prev) => ({
-            ...prev,
-            debateScore: Math.round(data.avg_score),
-          }));
+    let active = true;
+    Promise.all([analyticsApi.getOverview(), coachingApi.getLearningPlan()])
+      .then(([analytics, learningPlan]) => {
+        if (!active) return;
+        setOverview(analytics);
+        setPlan(learningPlan);
+      })
+      .catch((requestError) => {
+        if (active) {
+          setError(requestError.response?.data?.detail || 'Your saved performance data could not be loaded. Please refresh or sign in again.');
         }
-      } catch (err) {
-        // Keeps polished default values
-      }
-    };
-    loadOverview();
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
+  const trend = overview?.progress_history || [];
+  const recentSessions = overview?.recent_sessions || [];
+  const fallacies = overview?.common_fallacies || [];
+  const recommendations = overview?.coaching_recommendations || [];
+  const progress = overview?.learning_plan_progress || { completed: 0, total: 0 };
+
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-12">
-      {/* 1. Welcoming Top Greeting */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="mx-auto max-w-7xl space-y-7 pb-12">
+      <header className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:p-8">
         <div>
-          <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-[#172554] border border-blue-100 mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-            <span>AI Coach Ready</span>
-          </div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-[#0F172A] tracking-tight">
-            Good morning{user?.username ? `, ${user.username}` : ''}! Ready to improve your communication skills?
-          </h2>
-          <p className="text-slate-500 text-sm mt-1.5 max-w-2xl leading-relaxed">
-            Practice competitive debate rounds, test thesis arguments for logical consistency, and analyze speech cadence with real-time feedback.
-          </p>
+          <Badge variant="blue" size="sm">Debate coach</Badge>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
+            Welcome{user?.username ? `, ${user.username}` : ''}
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">Your dashboard shows your saved debate and argument-analysis results. Start a debate to build your personal history.</p>
         </div>
+        <Link to="/debates"><Button icon={Swords}>Start a debate</Button></Link>
+      </header>
 
-        <Link to="/debates">
-          <Button variant="primary" size="lg" icon={Swords} iconPosition="left">
-            Start Live Debate
-          </Button>
-        </Link>
-      </div>
+      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}
+      {loading ? (
+        <p className="py-8 text-center text-sm text-slate-500">Loading your saved metrics…</p>
+      ) : (
+        <>
+          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="Performance summary">
+            <Metric label="Debates completed" value={overview?.completed_debates ?? 0} note={`${overview?.total_debates ?? 0} total saved sessions`} />
+            <Metric label="Latest debate score" value={overview?.latest_score == null ? '—' : `${overview.latest_score}/100`} note="Latest completed debate" />
+            <Metric label="Average debate score" value={overview?.avg_score == null ? '—' : `${overview.avg_score}/100`} note="Across scored completed debates" />
+            <Metric label="Learning activities" value={`${progress.completed}/${progress.total}`} note="Completed activities in your plan" />
+          </section>
 
-      {/* 2. Four Core Score Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        <ScoreCard
-          title="Debate Score"
-          icon={Swords}
-          score={scores.debateScore}
-          maxScore={100}
-          trend="+5.2%"
-          description="Oxford & Parliamentary round performance across 12 simulations."
-          accent="blue"
-        />
-
-        <ScoreCard
-          title="Argument Score"
-          icon={Scale}
-          score={scores.argumentScore}
-          maxScore={100}
-          trend="+3.8%"
-          description="Toulmin model grounds, warrant grounding, and fallacy avoidance."
-          accent="purple"
-        />
-
-        <ScoreCard
-          title="Speaking Score"
-          icon={Mic}
-          score={scores.speakingScore}
-          maxScore={100}
-          trend="+4.0%"
-          description="Speaking cadence (142 WPM optimal) and low filler-word density."
-          accent="teal"
-        />
-
-        <ScoreCard
-          title="Presentation Score"
-          icon={Presentation}
-          score={scores.presentationScore}
-          maxScore={100}
-          trend="+2.5%"
-          description="Slide text density, visual hierarchy, and message clarity."
-          accent="green"
-        />
-      </div>
-
-      {/* 3. Continue Practicing (3 Large Cards) */}
-      <div className="space-y-4">
-        <div>
-          <h3 className="text-lg font-bold text-[#0F172A] tracking-tight">
-            Continue Practicing
-          </h3>
-          <p className="text-xs text-slate-500">
-            Pick a core training module to build confidence and sharp analytical reasoning.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Card 1: Practice a Debate */}
-          <Card hover className="flex flex-col justify-between border-slate-200">
-            <div>
-              <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center mb-4">
-                <Swords className="w-6 h-6" />
+          <section className="grid gap-5 lg:grid-cols-5">
+            <Card className="lg:col-span-3">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="flex items-center gap-2 font-bold text-slate-900"><TrendingUp className="h-4 w-4 text-blue-700" /> Debate performance</h2>
+                  <p className="mt-1 text-xs text-slate-500">Scores from your saved argument turn analyses</p>
+                </div>
+                <Link to="/progress" className="text-xs font-semibold text-blue-700">More metrics <ArrowRight className="inline h-3 w-3" /></Link>
               </div>
-              <h4 className="text-lg font-bold text-[#0F172A]">Practice a Debate</h4>
-              <p className="text-sm font-medium text-blue-700 mt-0.5">Challenge an AI opponent</p>
-              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                Argue Oxford-style resolutions turn-by-turn against an adaptive Socratic opponent.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-slate-100">
-              <Link to="/debates" className="block w-full">
-                <Button variant="primary" size="md" className="w-full justify-center">
-                  Start Debate Session
-                </Button>
-              </Link>
-            </div>
+              {trend.length > 1 ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={trend} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="round" fontSize={11} />
+                      <YAxis domain={[0, 100]} fontSize={11} />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="score" name="Overall score" stroke="#172554" strokeWidth={3} />
+                      <Line type="monotone" dataKey="evidence" name="Evidence" stroke="#0D9488" />
+                      <Line type="monotone" dataKey="rebuttal_effectiveness" name="Rebuttal response estimate" stroke="#9333EA" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="flex min-h-48 flex-col items-center justify-center text-center">
+                  <Scale className="h-8 w-8 text-slate-300" />
+                  <p className="mt-3 text-sm font-semibold text-slate-700">Not enough completed debates for a trend yet</p>
+                  <p className="mt-1 text-xs text-slate-500">Complete debates with analyzed turns to see your progress here.</p>
+                </div>
+              )}
+            </Card>
+
+            <Card className="lg:col-span-2">
+              <h2 className="font-bold text-slate-900">Recent debates</h2>
+              <div className="mt-3 space-y-2">
+                {recentSessions.length ? recentSessions.map((item) => (
+                  <Link key={item.id} to={`/debates/${item.id}`} className="block rounded-lg border border-slate-100 p-3 hover:border-blue-200">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="line-clamp-2 text-sm font-medium text-slate-800">{item.topic}</span>
+                      <Badge variant={item.status === 'COMPLETED' ? 'green' : 'amber'} size="sm">{item.status === 'COMPLETED' ? 'Done' : 'Active'}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">{item.score == null ? 'Not evaluated' : `Score: ${item.score}/100`} · {item.difficulty}</p>
+                  </Link>
+                )) : <p className="py-8 text-center text-sm text-slate-500">No debate sessions yet.</p>}
+              </div>
+            </Card>
+          </section>
+
+          <Card>
+            <h2 className="flex items-center gap-2 font-bold text-slate-900"><Scale className="h-4 w-4 text-purple-700" /> Recent argument analyses</h2>
+            <p className="mt-1 text-xs text-slate-500">Saved reports and their rubric scores</p>
+            {overview?.argument_quality_trend?.length ? (
+              <div className="mt-4 space-y-3">
+                {overview.argument_quality_trend.slice(-5).reverse().map((item) => (
+                  <div key={item.round} className="grid grid-cols-[5rem_1fr] items-center gap-x-4 gap-y-2 rounded-lg border border-slate-100 p-3 sm:grid-cols-[6rem_1fr_1fr_1fr]">
+                    <span className="text-xs font-semibold text-slate-600">{item.round}</span>
+                    {[
+                      ['Overall', item.score],
+                      ['Logic', item.logic],
+                      ['Evidence', item.evidence],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex items-center gap-2 text-xs text-slate-600">
+                        <span className="w-14">{label}</span>
+                        <ProgressBar value={value || 0} size="sm" variant="blue" />
+                        <strong>{value ?? '—'}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : <p className="mt-4 text-sm text-slate-500">No saved argument reports yet.</p>}
           </Card>
 
-          {/* Card 2: Analyze an Argument */}
-          <Card hover className="flex flex-col justify-between border-slate-200">
-            <div>
-              <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-700 border border-purple-100 flex items-center justify-center mb-4">
-                <Scale className="w-6 h-6" />
-              </div>
-              <h4 className="text-lg font-bold text-[#0F172A]">Analyze an Argument</h4>
-              <p className="text-sm font-medium text-purple-700 mt-0.5">Find weaknesses and logical fallacies</p>
-              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                Paste any thesis to inspect Toulmin structure and scan for 20+ informal fallacies.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-slate-100">
-              <Link to="/arguments" className="block w-full">
-                <Button variant="outline" size="md" className="w-full justify-center border-slate-300 text-slate-800 hover:bg-purple-50 hover:text-purple-900 hover:border-purple-200">
-                  Analyze Argument
-                </Button>
-              </Link>
-            </div>
-          </Card>
-
-          {/* Card 3: Practice Your Speech */}
-          <Card hover className="flex flex-col justify-between border-slate-200">
-            <div>
-              <div className="w-12 h-12 rounded-xl bg-teal-50 text-teal-700 border border-teal-100 flex items-center justify-center mb-4">
-                <Mic className="w-6 h-6" />
-              </div>
-              <h4 className="text-lg font-bold text-[#0F172A]">Practice Your Speech</h4>
-              <p className="text-sm font-medium text-teal-700 mt-0.5">Improve clarity and speaking confidence</p>
-              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                Record live audio to track pace (WPM), eliminate vocal fillers, and refine delivery.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-slate-100">
-              <Link to="/speech" className="block w-full">
-                <Button variant="outline" size="md" className="w-full justify-center border-slate-300 text-slate-800 hover:bg-teal-50 hover:text-teal-900 hover:border-teal-200">
-                  Open Speech Studio
-                </Button>
-              </Link>
-            </div>
-          </Card>
-        </div>
-      </div>
-
-      {/* 4. Split: Your Progress + Recommended for You */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Your Progress Chart */}
-        <Card className="lg:col-span-7 flex flex-col justify-between">
-          <div className="flex items-center justify-between pb-3 mb-2 border-b border-slate-100">
-            <div>
-              <h3 className="text-base font-bold text-[#0F172A] tracking-tight flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-[#172554]" />
-                Your Progress
-              </h3>
-              <p className="text-xs text-slate-500">Overall score improvement trajectory over recent weeks</p>
-            </div>
-            <Link to="/progress">
-              <span className="text-xs font-semibold text-blue-700 hover:text-blue-800 flex items-center gap-1">
-                Full Metrics <ArrowRight className="w-3 h-3" />
-              </span>
-            </Link>
-          </div>
-
-          <div className="h-64 w-full pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={progressData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                <XAxis dataKey="round" stroke="#94A3B8" fontSize={11} tickLine={false} />
-                <YAxis domain={[50, 100]} stroke="#94A3B8" fontSize={11} tickLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#FFFFFF',
-                    borderColor: '#CBD5E1',
-                    borderRadius: '0.75rem',
-                    fontSize: '12px',
-                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="score"
-                  name="Composite Score"
-                  stroke="#172554"
-                  strokeWidth={3}
-                  dot={{ fill: '#172554', r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="delivery"
-                  name="Speech Delivery"
-                  stroke="#0D9488"
-                  strokeWidth={2}
-                  strokeDasharray="4 4"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="flex items-center justify-center gap-6 pt-3 mt-2 border-t border-slate-100 text-xs text-slate-500">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#172554]"></span> Composite Score
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-teal-600"></span> Speech Cadence
-            </span>
-          </div>
-        </Card>
-
-        {/* Recommended for You */}
-        <Card className="lg:col-span-5 flex flex-col justify-between">
-          <div className="pb-3 mb-3 border-b border-slate-100">
-            <h3 className="text-base font-bold text-[#0F172A] tracking-tight flex items-center gap-2">
-              <Target className="w-4 h-4 text-emerald-600" />
-              Recommended for You
-            </h3>
-            <p className="text-xs text-slate-500">Personalized feedback based on your last 3 sessions</p>
-          </div>
-
-          <div className="space-y-3 flex-1">
-            {/* Rec 1 */}
-            <div className="p-3.5 rounded-xl border border-amber-200/80 bg-amber-50/50 hover:bg-amber-50 transition-colors">
-              <div className="flex items-start justify-between gap-2">
-                <div className="font-semibold text-xs text-amber-900">
-                  Practice avoiding Hasty Generalization
-                </div>
-                <Badge variant="amber" size="sm">Logic</Badge>
-              </div>
-              <p className="text-xs text-slate-600 mt-1">
-                You drew broad conclusions from single examples during cross-examination. Try testing claims with 2+ sources.
-              </p>
-            </div>
-
-            {/* Rec 2 */}
-            <div className="p-3.5 rounded-xl border border-blue-200/80 bg-blue-50/40 hover:bg-blue-50 transition-colors">
-              <div className="flex items-start justify-between gap-2">
-                <div className="font-semibold text-xs text-blue-950">
-                  Try a 5-minute rebuttal exercise
-                </div>
-                <Badge variant="blue" size="sm">Rebuttal</Badge>
-              </div>
-              <p className="text-xs text-slate-600 mt-1">
-                Work on directly dismantling opponent warrants before presenting affirmative extensions.
-              </p>
-            </div>
-
-            {/* Rec 3 */}
-            <div className="p-3.5 rounded-xl border border-teal-200/80 bg-teal-50/40 hover:bg-teal-50 transition-colors">
-              <div className="flex items-start justify-between gap-2">
-                <div className="font-semibold text-xs text-teal-950">
-                  Reduce filler words in your next speech
-                </div>
-                <Badge variant="teal" size="sm">Speaking</Badge>
-              </div>
-              <p className="text-xs text-slate-600 mt-1">
-                You used "you know" 6 times in your last round. Practice a 1-second silent breath at pauses.
-              </p>
-            </div>
-          </div>
-
-          <div className="pt-3 mt-3 border-t border-slate-100">
-            <Link to="/coaching" className="block w-full">
-              <Button variant="ghost" size="sm" className="w-full text-slate-700 hover:text-slate-900 justify-center">
-                View All Personalized Coaching Drills
-              </Button>
-            </Link>
-          </div>
-        </Card>
-      </div>
+          <section className="grid gap-5 lg:grid-cols-2">
+            <Card>
+              <h2 className="flex items-center gap-2 font-bold text-slate-900"><AlertTriangle className="h-4 w-4 text-amber-600" /> Common reasoning flags</h2>
+              {fallacies.length ? (
+                <ul className="mt-3 space-y-2">
+                  {fallacies.slice(0, 6).map((item) => (
+                    <li key={item.name} className="flex justify-between rounded-lg bg-amber-50 p-3 text-sm">
+                      <span className="text-slate-700">{item.name}</span><strong className="text-amber-900">{item.count}</strong>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="mt-3 text-sm text-slate-500">No fallacy data yet. This is not proof that past arguments were fallacy-free.</p>}
+            </Card>
+            <Card>
+              <h2 className="flex items-center gap-2 font-bold text-slate-900"><BookOpen className="h-4 w-4 text-emerald-700" /> Coaching recommendations</h2>
+              {recommendations.length ? (
+                <ul className="mt-3 list-inside list-disc space-y-2 text-sm leading-relaxed text-slate-700">
+                  {recommendations.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}
+                </ul>
+              ) : <p className="mt-3 text-sm text-slate-500">Complete a debate to receive recommendations based on your saved performance.</p>}
+              <Link to="/coaching" className="mt-4 inline-block text-sm font-semibold text-emerald-800">Open learning plan <ArrowRight className="inline h-4 w-4" /></Link>
+            </Card>
+          </section>
+        </>
+      )}
     </div>
   );
 };

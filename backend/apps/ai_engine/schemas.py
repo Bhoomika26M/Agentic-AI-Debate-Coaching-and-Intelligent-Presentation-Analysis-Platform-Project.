@@ -58,6 +58,13 @@ class DebateTurnResponse(BaseModel):
     analysis: ArgumentAnalysisResult
     ai_rebuttal: str = Field(description="The simulated opponent's verbal speech turn")
     persona_notes: Optional[str] = Field(default="", description="Strategic coaching notes regarding opponent angle")
+    strongest_counterargument: str = ""
+    logical_rebuttal: str = ""
+    alternative_perspective: str = ""
+    evidence_guidance: str = ""
+    follow_up_question: str = ""
+    next_response_suggestions: List[str] = Field(default_factory=list)
+    response_method: Literal["gemini", "rule_based"] = "rule_based"
 
 class SpeechCritiqueResult(BaseModel):
     wpm: int
@@ -92,3 +99,4 @@ class RebuttalEvaluationResult(BaseModel):
     flaws: List[str] = Field(default_factory=list, description="Weaknesses, missing warrants, or lingering fallacies in the rebuttal")
     improved_version: str = Field(description="An exemplar collegiate-level phrasing of the rebuttal")
     coach_tip: str = Field(description="Actionable strategic debate advice for future rounds")
+    analysis_method: Literal["gemini", "rule_based"] = "rule_based"

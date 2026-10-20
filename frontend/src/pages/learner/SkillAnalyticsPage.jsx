@@ -1,195 +1,129 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { analyticsApi } from '../../api/analyticsApi';
+import { Badge } from '../../components/common/Badge';
 import { Card } from '../../components/common/Card';
 import { ProgressBar } from '../../components/common/ProgressBar';
-import { Badge } from '../../components/common/Badge';
+import { AlertTriangle, TrendingUp } from 'lucide-react';
 import {
-  TrendingUp,
-  Award,
-  Swords,
-  Scale,
-  Mic,
-  Presentation,
-  CheckCircle2,
-  Calendar,
-  Layers
-} from 'lucide-react';
-import {
-  ResponsiveContainer,
-  LineChart,
+  CartesianGrid,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  CartesianGrid,
-  BarChart,
-  Bar
 } from 'recharts';
 
 export const SkillAnalyticsPage = () => {
-  const skillBreakdown = [
-    {
-      name: 'Debating',
-      score: 84,
-      desc: 'Cross-examination, affirmative defense, and rebuttal precision',
-      icon: Swords,
-      variant: 'blue',
-      level: 'Advanced',
-    },
-    {
-      name: 'Reasoning',
-      score: 88,
-      desc: 'Formal validity, Toulmin warrant grounding, and fallacy spotting',
-      icon: Scale,
-      variant: 'purple',
-      level: 'Mastery',
-    },
-    {
-      name: 'Speaking',
-      score: 82,
-      desc: 'Pacing cadence (142 WPM average) and filler word elimination',
-      icon: Mic,
-      variant: 'teal',
-      level: 'Proficient',
-    },
-    {
-      name: 'Presentation',
-      score: 86,
-      desc: 'Information density balance, slide visual hierarchy, and clarity',
-      icon: Presentation,
-      variant: 'navy',
-      level: 'Advanced',
-    },
-  ];
+  const [overview, setOverview] = useState(null);
+  const [skills, setSkills] = useState([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  const historicalData = [
-    { name: 'Session 1', Debating: 65, Reasoning: 70, Speaking: 68, Presentation: 72 },
-    { name: 'Session 2', Debating: 72, Reasoning: 75, Speaking: 72, Presentation: 76 },
-    { name: 'Session 3', Debating: 74, Reasoning: 78, Speaking: 76, Presentation: 80 },
-    { name: 'Session 4', Debating: 80, Reasoning: 82, Speaking: 78, Presentation: 82 },
-    { name: 'Session 5', Debating: 82, Reasoning: 85, Speaking: 80, Presentation: 84 },
-    { name: 'Session 6', Debating: 84, Reasoning: 88, Speaking: 82, Presentation: 86 },
-  ];
+  useEffect(() => {
+    let active = true;
+    Promise.all([analyticsApi.getOverview(), analyticsApi.getSkillsRadar()])
+      .then(([data, skillData]) => {
+        if (!active) return;
+        setOverview(data);
+        setSkills(skillData);
+      })
+      .catch((requestError) => {
+        if (active) {
+          setError(requestError.response?.data?.detail || 'Your analytics could not be loaded. Please try again.');
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  if (loading) {
+    return <p className="py-12 text-center text-sm text-slate-500">Loading your saved analytics…</p>;
+  }
+
+  const trend = overview?.progress_history || [];
+  const fallacies = overview?.common_fallacies || [];
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto pb-12">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-[#0F172A] tracking-tight">
-          My Progress & Skill Analytics
-        </h2>
-        <p className="text-sm text-slate-500 mt-1">
-          Review longitudinal competency benchmarks across debating, reasoning, verbal delivery, and visual presentations.
-        </p>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6 pb-12">
+      <header>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Progress &amp; Skill Analytics</h1>
+        <p className="mt-1 text-sm text-slate-500">Metrics are calculated from your saved debate evaluations and argument reports.</p>
+      </header>
+      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}
 
-      {/* 1. Overall Skill Level Card */}
-      <Card className="border-blue-200/80 bg-gradient-to-r from-blue-50/50 to-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-        <div className="space-y-1.5">
-          <Badge variant="blue" size="sm">
-            Competency Milestone
-          </Badge>
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Overall Skill Level
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          ['Completed debates', overview?.completed_debates ?? 0],
+          ['Average debate score', overview?.avg_score == null ? '—' : `${overview.avg_score}/100`],
+          ['Latest score', overview?.latest_score == null ? '—' : `${overview.latest_score}/100`],
+          ['Saved argument reports', overview?.total_argument_analyses ?? 0],
+        ].map(([label, value]) => (
+          <Card key={label}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+            <p className="mt-2 text-3xl font-extrabold text-[#172554]">{value}</p>
+          </Card>
+        ))}
+      </section>
+
+      <Card className="space-y-4">
+        <div>
+          <h2 className="flex items-center gap-2 font-bold text-slate-900"><TrendingUp className="h-4 w-4 text-blue-700" /> Debate performance over time</h2>
+          <p className="mt-1 text-xs text-slate-500">Based on your completed sessions with analyzed turns.</p>
+        </div>
+        {trend.length > 0 ? (
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trend} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="round" fontSize={11} />
+                <YAxis domain={[0, 100]} fontSize={11} />
+                <Tooltip />
+                <Line type="monotone" dataKey="score" name="Overall" stroke="#172554" strokeWidth={3} />
+                <Line type="monotone" dataKey="logic" name="Logic" stroke="#7C3AED" />
+                <Line type="monotone" dataKey="evidence" name="Evidence" stroke="#0D9488" />
+                <Line type="monotone" dataKey="clarity" name="Clarity" stroke="#2563EB" />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
-          <h3 className="text-2xl sm:text-3xl font-extrabold text-[#172554] tracking-tight">
-            Collegiate Varsity (Level 4)
-          </h3>
-          <p className="text-xs text-slate-600 max-w-lg leading-relaxed">
-            Your performance ranks in the top 12% for collegiate argument construction and speech delivery.
-          </p>
-        </div>
-
-        <div className="bg-white border border-slate-200 p-5 rounded-2xl text-center shrink-0 w-44 shadow-xs">
-          <div className="text-xs font-semibold text-slate-500 uppercase">Composite Index</div>
-          <div className="text-4xl font-extrabold text-[#172554] mt-1">85<span className="text-sm font-normal text-slate-400">/100</span></div>
-          <span className="text-[11px] text-emerald-600 font-semibold mt-1 inline-block">+6.4% This Month</span>
-        </div>
+        ) : (
+          <p className="rounded-lg bg-slate-50 p-5 text-sm text-slate-600">No completed debate scores yet. Complete a debate with at least one turn to create your progress history.</p>
+        )}
       </Card>
 
-      {/* 2. Four Main Skills: Debating, Reasoning, Speaking, Presentation */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        {skillBreakdown.map((skill) => {
-          const Icon = skill.icon;
-          return (
-            <Card key={skill.name} className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-[#172554]">
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-base text-[#0F172A]">{skill.name}</h4>
-                    <span className="text-xs text-slate-400 font-medium">{skill.level}</span>
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <span className="text-2xl font-extrabold text-[#172554]">{skill.score}</span>
-                  <span className="text-xs text-slate-400">/100</span>
-                </div>
-              </div>
-
-              <ProgressBar value={skill.score} max={100} variant={skill.variant} size="md" />
-
-              <p className="text-xs text-slate-500 leading-relaxed pt-1">
-                {skill.desc}
-              </p>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* 3. Simple Charts Showing Improvement Over Time */}
       <Card className="space-y-4">
-        <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h4 className="text-base font-bold text-[#0F172A] tracking-tight flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-[#172554]" />
-              Longitudinal Skill Progression
-            </h4>
-            <p className="text-xs text-slate-500">
-              Growth curves tracked across your last 6 practice iterations
-            </p>
+        <div>
+          <h2 className="font-bold text-slate-900">Skill breakdown</h2>
+          <p className="mt-1 text-xs text-slate-500">Averages over completed debates where that score is available.</p>
+        </div>
+        {skills.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {skills.map((skill) => (
+              <div key={skill.subject} className="rounded-xl border border-slate-200 p-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-slate-800">{skill.subject}</h3>
+                  <Badge variant="blue">{skill.score}/100</Badge>
+                </div>
+                <ProgressBar value={skill.score} max={100} variant="blue" size="md" />
+              </div>
+            ))}
           </div>
-        </div>
+        ) : <p className="rounded-lg bg-slate-50 p-5 text-sm text-slate-600">Skill metrics will appear when scored debate evaluations are available.</p>}
+      </Card>
 
-        <div className="h-72 w-full pt-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={historicalData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-              <XAxis dataKey="name" stroke="#94A3B8" fontSize={11} tickLine={false} />
-              <YAxis domain={[55, 100]} stroke="#94A3B8" fontSize={11} tickLine={false} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#FFFFFF',
-                  borderColor: '#CBD5E1',
-                  borderRadius: '0.75rem',
-                  fontSize: '12px',
-                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                }}
-              />
-              <Line type="monotone" dataKey="Debating" stroke="#2563EB" strokeWidth={2.5} dot={{ r: 3 }} />
-              <Line type="monotone" dataKey="Reasoning" stroke="#7C3AED" strokeWidth={2.5} dot={{ r: 3 }} />
-              <Line type="monotone" dataKey="Speaking" stroke="#0D9488" strokeWidth={2.5} dot={{ r: 3 }} />
-              <Line type="monotone" dataKey="Presentation" stroke="#172554" strokeWidth={2.5} dot={{ r: 3 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-center gap-6 pt-3 border-t border-slate-100 text-xs text-slate-600">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span> Debating
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span> Reasoning
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-teal-600"></span> Speaking
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#172554]"></span> Presentation
-          </span>
-        </div>
+      <Card>
+        <h2 className="flex items-center gap-2 font-bold text-slate-900"><AlertTriangle className="h-4 w-4 text-amber-600" /> Possible fallacies in saved reports</h2>
+        {fallacies.length ? (
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {fallacies.map((item) => (
+              <li key={item.name} className="flex items-center justify-between rounded-lg bg-amber-50 p-3 text-sm">
+                <span className="text-slate-700">{item.name}</span><strong className="text-amber-900">{item.count}</strong>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="mt-3 text-sm text-slate-500">No fallacy flags in the available reports. This is not proof that the arguments are fallacy-free.</p>}
       </Card>
     </div>
   );

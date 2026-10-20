@@ -34,17 +34,69 @@ class MockAIService(BaseAIService):
         turn_history: List[Dict[str, str]]
     ) -> DebateTurnResponse:
         analysis = self.analyze_argument(user_argument, context=topic)
-        rebuttal = (
-            f"While the {user_stance.capitalize()} side raises a compelling observation regarding '{topic}', "
-            f"their argument assumes that efficiency automatically guarantees equitable outcomes. "
-            f"In reality, empirical precedents demonstrate that unconstrained implementation introduces severe "
-            f"systemic vulnerabilities. How does the {user_stance.capitalize()} resolve the governance paradox "
-            f"when standard error mitigation frameworks fail?"
+        claim = analysis.toulmin.claim
+        if analysis.evidence:
+            counterargument = (
+                f"Even if the point in “{claim}” is accepted, the cited material does not by itself establish "
+                "that the proposed policy is the best response to the resolution."
+            )
+            evidence_guidance = (
+                "This baseline cannot verify cited material. Identify its source, sample, date, and how it "
+                "supports the policy comparison."
+            )
+        else:
+            counterargument = (
+                f"The claim “{claim}” may identify a concern, but without supporting evidence it does not yet "
+                "show that your side's proposed conclusion follows."
+            )
+            evidence_guidance = (
+                "No checkable evidence was identified in this turn. Add a verifiable source or clearly label "
+                "a concrete example as hypothetical."
+            )
+        logical_rebuttal = (
+            "The key gap to answer is: " + analysis.reasoning_weaknesses[0]
+            + " Establish the missing link before treating the conclusion as proven."
+            if analysis.reasoning_weaknesses
+            else "Compare this proposal with a plausible alternative and explain why its benefits outweigh the strongest trade-off."
         )
+        alternative_perspective = (
+            f"From the {ai_stance.lower()} position, frame the issue around whether the proposed solution is "
+            "proportionate, workable, and preferable to available alternatives."
+        )
+        previous_ai_turns = [turn for turn in turn_history if turn.get('speaker') == 'AI']
+        if 'beginner' in format_type.casefold():
+            follow_up = f"What is one reason and one checkable example that supports your claim: “{claim}”?"
+        elif 'advanced' in format_type.casefold():
+            follow_up = (
+                f"What comparative evidence would show that “{claim}” is preferable to the strongest "
+                "alternative, and what limitation could weaken that evidence?"
+            )
+        elif previous_ai_turns:
+            follow_up = (
+                "How does your response address the unresolved challenge from the preceding round while "
+                f"connecting your evidence to “{claim}”?"
+            )
+        else:
+            follow_up = f"What verifiable evidence links “{claim}” to the outcome you predict on “{topic}”?"
+        suggestions = analysis.recommendations[:2] or [
+            "State the warrant that connects your evidence to the claim.",
+            "Address one plausible counterexample directly.",
+        ]
+        rebuttal = " ".join((counterargument, logical_rebuttal, evidence_guidance, follow_up))
         return DebateTurnResponse(
             analysis=analysis,
             ai_rebuttal=rebuttal,
-            persona_notes=f"Delivered in {ai_persona} style conforming to {format_type} standards."
+            persona_notes=(
+                f"Rule-based response for {ai_persona}, with the user arguing {user_stance}, in {format_type}. "
+                "This is not a live LLM answer and may miss nuance."
+            ),
+            strongest_counterargument=counterargument,
+            logical_rebuttal=logical_rebuttal,
+            alternative_perspective=alternative_perspective,
+            evidence_guidance=evidence_guidance,
+            follow_up_question=follow_up,
+            next_response_suggestions=suggestions,
+            response_method='rule_based',
         )
 
     def evaluate_speech(
@@ -143,8 +195,9 @@ class MockAIService(BaseAIService):
             flaws.append("Brief statement; elaborate on why the opponent's warrant breaks down.")
 
         improved = (
-            f"While the claim argues that '{target_claim[:60]}...', this inference fails due to {fallacy_type or 'an unsupported warrant'}. "
-            "Specifically, empirical precedents show that counter-mechanisms intervene, making the asserted outcome non-deterministic."
+            f"While the claim is “{target_claim[:120]}”, the rebuttal should explain why the "
+            f"{fallacy_type or 'underlying warrant'} does not follow from the stated premises. "
+            "Support that response with verifiable evidence, or qualify the conclusion where evidence is unavailable."
         )
 
         return RebuttalEvaluationResult(
@@ -153,5 +206,6 @@ class MockAIService(BaseAIService):
             strengths=strengths or ["Clear thesis statement in response to the prompt."],
             flaws=flaws or ["Minor refinement needed in precision of statistical warrants."],
             improved_version=improved,
-            coach_tip=f"When refuting {fallacy_type or 'flawed reasoning'}, isolate the unstated warrant and demonstrate an exception where the premise fails."
+            coach_tip=f"When refuting {fallacy_type or 'flawed reasoning'}, isolate the unstated warrant and demonstrate an exception where the premise fails.",
+            analysis_method='rule_based',
         )
