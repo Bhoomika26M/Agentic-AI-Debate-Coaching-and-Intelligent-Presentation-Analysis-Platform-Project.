@@ -1,16 +1,8 @@
 import axiosClient from './axiosClient';
 
 export const argumentApi = {
-  analyzeArgument: async (argumentText, context = '', debateSessionId = '') => {
+  analyzeArgument: async (argumentText, context = '') => {
     const response = await axiosClient.post('/arguments/analyze/', {
-      argument_text: argumentText,
-      context,
-      ...(debateSessionId ? { debate_session_id: debateSessionId } : {}),
-    });
-    return response.data;
-  },
-  detectFallacies: async (argumentText, context = '') => {
-    const response = await axiosClient.post('/arguments/fallacies/', {
       argument_text: argumentText,
       context,
     });

@@ -18,10 +18,7 @@ def get_ai_service() -> BaseAIService:
         api_key = getattr(settings, 'GEMINI_API_KEY', os.getenv('GEMINI_API_KEY', ''))
 
         if provider == 'gemini' and api_key:
-            _ai_instance = GeminiAIService(
-                api_key=api_key,
-                model=getattr(settings, 'GEMINI_MODEL', 'gemini-2.5-flash'),
-            )
+            _ai_instance = GeminiAIService(api_key=api_key)
         else:
             _ai_instance = MockAIService()
             

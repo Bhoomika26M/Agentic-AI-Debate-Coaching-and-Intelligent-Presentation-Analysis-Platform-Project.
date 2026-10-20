@@ -5,21 +5,8 @@ from django.conf import settings
 class ArgumentAnalysis(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='arguments')
-    debate_session = models.ForeignKey(
-        'debates.DebateSession',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='argument_analyses',
-    )
     raw_text = models.TextField()
     context = models.TextField(blank=True, default='')
-    analysis_method = models.CharField(max_length=20, default='rule_based')
-    supporting_claims = models.JSONField(default=list, blank=True)
-    evidence = models.JSONField(default=list, blank=True)
-    reasoning_weaknesses = models.JSONField(default=list, blank=True)
-    recommendations = models.JSONField(default=list, blank=True)
-    improved_argument = models.TextField(blank=True, default='')
 
     # Toulmin components
     claim = models.TextField()
@@ -32,7 +19,6 @@ class ArgumentAnalysis(models.Model):
     # Normalized scores (0 - 100)
     logic_score = models.IntegerField(default=70)
     evidence_score = models.IntegerField(default=70)
-    relevance_score = models.IntegerField(default=70)
     persuasiveness_score = models.IntegerField(default=70)
     clarity_score = models.IntegerField(default=70)
     overall_score = models.IntegerField(default=70)
@@ -50,7 +36,6 @@ class LogicalFallacyInstance(models.Model):
     excerpt = models.TextField()
     explanation = models.TextField()
     suggested_correction = models.TextField(blank=True, default='')
-    confidence = models.PositiveSmallIntegerField(default=75)
 
 class CounterArgument(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, Literal
+from typing import List, Dict, Optional
 from pydantic import BaseModel, Field
 
 class ToulminModel(BaseModel):
@@ -14,7 +14,6 @@ class FallacyItem(BaseModel):
     excerpt: str = Field(description="Direct snippet from user text containing the fallacy")
     explanation: str = Field(description="Detailed explanation of why this reasoning is logically invalid")
     correction: str = Field(description="How to rephrase or substantiate the argument without the fallacy")
-    confidence: int = Field(default=75, ge=0, le=100, description="Confidence that the excerpt demonstrates this fallacy")
 
 class CounterArgumentItem(BaseModel):
     perspective: str = Field(description="Category or philosophical framework of the rebuttal (e.g., Empirical, Ethical, Deontological)")
@@ -27,7 +26,6 @@ class ArgumentScoreRubric(BaseModel):
     persuasiveness: int = Field(ge=0, le=100, description="Rhetorical and persuasive efficacy")
     clarity: int = Field(ge=0, le=100, description="Structural and linguistic clarity score")
     overall: int = Field(ge=0, le=100, description="Composite normalized score")
-    relevance: int = Field(default=70, ge=0, le=100, description="Relevance of support to the main claim and stated context")
 
 class ArgumentAnalysisResult(BaseModel):
     toulmin: ToulminModel
@@ -35,24 +33,11 @@ class ArgumentAnalysisResult(BaseModel):
     fallacies: List[FallacyItem] = Field(default_factory=list)
     counterarguments: List[CounterArgumentItem] = Field(default_factory=list)
     feedback: str = Field(description="Actionable qualitative coach guidance")
-    analysis_method: Literal["gemini", "rule_based"] = "rule_based"
-    supporting_claims: List[str] = Field(default_factory=list)
-    evidence: List[str] = Field(default_factory=list)
-    reasoning_weaknesses: List[str] = Field(default_factory=list)
-    recommendations: List[str] = Field(default_factory=list)
-    improved_argument: str = ""
 
 class DebateTurnResponse(BaseModel):
     analysis: ArgumentAnalysisResult
     ai_rebuttal: str = Field(description="The simulated opponent's verbal speech turn")
     persona_notes: Optional[str] = Field(default="", description="Strategic coaching notes regarding opponent angle")
-    strongest_counterargument: str = ""
-    logical_rebuttal: str = ""
-    alternative_perspective: str = ""
-    evidence_guidance: str = ""
-    follow_up_question: str = ""
-    next_response_suggestions: List[str] = Field(default_factory=list)
-    response_method: Literal["gemini", "rule_based"] = "rule_based"
 
 class SpeechCritiqueResult(BaseModel):
     wpm: int
@@ -87,4 +72,3 @@ class RebuttalEvaluationResult(BaseModel):
     flaws: List[str] = Field(default_factory=list, description="Weaknesses, missing warrants, or lingering fallacies in the rebuttal")
     improved_version: str = Field(description="An exemplar collegiate-level phrasing of the rebuttal")
     coach_tip: str = Field(description="Actionable strategic debate advice for future rounds")
-    analysis_method: Literal["gemini", "rule_based"] = "rule_based"

@@ -22,10 +22,9 @@ export const debateApi = {
     const response = await axiosClient.get(`/debates/sessions/${sessionId}/`);
     return response.data;
   },
-  submitTurn: async (sessionId, argumentText, clientTurnId) => {
+  submitTurn: async (sessionId, argumentText) => {
     const response = await axiosClient.post(`/debates/sessions/${sessionId}/submit-turn/`, {
       argument_text: argumentText,
-      client_turn_id: clientTurnId,
     });
     return response.data;
   },

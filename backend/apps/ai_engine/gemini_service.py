@@ -1,5 +1,5 @@
 import os
-import logging
+import json
 from typing import List, Dict, Any
 from google import genai
 from google.genai import types
@@ -12,9 +12,6 @@ from .schemas import (
     RebuttalEvaluationResult
 )
 from .mock_service import MockAIService
-from .argument_analysis import apply_overall_score
-
-logger = logging.getLogger(__name__)
 
 class GeminiAIService(BaseAIService):
     """
@@ -45,10 +42,9 @@ Deconstruct the user's argument using the rigorous 6-part Toulmin model:
 5. Qualifier: The scope or degree of certainty (e.g., 'under specific circumstances', 'in most instances', 'universally').
 6. Rebuttal (Reservation): Anticipated counter-conditions or edge cases where the claim does not hold.
 
-Detect only well-supported instances of these fallacies: Ad Hominem, Straw Man, False Dilemma, Slippery Slope, Appeal to Authority, Circular Reasoning, Hasty Generalization, and Red Herring. If evidence is insufficient, return no fallacy. Use exact verbatim excerpts and a confidence score from 0 to 100.
-Extract the main claim, supporting claims, explicit evidence, reasoning weaknesses, recommendations, and an improved version that does not introduce new facts. Do not invent sources, facts, or examples.
-Score clarity, relevance, evidence strength, logical consistency, and persuasiveness from 0 to 100. The overall score is calculated by the application using configured weights; do not treat an arbitrary overall score as authoritative.
-Set analysis_method to "gemini".
+Detect any formal or informal logical fallacies (e.g. Slippery Slope, Straw Man, Ad Hominem, False Dilemma, Circular Reasoning, Begging the Question, Post Hoc, Red Herring, Equivocation, Hasty Generalization).
+Provide exact verbatim excerpts from the argument for each detected fallacy.
+Score each dimension from 0 to 100 according to collegiate debate rubrics and formulate targeted counter-arguments.
 
 Argument to analyze:
 "{argument_text}"
@@ -66,10 +62,9 @@ Context/Topic:
                     temperature=0.2,
                 ),
             )
-            result = ArgumentAnalysisResult.model_validate_json(response.text)
-            return apply_overall_score(result, "gemini")
-        except Exception:
-            logger.exception("Gemini argument analysis failed; using the disclosed rule-based baseline.")
+            return ArgumentAnalysisResult.model_validate_json(response.text)
+        except Exception as e:
+            print(f"[GeminiAIService.analyze_argument] Error: {e}, falling back to mock.")
             return self.mock_fallback.analyze_argument(argument_text, context)
 
     def generate_debate_turn(
@@ -89,7 +84,7 @@ Context/Topic:
 
         history_str = "\n".join(
             [f"{t.get('speaker', 'Debater')}: {t.get('transcript', '')}" for t in turn_history]
-        )[-12000:]
+        )
 
         prompt = f"""
 You are an expert collegiate debate opponent in a {format_type} debate match.
@@ -105,12 +100,8 @@ User's Latest Argument:
 "{user_argument}"
 
 Task:
-1. Stay in the assigned {ai_stance} position and directly answer the user's latest argument, accounting for previous turns without repeating yourself.
-2. Deconstruct the latest argument and provide its strongest counterargument, a logical rebuttal, and an alternative perspective.
-3. Do not invent citations, statistics, research, or factual evidence. If external evidence is unavailable, say what evidence should be checked and label examples hypothetical.
-4. Ask one challenging follow-up question and give concrete suggestions for the user's next response.
-5. Avoid treating the user's position as automatically wrong. Keep the response relevant to the topic and appropriately challenging for {format_type}.
-6. Set response_method to "gemini".
+1. Deconstruct the user's latest argument, score its logic and detect fallacies.
+2. Deliver your next speech turn: challenge their premises, cite counter-evidence, and ask a pointed cross-examination question.
 """
         try:
             response = self.client.models.generate_content(
@@ -122,13 +113,9 @@ Task:
                     temperature=0.6,
                 ),
             )
-            result = DebateTurnResponse.model_validate_json(response.text)
-            return result.model_copy(update={
-                "response_method": "gemini",
-                "analysis": apply_overall_score(result.analysis, "gemini"),
-            })
-        except Exception:
-            logger.exception("Gemini debate response failed; using the disclosed rule-based baseline.")
+            return DebateTurnResponse.model_validate_json(response.text)
+        except Exception as e:
+            print(f"[GeminiAIService.generate_debate_turn] Error: {e}, falling back to mock.")
             return self.mock_fallback.generate_debate_turn(
                 topic, format_type, user_stance, ai_stance, ai_persona, user_argument, turn_history
             )
@@ -192,8 +179,8 @@ Instructions:
                     temperature=0.3,
                 ),
             )
-            result = RebuttalEvaluationResult.model_validate_json(response.text)
-            return result.model_copy(update={"analysis_method": "gemini"})
+            return RebuttalEvaluationResult.model_validate_json(response.text)
         except Exception as e:
             print(f"[GeminiAIService.evaluate_rebuttal] Error: {e}, falling back to mock.")
             return self.mock_fallback.evaluate_rebuttal(target_claim, fallacy_type, user_rebuttal, context)
+
