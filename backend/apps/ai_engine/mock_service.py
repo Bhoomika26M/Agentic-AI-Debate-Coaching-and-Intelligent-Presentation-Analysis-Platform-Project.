@@ -2,66 +2,21 @@ from typing import List, Dict, Any
 from .base import BaseAIService
 from .schemas import (
     ArgumentAnalysisResult,
-    ToulminModel,
-    ArgumentScoreRubric,
-    FallacyItem,
-    CounterArgumentItem,
     DebateTurnResponse,
     SpeechCritiqueResult,
     PresentationCritiqueResult,
     SlideCritiqueItem,
     RebuttalEvaluationResult
 )
+from .argument_analysis import analyze_argument_rule_based
 
 class MockAIService(BaseAIService):
     """
-    Deterministic mock AI service for unit testing, CI pipelines,
-    and development without requiring an active API key.
+    Deterministic rule-based analysis for offline use and testing.
     """
 
     def analyze_argument(self, argument_text: str, context: str = "") -> ArgumentAnalysisResult:
-        has_slope = "will" in argument_text.lower() or "inevitably" in argument_text.lower() or "replace" in argument_text.lower()
-        
-        fallacies = []
-        if has_slope:
-            fallacies.append(
-                FallacyItem(
-                    type="Slippery Slope / Overreach",
-                    excerpt=argument_text[:80] + "...",
-                    explanation="Causal link assumes an inevitable sequence of extreme outcomes without substantiating intermediate dependencies.",
-                    correction="Qualify the proposition and support each causal mechanism with independent empirical citations."
-                )
-            )
-
-        return ArgumentAnalysisResult(
-            toulmin=ToulminModel(
-                claim="The asserted proposition posits fundamental systemic change.",
-                grounds="Empirical observation of recent technological and societal trends.",
-                warrant="Societal institutions must adapt proactively when technical efficiency shifts.",
-                backing="Sociotechnical transition theory establishes that technological shocks require institutional re-evaluations.",
-                qualifier="Conditionally asserted subject to institutional oversight.",
-                rebuttal="Unless countervailing human discretionary rights are statutorily codified as inalienable."
-            ),
-            scores=ArgumentScoreRubric(
-                logic=78 if not fallacies else 65,
-                evidence=72,
-                persuasiveness=80,
-                clarity=85,
-                overall=78 if not fallacies else 71
-            ),
-            fallacies=fallacies,
-            counterarguments=[
-                CounterArgumentItem(
-                    perspective="Empirical Counterpoint",
-                    claim="Historical evidence suggests institutional lag creates unmanageable transitional costs."
-                ),
-                CounterArgumentItem(
-                    perspective="Ethical Considerations",
-                    claim="Deontological principles prioritize human agency over raw computational efficiency."
-                )
-            ],
-            feedback="Your argument presents a clear thesis and articulate syntax. Ensure all causal predictions have direct supporting premises."
-        )
+        return analyze_argument_rule_based(argument_text, context)
 
     def generate_debate_turn(
         self,
@@ -74,17 +29,89 @@ class MockAIService(BaseAIService):
         turn_history: List[Dict[str, str]]
     ) -> DebateTurnResponse:
         analysis = self.analyze_argument(user_argument, context=topic)
-        rebuttal = (
-            f"While the {user_stance.capitalize()} side raises a compelling observation regarding '{topic}', "
-            f"their argument assumes that efficiency automatically guarantees equitable outcomes. "
-            f"In reality, empirical precedents demonstrate that unconstrained implementation introduces severe "
-            f"systemic vulnerabilities. How does the {user_stance.capitalize()} resolve the governance paradox "
-            f"when standard error mitigation frameworks fail?"
+        claim = analysis.toulmin.claim
+        if analysis.evidence:
+            counterargument = (
+                f"Even if the point in “{claim}” is accepted, the cited material does not by itself establish "
+                "that the proposed policy is the best response to the resolution."
+            )
+            evidence_guidance = (
+                "The argument cites material, but this baseline cannot verify it. Identify its source, sample, "
+                "date, and how it supports the policy comparison."
+            )
+        else:
+            counterargument = (
+                f"The claim “{claim}” may identify a concern, but without supporting evidence it does not yet "
+                "show that your side's proposed conclusion follows."
+            )
+            evidence_guidance = (
+                "No checkable evidence was identified in this turn. Add a verifiable source or clearly label "
+                "a concrete example as hypothetical."
+            )
+        if analysis.reasoning_weaknesses:
+            logical_rebuttal = (
+                "The key gap to answer is: " + analysis.reasoning_weaknesses[0]
+                + " Establish the missing link before treating the conclusion as proven."
+            )
+        else:
+            logical_rebuttal = (
+                "The reasoning should compare this proposal with a plausible alternative and explain why its "
+                "benefits outweigh the strongest trade-off."
+            )
+        alt_perspective = (
+            f"From the {ai_stance.lower()} position, the same issue can be framed around whether the proposed "
+            "solution is proportionate, workable, and preferable to available alternatives."
         )
+        prior_ai_points = [
+            turn.get("transcript", "")
+            for turn in turn_history
+            if turn.get("speaker") == "AI"
+        ]
+        if prior_ai_points:
+            follow_up = (
+                "How does your response address the unresolved challenge from the preceding round while "
+                f"connecting your evidence to “{claim}”?"
+            )
+        else:
+            follow_up = (
+                f"What verifiable evidence links “{claim}” to the outcome you predict on “{topic}”?"
+            )
+        difficulty = format_type.casefold()
+        if 'beginner' in difficulty:
+            follow_up = (
+                f"What is one reason and one checkable example that supports your claim: “{claim}”?"
+            )
+        elif 'advanced' in difficulty:
+            follow_up = (
+                f"What comparative evidence would show that “{claim}” is preferable to the strongest "
+                "alternative, and what limitation could weaken that evidence?"
+            )
+        suggestions = list(analysis.recommendations[:2])
+        if not suggestions:
+            suggestions = [
+                "State the warrant that connects your evidence to the claim.",
+                "Address one plausible counterexample directly.",
+            ]
+        rebuttal = " ".join((
+            counterargument,
+            logical_rebuttal,
+            evidence_guidance,
+            follow_up,
+        ))
         return DebateTurnResponse(
             analysis=analysis,
             ai_rebuttal=rebuttal,
-            persona_notes=f"Delivered in {ai_persona} style conforming to {format_type} standards."
+            persona_notes=(
+                f"Rule-based coaching response for {format_type}; this is not a live LLM answer. "
+                "It responds to the submitted claim but may miss nuance."
+            ),
+            strongest_counterargument=counterargument,
+            logical_rebuttal=logical_rebuttal,
+            alternative_perspective=alt_perspective,
+            evidence_guidance=evidence_guidance,
+            follow_up_question=follow_up,
+            next_response_suggestions=suggestions,
+            response_method="rule_based",
         )
 
     def evaluate_speech(
@@ -183,8 +210,9 @@ class MockAIService(BaseAIService):
             flaws.append("Brief statement; elaborate on why the opponent's warrant breaks down.")
 
         improved = (
-            f"While the claim argues that '{target_claim[:60]}...', this inference fails due to {fallacy_type or 'an unsupported warrant'}. "
-            "Specifically, empirical precedents show that counter-mechanisms intervene, making the asserted outcome non-deterministic."
+            f"The claim that '{target_claim[:120]}' needs a clearer supporting link. "
+            f"To challenge {fallacy_type or 'the reasoning'}, identify the premise that is unsupported, "
+            "explain why it does not establish the conclusion, and add a verifiable source if making a factual claim."
         )
 
         return RebuttalEvaluationResult(
@@ -193,6 +221,6 @@ class MockAIService(BaseAIService):
             strengths=strengths or ["Clear thesis statement in response to the prompt."],
             flaws=flaws or ["Minor refinement needed in precision of statistical warrants."],
             improved_version=improved,
-            coach_tip=f"When refuting {fallacy_type or 'flawed reasoning'}, isolate the unstated warrant and demonstrate an exception where the premise fails."
+            coach_tip=f"When refuting {fallacy_type or 'flawed reasoning'}, isolate the unstated warrant and demonstrate an exception where the premise fails.",
+            analysis_method="rule_based",
         )
-

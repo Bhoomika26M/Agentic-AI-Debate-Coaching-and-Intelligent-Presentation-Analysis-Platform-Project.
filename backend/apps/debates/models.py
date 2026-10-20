@@ -16,6 +16,11 @@ class SessionStatus(models.TextChoices):
     COMPLETED = 'COMPLETED', 'Completed'
     ABANDONED = 'ABANDONED', 'Abandoned'
 
+class DebateDifficulty(models.TextChoices):
+    BEGINNER = 'BEGINNER', 'Beginner'
+    INTERMEDIATE = 'INTERMEDIATE', 'Intermediate'
+    ADVANCED = 'ADVANCED', 'Advanced'
+
 class DebateTopic(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=500)
@@ -36,8 +41,14 @@ class DebateSession(models.Model):
     user_stance = models.CharField(max_length=20, choices=StanceChoices.choices, default=StanceChoices.AFFIRMATIVE)
     ai_stance = models.CharField(max_length=20, choices=StanceChoices.choices, default=StanceChoices.NEGATIVE)
     ai_persona = models.CharField(max_length=100, default='Socratic Inquisitor')
+    difficulty = models.CharField(
+        max_length=20,
+        choices=DebateDifficulty.choices,
+        default=DebateDifficulty.INTERMEDIATE,
+    )
     status = models.CharField(max_length=20, choices=SessionStatus.choices, default=SessionStatus.IN_PROGRESS)
     overall_score = models.IntegerField(null=True, blank=True)
+    evaluation = models.JSONField(default=dict, blank=True)
     started_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
@@ -55,7 +66,15 @@ class DebateTurn(models.Model):
     speaker = models.CharField(max_length=10) # 'USER' or 'AI'
     transcript = models.TextField()
     turn_score = models.IntegerField(null=True, blank=True)
+    analysis = models.JSONField(default=dict, blank=True)
+    client_turn_id = models.UUIDField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['turn_number', 'created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['session', 'client_turn_id'],
+                name='unique_client_turn_per_debate',
+            ),
+        ]
