@@ -13,139 +13,106 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Analyze an argument.
-  async function analyzeArgument() {
-    if (argument.trim().length < 10) {
-      setError("Please enter at least 10 characters.");
-      return;
-    }
+  const [coachingScores, setCoachingScores] = useState({
+    argument_score: 80,
+    rebuttal_score: 55,
+    presentation_score: 90,
+    clarity_score: 75,
+  });
 
+  // Send a request to the backend API.
+  async function callApi(endpoint, body, errorMessage) {
     setLoading(true);
     setError("");
     setResult(null);
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/v1/arguments/analyze`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ text: argument }),
-        }
-      );
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.detail || "Argument analysis failed."
-        );
+        const detail = Array.isArray(data.detail)
+          ? data.detail.map((item) => item.msg).join(", ")
+          : data.detail;
+
+        throw new Error(detail || errorMessage);
       }
 
       setResult(data);
     } catch (err) {
       setError(
         err.message ||
-          "Could not connect to the backend. Make sure FastAPI is running at http://127.0.0.1:8000."
+          "Could not connect to the backend. Make sure FastAPI is running."
       );
     } finally {
       setLoading(false);
     }
   }
 
-  // Generate a rebuttal.
-  async function generateRebuttal() {
+  // Analyze an argument.
+  function analyzeArgument() {
+    if (argument.trim().length < 10) {
+      setError("Please enter at least 10 characters.");
+      setResult(null);
+      return;
+    }
+
+    callApi(
+      "/api/v1/arguments/analyze",
+      { text: argument.trim() },
+      "Argument analysis failed."
+    );
+  }
+
+  // Generate an AI-powered rebuttal.
+  function generateRebuttal() {
     if (opposingArgument.trim().length < 10) {
       setError(
         "Please enter an opposing argument of at least 10 characters."
       );
+      setResult(null);
       return;
     }
 
-    setLoading(true);
-    setError("");
-    setResult(null);
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/v1/rebuttals/generate`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            argument: opposingArgument,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "Rebuttal generation failed."
-        );
-      }
-
-      setResult(data);
-    } catch (err) {
-      setError(
-        err.message ||
-          "Could not connect to the backend. Check that FastAPI is running."
-      );
-    } finally {
-      setLoading(false);
-    }
+    callApi(
+      "/api/v1/rebuttals/generate",
+      { argument: opposingArgument.trim() },
+      "Rebuttal generation failed."
+    );
   }
 
   // Analyze a presentation script.
-  async function analyzePresentationScript() {
+  function analyzePresentationScript() {
     if (!presentationText.trim()) {
       setError("Please enter your presentation script.");
+      setResult(null);
       return;
     }
 
-    setLoading(true);
-    setError("");
-    setResult(null);
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/v1/presentations/analyze`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            text: presentationText,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "Presentation analysis failed."
-        );
-      }
-
-      setResult(data);
-    } catch (err) {
-      setError(
-        err.message ||
-          "Could not connect to the presentation analysis API."
-      );
-    } finally {
-      setLoading(false);
-    }
+    callApi(
+      "/api/v1/presentations/analyze",
+      { text: presentationText.trim() },
+      "Presentation analysis failed."
+    );
   }
 
-  // Change workspace tabs and clear old results.
+  // Generate personalized coaching.
+  function generateCoaching() {
+    callApi(
+      "/api/v1/coaching/generate",
+      coachingScores,
+      "Coaching generation failed."
+    );
+  }
+
+  // Change tabs and clear previous results.
   function changeTab(tab) {
     setActiveTab(tab);
     setResult(null);
@@ -182,10 +149,10 @@ function App() {
     return String(value ?? "Not available");
   }
 
-  // Display detected fallacies as individual cards.
+  // Display detected fallacies.
   function renderFallacies(fallacies) {
     if (!Array.isArray(fallacies) || fallacies.length === 0) {
-      return <p>None identified</p>;
+      return <p>None identified.</p>;
     }
 
     return (
@@ -216,7 +183,7 @@ function App() {
     );
   }
 
-  // Display filler word counts as separate rows.
+  // Display filler word counts.
   function renderFillerWords(fillerWords) {
     if (
       !fillerWords ||
@@ -238,8 +205,7 @@ function App() {
           <li key={word}>
             <strong>{word}</strong>
             <span>
-              {count}{" "}
-              {count === 1 ? "occurrence" : "occurrences"}
+              {count} {count === 1 ? "occurrence" : "occurrences"}
             </span>
           </li>
         ))}
@@ -247,7 +213,7 @@ function App() {
     );
   }
 
-  // Display coaching feedback and score notes as lists.
+  // Display feedback lists.
   function renderFeedback(feedback) {
     if (Array.isArray(feedback)) {
       if (feedback.length === 0) {
@@ -270,7 +236,7 @@ function App() {
     return <p>No additional feedback available.</p>;
   }
 
-  // Display the presentation score with a progress meter.
+  // Display presentation score.
   function renderPresentationScore(value) {
     const score = Math.max(
       0,
@@ -332,6 +298,49 @@ function App() {
     return <p>{formatValue(value)}</p>;
   }
 
+  // Display the rebuttal in a dedicated layout.
+  function renderRebuttalResult() {
+    return (
+      <>
+        <div className="result-item">
+          <h4>Original Argument</h4>
+          <p>{result.original_argument || "Not available"}</p>
+        </div>
+
+        <div className="result-item">
+          <h4>Debate Strategy</h4>
+          <p>{result.strategy || "Not available"}</p>
+        </div>
+
+        <div className="result-item">
+          <h4>Generated Rebuttal</h4>
+          <p className="rebuttal-text">
+            {result.rebuttal || "No rebuttal was returned."}
+          </p>
+        </div>
+
+        <div className="result-item">
+          <h4>AI Model</h4>
+          <p>
+            {result.analysis_method === "ollama"
+              ? "Ollama — local AI model"
+              : result.analysis_method === "rule_based_fallback"
+                ? "Rule-based fallback"
+                : result.analysis_method || "Not specified"}
+          </p>
+        </div>
+
+        <div className="result-item">
+          <h4>Important Note</h4>
+          <p>
+            {result.limitations ||
+              "Review the rebuttal and verify factual claims before relying on them."}
+          </p>
+        </div>
+      </>
+    );
+  }
+
   return (
     <div className="app-shell">
       {/* Sidebar */}
@@ -375,6 +384,16 @@ function App() {
         >
           <span className="nav-icon">▤</span>
           Presentation Coach
+        </button>
+
+        <button
+          className={`nav-item ${
+            activeTab === "coaching" ? "active" : ""
+          }`}
+          onClick={() => changeTab("coaching")}
+        >
+          <span className="nav-icon">✦</span>
+          Personalized Coaching
         </button>
 
         <div className="sidebar-bottom">
@@ -498,6 +517,28 @@ function App() {
               Explore coaching →
             </div>
           </button>
+
+          <button
+            className={`feature-card ${
+              activeTab === "coaching" ? "selected" : ""
+            }`}
+            onClick={() => changeTab("coaching")}
+          >
+            <div className="feature-icon purple">✦</div>
+
+            <div className="feature-title">
+              Personalized Coaching <span>↗</span>
+            </div>
+
+            <p>
+              Discover your strengths and get a
+              personalized improvement plan.
+            </p>
+
+            <div className="feature-link">
+              Get coaching →
+            </div>
+          </button>
         </section>
 
         {/* Workspace panel */}
@@ -515,6 +556,9 @@ function App() {
 
                 {activeTab === "presentation" &&
                   "Presentation coaching"}
+
+                {activeTab === "coaching" &&
+                  "Your personalized coaching plan"}
               </h2>
             </div>
 
@@ -577,8 +621,7 @@ function App() {
 
               <div className="input-footer">
                 <span>
-                  {opposingArgument.length} / 10,000
-                  characters
+                  {opposingArgument.length} / 10,000 characters
                 </span>
 
                 <span>✦ Constructive reasoning</span>
@@ -615,8 +658,7 @@ function App() {
 
               <div className="input-footer">
                 <span>
-                  {presentationText.length} / 10,000
-                  characters
+                  {presentationText.length} / 10,000 characters
                 </span>
 
                 <span>✦ Speaking practice</span>
@@ -634,9 +676,69 @@ function App() {
             </>
           )}
 
+          {/* Personalized Coaching */}
+          {activeTab === "coaching" && (
+            <>
+              <p>
+                Rate your current performance from 0 to 100
+                in each category to receive tailored feedback.
+              </p>
+
+              {[
+                {
+                  key: "argument_score",
+                  label: "Argument Quality",
+                },
+                {
+                  key: "rebuttal_score",
+                  label: "Rebuttal Effectiveness",
+                },
+                {
+                  key: "presentation_score",
+                  label: "Presentation Delivery",
+                },
+                {
+                  key: "clarity_score",
+                  label: "Structure and Clarity",
+                },
+              ].map((item) => (
+                <div className="coaching-input" key={item.key}>
+                  <label htmlFor={item.key}>
+                    {item.label}: {coachingScores[item.key]}/100
+                  </label>
+
+                  <input
+                    id={item.key}
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={coachingScores[item.key]}
+                    onChange={(event) =>
+                      setCoachingScores((previous) => ({
+                        ...previous,
+                        [item.key]: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+
+              <button
+                className="primary-button"
+                onClick={generateCoaching}
+                disabled={loading}
+              >
+                {loading
+                  ? "Generating coaching..."
+                  : "✦ Generate Coaching"}
+              </button>
+            </>
+          )}
+
           {/* Error message */}
           {error && (
-            <div className="error-message">
+            <div className="error-message" role="alert">
               {error}
             </div>
           )}
@@ -648,17 +750,30 @@ function App() {
                 <span className="result-check">✓</span>
 
                 <div>
-                  <h3>Analysis results</h3>
-                  <p>Generated by your current backend</p>
+                  <h3>
+                    {activeTab === "rebuttal"
+                      ? "Your AI-generated rebuttal"
+                      : "Analysis results"}
+                  </h3>
+
+                  <p>
+                    {result.analysis_method === "ollama"
+                      ? "Generated using your local AI model"
+                      : "Generated by your current backend"}
+                  </p>
                 </div>
               </div>
 
-              {Object.entries(result).map(([key, value]) => (
-                <div className="result-item" key={key}>
-                  <h4>{formatKey(key)}</h4>
-                  {renderResultValue(key, value)}
-                </div>
-              ))}
+              {activeTab === "rebuttal" ? (
+                renderRebuttalResult()
+              ) : (
+                Object.entries(result).map(([key, value]) => (
+                  <div className="result-item" key={key}>
+                    <h4>{formatKey(key)}</h4>
+                    {renderResultValue(key, value)}
+                  </div>
+                ))
+              )}
             </div>
           )}
         </section>

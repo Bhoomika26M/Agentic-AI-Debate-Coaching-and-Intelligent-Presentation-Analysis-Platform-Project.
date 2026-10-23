@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from app.api.arguments import router as arguments_router
 from app.api.rebuttals import router as rebuttals_router
 from app.api.presentations import router as presentations_router
+from app.api.coaching import router as coaching_router
+from fastapi.middleware.cors import CORSMiddleware
+
 
 app = FastAPI(
     title="Agentic AI Debate Coach",
@@ -31,6 +34,7 @@ app.add_middleware(
 app.include_router(arguments_router)
 app.include_router(rebuttals_router)
 app.include_router(presentations_router)
+app.include_router(coaching_router)
 
 
 @app.get("/")

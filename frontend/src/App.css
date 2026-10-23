@@ -798,3 +798,32 @@ textarea:focus-visible {
   font-size: 13px;
   line-height: 1.6;
 }
+/* Personalized Coaching inputs */
+.coaching-input {
+  margin: 20px 0;
+}
+
+.coaching-input input[type="range"] {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  accent-color: #6d50dc;
+}
+
+/* Personalized Coaching */
+.coaching-input {
+  margin: 20px 0;
+}
+
+.coaching-input label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.coaching-input input[type="range"] {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  accent-color: #6d50dc;
+}
