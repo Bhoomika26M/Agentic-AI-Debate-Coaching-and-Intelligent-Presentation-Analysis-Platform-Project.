@@ -15,6 +15,8 @@ class DebateState(TypedDict, total=False):
     history: list[DebateTurnState]
     latest: str | None
     preferences: dict | None
+    adaptive_tactics: bool
+    reply_length: Literal["concise", "standard"]
     route: Literal["respond", "redirect"]
     memory: list[dict]
     memory_brief: str | None

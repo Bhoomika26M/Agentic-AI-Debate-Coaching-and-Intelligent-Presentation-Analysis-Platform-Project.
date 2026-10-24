@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from fakes import digest, make_chat, make_stream
 
@@ -91,8 +92,9 @@ def test_streaming_emits_the_verified_draft_in_chunks(monkeypatch):
         return [event async for event in debate.respond_stream(_state())]
 
     events = asyncio.run(collect())
-    assert all(kind == "final_delta" for kind, _ in events)
-    assert "".join(text for _, text in events) == "".join(chunks)
+    deltas = [(kind, text) for kind, text in events if kind == "final_delta"]
+    assert all(kind == "final_delta" for kind, _ in deltas)
+    assert "".join(text for _, text in deltas) == "".join(chunks)
 
 
 def test_streaming_strips_the_learner_turn_wrapper(monkeypatch):
@@ -109,8 +111,9 @@ def test_streaming_strips_the_learner_turn_wrapper(monkeypatch):
         return [event async for event in debate.respond_stream(_state())]
 
     events = asyncio.run(collect())
-    assert all(kind == "final_delta" for kind, _ in events)
-    assert "".join(text for _, text in events) == "".join(chunks[1:])
+    deltas = [(kind, text) for kind, text in events if kind == "final_delta"]
+    assert all(kind == "final_delta" for kind, _ in deltas)
+    assert "".join(text for _, text in deltas) == "".join(chunks[1:])
 
 
 def test_streaming_sends_only_the_verified_correction(monkeypatch):
@@ -121,8 +124,26 @@ def test_streaming_sends_only_the_verified_correction(monkeypatch):
         return [event async for event in debate.respond_stream(_state())]
 
     events = asyncio.run(collect())
-    assert all(kind == "final_delta" for kind, _ in events)
-    assert "".join(text for _, text in events) == GOOD_DRAFT
+    deltas = [(kind, text) for kind, text in events if kind == "final_delta"]
+    assert all(kind == "final_delta" for kind, _ in deltas)
+    assert "".join(text for _, text in deltas) == GOOD_DRAFT
+
+
+def test_streaming_emits_structured_diagnostics(monkeypatch):
+    monkeypatch.setattr(debate, "stream", make_stream([GOOD_DRAFT]))
+
+    async def collect():
+        return [event async for event in debate.respond_stream(_state())]
+
+    events = asyncio.run(collect())
+    diagnostics = json.loads(next(text for kind, text in events if kind == "diagnostics"))
+    assert diagnostics["verified"] is True
+    assert diagnostics["fallback"] is False
+    assert diagnostics["reply_words"] == len(GOOD_DRAFT.split())
+    assert diagnostics["context_turns"] == 1
+    assert diagnostics["summarized_turns"] == 0
+    assert diagnostics["problems"] == []
+    assert diagnostics["draft_ms"] >= 0
 
 
 def test_streaming_uses_a_redirect_for_an_unfixable_draft(monkeypatch):
@@ -133,8 +154,12 @@ def test_streaming_uses_a_redirect_for_an_unfixable_draft(monkeypatch):
         return [event async for event in debate.respond_stream(_state())]
 
     events = asyncio.run(collect())
-    assert all(kind == "final_delta" for kind, _ in events)
-    assert "".join(text for _, text in events) == redirect_reply("Should schools ban phones?")
+    deltas = [(kind, text) for kind, text in events if kind == "final_delta"]
+    assert all(kind == "final_delta" for kind, _ in deltas)
+    assert "".join(text for _, text in deltas) == redirect_reply("Should schools ban phones?")
+    diagnostics = json.loads(next(text for kind, text in events if kind == "diagnostics"))
+    assert diagnostics["fallback"] is True
+    assert diagnostics["verified"] is False
 
 
 def test_streaming_declines_injection_without_a_model(monkeypatch):

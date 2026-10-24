@@ -1,6 +1,7 @@
 """Choose a bounded debate move with local Laya while Ollama writes the reply."""
 
 import asyncio
+import importlib.util
 import logging
 import os
 from threading import Lock
@@ -40,6 +41,15 @@ _AGENT: Any | None = None
 _MODEL_LOCK = Lock()
 _PACKAGE_MISSING = False
 _LOAD_TIMEOUT_SECONDS = 10
+
+
+def is_available() -> bool:
+    if not ENABLED or _PACKAGE_MISSING:
+        return False
+    try:
+        return importlib.util.find_spec("laya") is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def _compact(value: str | None, limit: int) -> str:

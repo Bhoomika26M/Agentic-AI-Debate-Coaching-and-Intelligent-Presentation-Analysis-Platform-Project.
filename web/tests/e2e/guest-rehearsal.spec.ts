@@ -4,13 +4,30 @@ const OPPONENT_REPLY =
   "You lean on attention gains, but a ban moves the same distraction into the corridor. " +
   "Which evidence shows classroom focus improving without it?";
 const FOLLOW_UP = "Which study shows attention improving after a ban?";
+const DIAGNOSTICS = {
+  verified: true,
+  fallback: false,
+  history_turns: 0,
+  context_turns: 0,
+  summarized_turns: 0,
+  tactic: "probe_evidence",
+  brief_used: false,
+  memory_used: false,
+  reply_words: 27,
+  problems: [],
+  draft_ms: 12,
+  review_ms: 3,
+  model_ms: 15,
+};
 
 async function mockDebateApi(page: Page) {
   await page.route("**/api/debate/stream", async (route) => {
     await route.fulfill({
       status: 200,
       headers: { "content-type": "text/event-stream; charset=utf-8" },
-      body: `data: ${JSON.stringify({ final_delta: OPPONENT_REPLY })}\n\ndata: [DONE]\n\n`,
+      body: `data: ${JSON.stringify({ final_delta: OPPONENT_REPLY })}\n\n` +
+        `data: ${JSON.stringify({ diagnostics: JSON.stringify(DIAGNOSTICS) })}\n\n` +
+        "data: [DONE]\n\n",
     });
   });
   await page.route("**/api/debate/challenge", async (route) => {
@@ -34,6 +51,8 @@ async function startGuestRehearsal(page: Page) {
   await page.getByRole("button", { name: /^Start rehearsal/ }).click();
   await expect(page.getByText("GUEST REHEARSAL")).toBeVisible();
   await expect(page.getByText(OPPONENT_REPLY).first()).toBeVisible();
+  await expect(page.getByText("VERIFIED", { exact: true })).toBeVisible();
+  await expect(page.getByText("PROBE EVIDENCE", { exact: true })).toBeVisible();
 }
 
 async function submitCase(page: Page, text: string) {

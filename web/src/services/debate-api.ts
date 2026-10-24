@@ -23,6 +23,24 @@ export type DebateMessage = {
   kind?: "standard" | "challenge";
   challengeDepth?: number;
   challengeTarget?: string;
+  diagnostics?: TurnDiagnostics;
+};
+
+/** Structured, non-private facts about how one opponent turn was produced. */
+export type TurnDiagnostics = {
+  verified: boolean;
+  fallback: boolean;
+  history_turns: number;
+  context_turns: number;
+  summarized_turns: number;
+  tactic: string | null;
+  brief_used: boolean;
+  memory_used: boolean;
+  reply_words: number;
+  problems: string[];
+  draft_ms: number;
+  review_ms: number;
+  model_ms: number;
 };
 
 export type ChallengeResult = {
@@ -179,6 +197,7 @@ export async function streamOpponentReply(
   onDelta: (delta: string) => void,
   signal: AbortSignal,
   memory: SessionDigest[] = [],
+  onDiagnostics?: (diagnostics: TurnDiagnostics) => void,
 ) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
@@ -232,13 +251,24 @@ export async function streamOpponentReply(
         return;
       }
       if (data) {
-        let payload: { final_delta?: string; error?: string };
+        let payload: { final_delta?: string; diagnostics?: string; error?: string };
         try {
-          payload = JSON.parse(data) as { final_delta?: string; error?: string };
+          payload = JSON.parse(data) as {
+            final_delta?: string;
+            diagnostics?: string;
+            error?: string;
+          };
         } catch {
           continue;
         }
         if (payload.error) throw new Error(payload.error);
+        if (payload.diagnostics) {
+          try {
+            onDiagnostics?.(JSON.parse(payload.diagnostics) as TurnDiagnostics);
+          } catch {
+            /* Diagnostics are additive; a malformed frame must not drop the reply. */
+          }
+        }
         if (payload.final_delta) {
           const clean = scrubber.push(payload.final_delta);
           if (clean) {

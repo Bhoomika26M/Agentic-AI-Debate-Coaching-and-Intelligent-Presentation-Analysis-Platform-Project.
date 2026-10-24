@@ -188,6 +188,11 @@
 .plan-drill ol { margin: 0; padding-left: 18px; display: grid; gap: 5px; }
 .plan-drill li { color: #3d3831; font-size: 12px; line-height: 1.6; }
 .plan-check { margin: 0; display: flex; align-items: center; gap: 7px; color: #3f594f; font-size: 11px; }
+.plan-drill.is-done { border-color: #7f9b8c; background: #f1f5ef; }
+.plan-drill-done { justify-self: start; min-height: 34px; padding: 0 11px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #b9ad98; color: #514a40; background: transparent; font: 8px var(--mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.plan-drill-done.is-done { border-color: #45695e; color: #2f5448; background: #e4ede6; }
+.plan-drill-done:disabled { cursor: not-allowed; opacity: .6; }
+.plan-drill-done:focus-visible { outline: 2px solid var(--cue); outline-offset: 2px; }
 .plan-weeks { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
 .plan-week { padding: 11px 13px; display: grid; gap: 6px; border-top: 3px solid #45695e; background: #eef1ea; }
 .plan-week b { font: 8px var(--mono); letter-spacing: .07em; color: #3f594f; }
@@ -225,6 +230,14 @@
 .app-settings-foot { margin-top: 17px; padding-top: 15px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #c7baa4; }
 .app-settings-foot p { max-width: 58ch; margin: 0; color: #5b5348; font-size: 11px; line-height: 1.55; }
 .app-settings-foot .button { flex: 0 0 auto; }
+
+.account-data { margin-bottom: 30px; padding: 20px; border: 1px solid #c9bda9; background: var(--paper-light); }
+.account-data-actions { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 9px; }
+.account-data-actions .button { min-height: 42px; }
+.account-data-note { max-width: 72ch; margin: 13px 0 0; color: #5b5348; font-size: 11px; line-height: 1.6; }
+.danger { border-color: #a96e60 !important; color: #7a3c31 !important; }
+.danger.armed { border-color: #7a3c31 !important; color: #fffdf8 !important; background: #7a3c31 !important; }
+.record-detail-actions .button + .button { margin-top: 8px; }
 
 @media (max-width: 760px) {
   .account-app-settings { padding: 15px; }

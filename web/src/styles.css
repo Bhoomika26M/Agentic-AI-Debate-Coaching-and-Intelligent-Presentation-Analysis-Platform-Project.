@@ -356,6 +356,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .stream-cursor { width: 7px; height: 15px; margin-left: 2px; display: inline-block; vertical-align: -2px; background: var(--cue); animation: cursor-blink .8s steps(2) infinite; }
 @keyframes cursor-blink { 50% { opacity: 0; } }
 .thinking-label { margin-top: 9px; display: flex; align-items: center; gap: 7px; color: #624b37; font: 8px var(--mono); letter-spacing: .05em; }
+.message-diagnostics { margin-top: 10px; padding-top: 8px; display: flex; flex-wrap: wrap; gap: 5px 10px; border-top: 1px dashed #c9bda9; color: #5e574d; font: 8px var(--mono); letter-spacing: .05em; }
+.message-diagnostics span:first-child { color: #365b4f; }
+.message-diagnostics span:first-child:not(:only-child) { min-width: 58px; }
 .thinking-label svg, .spin { animation: rotate 1.2s linear infinite; }
 @keyframes rotate { to { transform: rotate(360deg); } }
 .argument-composer { margin-top: auto; border: 1px solid #bfb29b; background: #f7f0e2; }

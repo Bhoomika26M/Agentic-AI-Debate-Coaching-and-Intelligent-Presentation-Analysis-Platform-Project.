@@ -1,14 +1,17 @@
 """The opponent turn: guard, memory, planner, draft, verifier, reviser, fallback."""
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator
+from time import perf_counter
 from typing import Literal
 
 from langgraph.graph import END, StateGraph
 
 from ..prompts import build_messages
 from ..schemas import DebateRequest
+from .conversation import MAX_CONTEXT_TURNS
 from .guard import redirect_reply, route_turn
 from .laya_selector import move_instruction, select_move
 from .llm import chat, stream
@@ -21,7 +24,7 @@ from .verifier import inspect_reply, repair_reply
 
 logger = logging.getLogger(__name__)
 
-ReplyEvent = tuple[Literal["final_delta"], str]
+ReplyEvent = tuple[Literal["final_delta", "diagnostics"], str]
 
 
 def guard_node(state: DebateState) -> DebateState:
@@ -246,11 +249,14 @@ async def respond_verified(state: DebateState) -> dict:
 
 async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
     """Verify a complete candidate before streaming its final text."""
+    started = perf_counter()
     if route_turn(state.get("latest")) == "redirect":
         async for event in _stream_final_reply(redirect_reply(state.get("topic", ""))):
             yield event
         return
 
+    history = [{"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])]
+    history_turns = len(history)
     state = {**state, **memory_node(state)}
     state = {**state, **await planner_node(state)}
 
@@ -259,6 +265,7 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
     messages = _briefed_messages(state, request)
     scrubber = MarkerStream()
     token_limit = 160 if request.reply_length == "concise" else 240
+    draft_started = perf_counter()
     async for delta in stream(messages, temperature=0.75, num_predict=token_limit):
         clean = scrubber.feed(delta)
         if clean:
@@ -266,11 +273,12 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
     tail = scrubber.flush()
     if tail:
         assembled.append(tail)
+    draft_ms = round((perf_counter() - draft_started) * 1000)
 
     draft = "".join(assembled)
     word_limit = REPLY_LENGTH_LIMITS[request.reply_length]
-    history = [{"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])]
     private_context = _private_context(state, history)
+    review_started = perf_counter()
     problems = inspect_reply(
         draft,
         latest=state.get("latest"),
@@ -278,6 +286,8 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
         max_words=word_limit,
     )
     final_reply = draft
+    verified = not problems
+    fallback_used = False
     if problems:
         logger.info("Verifier flagged the streamed turn (%s).", "; ".join(problems))
         revised = await repair_reply(
@@ -299,13 +309,40 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
             )
             if not remaining:
                 final_reply = revised
+                verified = True
             else:
                 logger.info("Revision still failed the verifier (%s).", "; ".join(remaining))
                 final_reply = redirect_reply(state.get("topic", ""))
+                fallback_used = True
         else:
             final_reply = redirect_reply(state.get("topic", ""))
+            fallback_used = True
+    review_ms = round((perf_counter() - review_started) * 1000)
+    model_ms = round((perf_counter() - started) * 1000)
+
     async for event in _stream_final_reply(final_reply):
         yield event
+    yield (
+        "diagnostics",
+        json.dumps(
+            {
+                "verified": verified,
+                "fallback": fallback_used,
+                "history_turns": history_turns,
+                "context_turns": min(history_turns, MAX_CONTEXT_TURNS),
+                "summarized_turns": max(0, history_turns - MAX_CONTEXT_TURNS),
+                "tactic": state.get("tactic"),
+                "brief_used": bool(state.get("brief")),
+                "memory_used": bool(state.get("memory_brief")),
+                "reply_words": len(final_reply.split()),
+                "problems": problems[:4],
+                "draft_ms": draft_ms,
+                "review_ms": review_ms,
+                "model_ms": model_ms,
+            },
+            ensure_ascii=False,
+        ),
+    )
 
 
 async def _stream_final_reply(reply: str) -> AsyncIterator[ReplyEvent]:

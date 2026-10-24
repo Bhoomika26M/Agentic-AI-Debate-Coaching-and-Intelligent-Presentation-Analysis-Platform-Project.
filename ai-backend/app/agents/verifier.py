@@ -5,7 +5,7 @@ import re
 
 from .llm import chat
 from .markup import leaks_marker
-from .response_limits import MAX_REPLY_WORDS, REPLY_LENGTH_LIMITS
+from .response_limits import MAX_REPLY_WORDS
 
 logger = logging.getLogger(__name__)
 

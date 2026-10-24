@@ -20,9 +20,9 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 **Review your delivery.** Record or upload a closing take of up to three minutes. You get transcript-based pace, filler, and pause signals with timestamps you can replay, plus short drills built around what the recording actually shows. The four labels describe observable patterns — fast pace, hesitant patch, long pause, steady pace — not the speaker's emotional state. Audio is discarded after the review unless you choose to keep it.
 
-**Follow a practice plan.** The Plan tab reads your saved sessions, names the criteria your own scores say are weakest, and drafts a drill for each, a four-week rhythm, and the one thing to work on next.
+**Follow a practice plan.** The Plan tab reads your saved sessions, names the criteria your own scores say are weakest, and drafts a drill for each, a four-week rhythm, and the one thing to work on next. Tick each drill off when you finish it; completion stays with the saved plan.
 
-**Track your progress.** Your learner space holds your archive, a profile with goals and audio preferences, and trends across sessions, streaks, average scores, and filler direction. Export sessions as CSV or print a report.
+**Track your progress.** Your learner space holds your archive, a profile with goals and audio preferences, and trends across sessions, streaks, average scores, and filler direction. Download an archive CSV with transcripts, reviews, and delivery takes, or print a report. Settings can delete one rehearsal, all saved practice, or the account itself.
 
 **Keep your work.** A free account with email or Google saves transcripts and reviews to your archive; password recovery is built in. A guest rehearsal lives only in the current browser tab and is cleared when the session ends.
 
@@ -162,7 +162,7 @@ The defaults already point at your local Ollama and allow the local web app. The
 
 Set `ENABLE_LAYA_TACTICS=false` in `ai-backend/.env` to disable Laya and use the existing planner for every turn. Laya chooses only a tactic; Ollama remains responsible for the spoken debate reply. The Laya package is optional, so the backend also falls back to the planner if the extra or checkpoint is unavailable.
 
-This first version does not claim debate-specific accuracy: it validates that Laya returns one of the six known tactics and does not use confidence scores as a gate. Evaluate it on real labeled debate turns before expanding its role.
+This first version does not claim debate-specific accuracy: it validates that Laya returns one of the six known tactics and does not use confidence scores as a gate. A 24-turn hand-labeled baseline lives in `ai-backend/evals/laya_moves.jsonl`; `make eval-laya` reports agreement with those labels. That measures label agreement only, not coaching accuracy or learner improvement, and the set is too small to treat as a benchmark.
 
 From the repository root, `make api` and `make web` start the same two services. `make test` runs the backend pytest suite and the frontend typecheck; `make e2e` builds the web app and runs its Playwright suite (`npx playwright install chromium` once). The browser tests mock the API and Supabase REST responses, so they need no Ollama, account, or network.
 
@@ -178,7 +178,7 @@ Open `http://127.0.0.1:5173`.
 
 **4. Optional: enable accounts**
 
-Practice works without this. To save sessions to an archive, create a Supabase project, put its project URL and publishable key in `web/.env`, put the project URL in `ai-backend/.env` as `SUPABASE_URL`, and run the SQL files in `supabase/migrations/` in filename order. Keep email confirmation on, set the password rule to 12 or more characters with uppercase, lowercase, and numbers, and add `http://127.0.0.1:5173` to the redirect allowlist. Google sign-in is configured in the Supabase provider settings, where the client secret stays.
+Practice works without this. To save sessions to an archive, create a Supabase project, put its project URL and publishable key in `web/.env`, put the project URL in `ai-backend/.env` as `SUPABASE_URL`, and run the SQL files in `supabase/migrations/` in filename order. Keep email confirmation on, set the password rule to 12 or more characters with uppercase, lowercase, and numbers, and add `http://127.0.0.1:5173` to the redirect allowlist. Google sign-in is configured in the Supabase provider settings, where the client secret stays. In-app account deletion is optional: deploy the `supabase/functions/delete-account` Edge Function with `supabase functions deploy delete-account` and set its `APP_ORIGIN` secret to the web origin. Without it, learners can still delete their practice data and are told that account removal needs the operator.
 
 ---
 
@@ -298,7 +298,8 @@ Two things are deliberately not in this release: managed multi-tenant inference,
 - Signed-in data is owner-scoped by Postgres row level security. The API holds no database credential, so a leaked API token cannot read another learner's archive.
 - API replies carry `no-store` headers, including SSE streams; the service starts only with explicit origins and hosts, and rejects wildcards.
 - Request sizes are bounded, concurrent streams are capped, and per-IP plus per-learner request limits return `429` with `Retry-After`. Learner text is always treated as data, never as instructions.
-- Recorded audio is discarded immediately after review unless the learner opts into retention, in which case it is stored in a private per-owner bucket.
+- Recorded audio is discarded immediately after review unless the learner opts into retention, in which case it is stored in a private per-owner bucket. Deleting practice data or the account removes that audio first.
+- Learners can download a full archive, delete a single rehearsal, or delete every saved practice item. Account deletion is server-mediated and removes the auth user only after its audio is gone.
 - Contact details are redacted from saved coaching reports, and categorical emotion recognition stays local and off by default.
 
 ---
@@ -306,7 +307,7 @@ Two things are deliberately not in this release: managed multi-tenant inference,
 ## Project layout
 
 - `web/src/` — views, API clients, session handling, and styles. `features/` holds the arena, verdict, delivery room, learner space, and onboarding; `services/` holds typed API and Supabase clients.
-- `ai-backend/app/` — routes in `main.py`, request schemas, the Ollama client, auth, speech, delivery signals, and the `agents/` graphs that orchestrate a debate turn, a review, a delivery pass, and a practice plan.
+- `ai-backend/app/` — routes in `main.py`, request schemas, the Ollama client, auth, speech, delivery signals, and the `agents/` graphs that orchestrate a debate turn, a review, a delivery pass, and a practice plan. `ai-backend/evals/` holds the small labeled baseline for Laya's move choices.
 - `supabase/migrations/` — sessions, turns, analyses, delivery feedback, profiles, topic bank, learning plans, and the private audio bucket, each with owner-scoped access rules.
 - `docker-compose.yml`, `ai-backend/Dockerfile`, `web/Dockerfile` — the whole stack in containers, with an nginx front end that proxies `/api` and streams server-sent events unbuffered.
 - `ai-backend/.env.example`, `web/.env.example`, `.env.docker.example` — every setting above with safe defaults.

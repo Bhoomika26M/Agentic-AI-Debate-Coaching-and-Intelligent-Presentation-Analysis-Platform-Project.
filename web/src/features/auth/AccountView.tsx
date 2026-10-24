@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpenText, Bot, Check, Download, History, LoaderCircle, MessageSquareText, Printer, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpenText, Bot, Check, Download, History, LoaderCircle, MessageSquareText, Printer, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
-import { listDebateRecords, loadDebateAnalysis, loadDebateRecord, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
+import { deleteDebateRecord, listDebateRecords, loadDebateAnalysis, loadDebateRecord, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
 import { loadAppCapabilities, requestJudge, type AnalysisReport } from "../../services/debate-api";
 import { listPresentationFeedbacks } from "../../services/presentation-records";
-import { requestPlan, type LearningPlan } from "../../services/plan-api";
-import { listLearningPlans, loadSessionDigests, saveLearningPlan } from "../../services/plan-records";
+import { requestPlan } from "../../services/plan-api";
+import { completePlanDrill, listLearningPlans, listPlanDrillCompletions, loadSessionDigests, saveLearningPlan, uncompletePlanDrill, type StoredPlan } from "../../services/plan-records";
+import { buildArchiveCsv, deleteAccount, deleteAllPracticeData, downloadCsvFile } from "../../services/account-data";
 import { emptyProfile, loadProfile, saveProfile, type LearnerProfile } from "../../services/profiles";
 import { cacheApplicationSettings, loadApplicationSettings, type ApplicationSettings } from "../../services/app-settings";
 import { difficultyFor, personaFor, personas } from "../debate-catalog";
@@ -83,7 +84,16 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
   const [prefs, setPrefs] = useState<LearnerPrefs>(() => (user ? loadPrefs(user.id) : emptyPrefs()));
   const [settingsOpen, setSettingsOpen] = useState(() => !hasAnswers(user ? loadPrefs(user.id) : emptyPrefs()));
   const [tab, setTab] = useState<TabKey>("archive");
-  const [storedPlan, setStoredPlan] = useState<{ plan: LearningPlan; created_at: string; sessions_considered: number } | null>(null);
+  const [storedPlan, setStoredPlan] = useState<StoredPlan | null>(null);
+  const [completedDrills, setCompletedDrills] = useState<Set<number>>(new Set());
+  const [drillBusy, setDrillBusy] = useState<number | null>(null);
+  const [planNotice, setPlanNotice] = useState("");
+  const [dataNotice, setDataNotice] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [dataBusy, setDataBusy] = useState(false);
+  const [dangerConfirm, setDangerConfirm] = useState<"data" | "account" | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState("");
   const [planLoaded, setPlanLoaded] = useState(false);
@@ -137,6 +147,31 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
   }, [tab]);
 
   useEffect(() => {
+    if (!dangerConfirm) return;
+    const timer = window.setTimeout(() => setDangerConfirm(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [dangerConfirm]);
+
+  useEffect(() => {
+    const planId = storedPlan?.id;
+    if (!planId) {
+      setCompletedDrills(new Set());
+      return;
+    }
+    let active = true;
+    void listPlanDrillCompletions(planId)
+      .then((rows) => {
+        if (active) setCompletedDrills(new Set(rows.map((row) => row.drill_index)));
+      })
+      .catch(() => {
+        /* Completion tracking is additive; the plan still renders. */
+      });
+    return () => {
+      active = false;
+    };
+  }, [storedPlan?.id]);
+
+  useEffect(() => {
     if (tab !== "settings") return;
     let active = true;
     setLayaStatus("checking");
@@ -154,6 +189,7 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
     setError("");
     try {
       const [record, analysis] = await Promise.all([loadDebateRecord(recordId), loadDebateAnalysis(recordId)]);
+      setConfirmDelete(false);
       setSelected({ ...record, analysis });
     } catch {
       setError("We could not open this rehearsal. Check your connection and try again.");
@@ -268,10 +304,13 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
       );
       const created = await saveLearningPlan(user.id, result.plan, digests.length).catch(() => null);
       setStoredPlan({
+        id: created?.id ?? "",
         plan: result.plan,
         created_at: created?.created_at ?? new Date().toISOString(),
         sessions_considered: digests.length,
       });
+      setCompletedDrills(new Set());
+      setPlanNotice("");
       setPlanLoaded(true);
       if (!created) setPlanError("The plan is ready, but it could not be saved to your account.");
     } catch (error) {
@@ -356,18 +395,104 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
     }
   }
 
-  function downloadCsv() {
-    const rows = [["date", "topic", "persona", "minutes", "status"]];
-    for (const record of records) {
-      rows.push([record.started_at, record.topic, record.persona, String(record.duration_minutes), record.status]);
+  async function downloadCsv() {
+    if (exporting) return;
+    setExporting(true);
+    setDataNotice("");
+    try {
+      downloadCsvFile(await buildArchiveCsv());
+      setDataNotice("Your archive is downloading. It includes transcripts, reviews, and delivery takes.");
+    } catch {
+      setDataNotice("The export could not be built. Check your connection and try again.");
+    } finally {
+      setExporting(false);
     }
-    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "verdict-sessions.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+  }
+
+  async function toggleDrill(index: number) {
+    const planId = storedPlan?.id;
+    if (!planId || drillBusy !== null) return;
+    const done = completedDrills.has(index);
+    setDrillBusy(index);
+    setPlanNotice("");
+    try {
+      if (done) await uncompletePlanDrill(planId, index);
+      else await completePlanDrill(planId, index);
+      setCompletedDrills((current) => {
+        const next = new Set(current);
+        if (done) next.delete(index);
+        else next.add(index);
+        return next;
+      });
+    } catch {
+      setPlanNotice("That completion did not save. Check your connection and try again.");
+    } finally {
+      setDrillBusy(null);
+    }
+  }
+
+  async function removeSelectedRecord() {
+    if (!selected || deleting) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    const sessionId = selected.session.id;
+    setDeleting(true);
+    setError("");
+    try {
+      await deleteDebateRecord(sessionId);
+      setRecords((current) => current.filter((record) => record.id !== sessionId));
+      setSelected(null);
+      setConfirmDelete(false);
+    } catch {
+      setError("That rehearsal could not be deleted. Check your connection and try again.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function removeAllPracticeData() {
+    if (!user || dataBusy) return;
+    if (dangerConfirm !== "data") {
+      setDangerConfirm("data");
+      return;
+    }
+    setDataBusy(true);
+    setDataNotice("");
+    try {
+      await deleteAllPracticeData(user.id);
+      setRecords([]);
+      setSelected(null);
+      setProgress(null);
+      setStoredPlan(null);
+      setCompletedDrills(new Set());
+      setDangerConfirm(null);
+      setDataNotice("All saved practice data was deleted. Your profile and sign-in remain.");
+    } catch {
+      setDataNotice("Practice data could not be fully deleted. Check your connection and try again.");
+    } finally {
+      setDataBusy(false);
+    }
+  }
+
+  async function removeAccount() {
+    if (!user || dataBusy) return;
+    if (dangerConfirm !== "account") {
+      setDangerConfirm("account");
+      return;
+    }
+    setDataBusy(true);
+    setDataNotice("");
+    try {
+      await deleteAccount();
+      await onSignOut();
+    } catch (error) {
+      setDataNotice(error instanceof Error ? error.message : "The account could not be deleted.");
+      setDangerConfirm(null);
+    } finally {
+      setDataBusy(false);
+    }
   }
 
   async function signOut() {
@@ -597,15 +722,30 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
               </div>
 
               <div className="plan-block">
-                <span>DRILLS</span>
-                {storedPlan.plan.drills.map((drill) => (
-                  <article className="plan-drill" key={drill.title}>
-                    <div><b>{drill.title}</b><span>{drill.minutes} MIN · {drill.weak_spot.replaceAll("_", " ").toUpperCase()}</span></div>
-                    <ol>{drill.steps.map((step) => <li key={step}>{step}</li>)}</ol>
-                    <p className="plan-check"><Check size={13} /> {drill.success_check}</p>
-                  </article>
-                ))}
+                <span>DRILLS · {completedDrills.size} OF {storedPlan.plan.drills.length} DONE</span>
+                {storedPlan.plan.drills.map((drill, index) => {
+                  const done = completedDrills.has(index);
+                  return (
+                    <article className={`plan-drill${done ? " is-done" : ""}`} key={`${index}-${drill.title}`}>
+                      <div><b>{drill.title}</b><span>{drill.minutes} MIN · {drill.weak_spot.replaceAll("_", " ").toUpperCase()}</span></div>
+                      <ol>{drill.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+                      <p className="plan-check"><Check size={13} /> {drill.success_check}</p>
+                      <button
+                        type="button"
+                        className={`plan-drill-done${done ? " is-done" : ""}`}
+                        onClick={() => void toggleDrill(index)}
+                        disabled={!storedPlan.id || drillBusy !== null}
+                        aria-pressed={done}
+                        title={!storedPlan.id ? "Save this plan to track drill completion" : done ? "Mark this drill as not done" : "Mark this drill done"}
+                      >
+                        {drillBusy === index ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />}
+                        {done ? "Done" : "Mark done"}
+                      </button>
+                    </article>
+                  );
+                })}
               </div>
+              {planNotice && <p className="archive-partial" role="status">{planNotice}</p>}
 
               <div className="plan-block no-print">
                 <span>THE RHYTHM</span>
@@ -681,14 +821,14 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
               ))}
             </div>
             <div className="progress-actions no-print">
-              <button className="button button-light" onClick={downloadCsv} disabled={progress.sessions === 0}><Download size={15} /> Download sessions CSV</button>
+              <button className="button button-light" onClick={() => void downloadCsv()} disabled={progress.sessions === 0 || exporting}><Download size={15} /> {exporting ? "Building archive CSV" : "Download archive CSV"}</button>
               <button className="button button-light" onClick={() => window.print()}><Printer size={15} /> Print report</button>
             </div>
           </>}
         </section>
       )}
 
-      {tab === "settings" && (
+      {tab === "settings" && <>
         <section className="account-app-settings" aria-labelledby="app-settings-heading">
           <div className="archive-heading">
             <div>
@@ -785,7 +925,43 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
           </div>
           {appSettingsNotice && <div className="inline-notice" role="status">{appSettingsNotice}</div>}
         </section>
-      )}
+
+        <section className="account-data" aria-labelledby="account-data-heading">
+          <div className="archive-heading">
+            <div>
+              <h2 id="account-data-heading">Your data</h2>
+              <p>Download a full archive or remove saved practice from this account.</p>
+            </div>
+          </div>
+          <div className="account-data-actions">
+            <button className="button button-light" type="button" onClick={() => void downloadCsv()} disabled={exporting || records.length === 0}>
+              <Download size={15} /> {exporting ? "Building archive CSV" : "Download archive CSV"}
+            </button>
+            <button
+              className={`button button-light danger${dangerConfirm === "data" ? " armed" : ""}`}
+              type="button"
+              onClick={() => void removeAllPracticeData()}
+              disabled={dataBusy}
+            >
+              <Trash2 size={15} /> {dangerConfirm === "data" ? "Tap again to delete practice data" : "Delete all practice data"}
+            </button>
+            <button
+              className={`button button-light danger${dangerConfirm === "account" ? " armed" : ""}`}
+              type="button"
+              onClick={() => void removeAccount()}
+              disabled={dataBusy}
+            >
+              <Trash2 size={15} /> {dangerConfirm === "account" ? "Tap again to delete my account" : "Delete my account"}
+            </button>
+          </div>
+          <p className="account-data-note">
+            Practice data includes saved rehearsals, reviews, delivery reports, practice plans, and your topic bank.
+            Deleting your account also removes the sign-in itself. Both actions cannot be undone; the archive CSV
+            is the only copy kept once they finish.
+          </p>
+          {dataNotice && <div className="inline-notice" role="status">{dataNotice}</div>}
+        </section>
+      </>}
 
       {tab === "archive" && <div className={`account-layout${selected ? " has-selected" : ""}`}>
         <section className="account-archive" aria-labelledby="archive-heading">
@@ -824,7 +1000,7 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
           <section className="record-detail" role="region" aria-label="Saved debate transcript">
             <div className="record-detail-head">
               <div><span>THE MOTION</span><h2>{selected.session.topic}</h2></div>
-              <button onClick={() => setSelected(null)} aria-label="Close transcript"><ArrowLeft size={16} /></button>
+              <button onClick={() => { setSelected(null); setConfirmDelete(false); }} aria-label="Close transcript"><ArrowLeft size={16} /></button>
             </div>
             <div className="record-detail-meta">{opponentName(selected.session.persona)} · {selected.session.learner_position === "for" ? "In favour" : "Against"} · {formatDate(selected.session.started_at)}</div>
             <div className="record-detail-turns">
@@ -855,6 +1031,14 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
             <div className="record-detail-actions">
               <button className="button button-dark" onClick={() => onContinue(selected.session, selected.turns)}>
                 Continue in the debate room <ArrowRight size={15} />
+              </button>
+              <button
+                className={`button button-light danger${confirmDelete ? " armed" : ""}`}
+                type="button"
+                onClick={() => void removeSelectedRecord()}
+                disabled={deleting}
+              >
+                <Trash2 size={15} /> {deleting ? "Deleting" : confirmDelete ? "Tap again to delete" : "Delete this rehearsal"}
               </button>
               <p>Saved turns, including follow-ups, will appear in the room with a fresh clock. The earlier case review is cleared because it no longer covers the extended transcript.</p>
             </div>

@@ -345,6 +345,13 @@ export default function App() {
         },
         controller.signal,
         applicationSettings.usePracticeHistory ? memoryRef.current : [],
+        (diagnostics) => {
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === replyId ? { ...message, diagnostics } : message,
+            ),
+          );
+        },
       );
       setMessages((current) =>
         current.map((message) =>
@@ -1286,6 +1293,15 @@ export default function App() {
                       {message.challengeTarget && <blockquote className="challenge-target">“{message.challengeTarget}”</blockquote>}
                       <div className="message-body"><MarkdownText text={message.content} />{message.pending && <span className="stream-cursor" />}</div>
                       {message.pending && !message.content && <div className="thinking-label"><LoaderCircle size={14} /> DRAFTING, THEN CHECKING</div>}
+                      {message.diagnostics && (
+                        <div className="message-diagnostics" title="Recorded when this turn was drafted and reviewed.">
+                          <span>{message.diagnostics.verified ? "VERIFIED" : "FALLBACK USED"}</span>
+                          <span>{message.diagnostics.reply_words} WORDS</span>
+                          {message.diagnostics.tactic && <span>{message.diagnostics.tactic.replaceAll("_", " ").toUpperCase()}</span>}
+                          <span>{Math.max(1, Math.round(message.diagnostics.model_ms / 1000))}S DRAFT + REVIEW</span>
+                          {message.diagnostics.summarized_turns > 0 && <span>{message.diagnostics.summarized_turns} EARLIER TURNS CONDENSED</span>}
+                        </div>
+                      )}
                     </motion.article>
                   ))}
                   {continuation && continuedHistoryCount === messages.length && <div className="history-boundary">NEW ROUND · CONTINUE BELOW</div>}

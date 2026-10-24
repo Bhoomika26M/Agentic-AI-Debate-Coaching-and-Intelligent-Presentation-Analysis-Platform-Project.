@@ -11,6 +11,12 @@ export type StoredPlan = {
   created_at: string;
 };
 
+export type PlanDrillCompletion = {
+  plan_id: string;
+  drill_index: number;
+  completed_at: string;
+};
+
 function requireClient() {
   if (!supabase) throw new Error("Account storage is not configured.");
   return supabase;
@@ -93,4 +99,30 @@ export async function listLearningPlans(limit = 6) {
     .limit(limit);
   if (error) throw error;
   return (data ?? []) as StoredPlan[];
+}
+
+export async function listPlanDrillCompletions(planId: string) {
+  const { data, error } = await requireClient()
+    .from("learning_plan_drills")
+    .select("plan_id, drill_index, completed_at")
+    .eq("plan_id", planId)
+    .order("drill_index", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as PlanDrillCompletion[];
+}
+
+export async function completePlanDrill(planId: string, drillIndex: number) {
+  const { error } = await requireClient()
+    .from("learning_plan_drills")
+    .insert({ plan_id: planId, drill_index: drillIndex });
+  if (error && error.code !== "23505") throw error;
+}
+
+export async function uncompletePlanDrill(planId: string, drillIndex: number) {
+  const { error } = await requireClient()
+    .from("learning_plan_drills")
+    .delete()
+    .eq("plan_id", planId)
+    .eq("drill_index", drillIndex);
+  if (error) throw error;
 }

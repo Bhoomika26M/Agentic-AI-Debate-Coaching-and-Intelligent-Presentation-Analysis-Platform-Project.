@@ -131,6 +131,14 @@ export async function deleteDebateAnalysis(sessionId: string) {
   if (error) throw error;
 }
 
+export async function deleteDebateRecord(sessionId: string) {
+  const { error } = await requireClient()
+    .from("debate_sessions")
+    .delete()
+    .eq("id", sessionId);
+  if (error) throw error;
+}
+
 export async function loadDebateAnalysis(sessionId: string) {
   const { data, error } = await requireClient()
     .from("debate_analyses")

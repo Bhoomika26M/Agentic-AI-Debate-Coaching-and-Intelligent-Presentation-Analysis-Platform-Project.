@@ -6,7 +6,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(14);
+select plan(19);
 
 insert into auth.users (id, email, aud, role) values
   ('11111111-1111-4111-8111-111111111111', 'learner-a@example.com', 'authenticated', 'authenticated'),
@@ -34,9 +34,17 @@ insert into public.profiles (user_id, display_name) values
   ('11111111-1111-4111-8111-111111111111', 'Learner A'),
   ('22222222-2222-4222-8222-222222222222', 'Learner B');
 
-insert into public.learning_plans (user_id, plan, sessions_considered) values
-  ('11111111-1111-4111-8111-111111111111', '{"headline": "A plan"}', 1),
-  ('22222222-2222-4222-8222-222222222222', '{"headline": "B plan"}', 1);
+insert into public.learning_plans (id, user_id, plan, sessions_considered) values
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+   '11111111-1111-4111-8111-111111111111', '{"headline": "A plan"}', 1),
+  ('dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+   '22222222-2222-4222-8222-222222222222', '{"headline": "B plan"}', 1);
+
+insert into public.learning_plan_drills (plan_id, user_id, drill_index) values
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+   '11111111-1111-4111-8111-111111111111', 0),
+  ('dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+   '22222222-2222-4222-8222-222222222222', 0);
 
 -- Learner A
 set local role authenticated;
@@ -52,6 +60,20 @@ select is((select count(*) from public.profiles), 1::bigint,
   'A sees only their own profile');
 select is((select count(*) from public.learning_plans), 1::bigint,
   'A sees only their own learning plans');
+select is((select count(*) from public.learning_plan_drills), 1::bigint,
+  'A sees only completion for their own plan');
+
+select lives_ok(
+  $$insert into public.learning_plan_drills (plan_id, drill_index)
+    values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 1)$$,
+  'A can complete a drill in their own plan'
+);
+select throws_ok(
+  $$insert into public.learning_plan_drills (plan_id, drill_index)
+    values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 1)$$,
+  '42501', null,
+  'A cannot complete a drill in B''s plan'
+);
 
 select lives_ok(
   $$insert into public.debate_turns (session_id, turn_index, speaker, content)
@@ -80,6 +102,8 @@ select is((select count(*) from public.debate_turns), 1::bigint,
   'B does not see the turn A just added');
 select is((select count(*) from public.profiles), 1::bigint,
   'B sees only their own profile');
+select is((select count(*) from public.learning_plan_drills), 1::bigint,
+  'B does not see A''s drill completion');
 select is(
   (select topic from public.debate_sessions),
   'Should cities ban cars?',
@@ -98,6 +122,11 @@ select throws_ok(
   $$select count(*) from public.presentation_feedbacks$$,
   '42501', null,
   'anon cannot read presentation feedback'
+);
+select throws_ok(
+  $$select count(*) from public.learning_plan_drills$$,
+  '42501', null,
+  'anon cannot read drill completion'
 );
 
 reset role;
