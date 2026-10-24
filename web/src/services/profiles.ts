@@ -1,4 +1,5 @@
 import { supabase } from "../features/auth/supabase";
+import { normalizeApplicationSettings, type ApplicationSettings } from "./app-settings";
 
 export type LearnerProfile = {
   display_name: string | null;
@@ -9,9 +10,10 @@ export type LearnerProfile = {
   practice_goal: string | null;
   focus_areas: string[];
   preferences_updated_at: string | null;
+  app_settings: ApplicationSettings;
 };
 
-const COLUMNS = "display_name, experience, goals, retain_audio, purpose, practice_goal, focus_areas, preferences_updated_at";
+const COLUMNS = "display_name, experience, goals, retain_audio, purpose, practice_goal, focus_areas, preferences_updated_at, app_settings";
 
 function requireClient() {
   if (!supabase) throw new Error("Account storage is not configured.");
@@ -28,6 +30,7 @@ export function emptyProfile(): LearnerProfile {
     practice_goal: null,
     focus_areas: [],
     preferences_updated_at: null,
+    app_settings: normalizeApplicationSettings(null),
   };
 }
 
@@ -38,8 +41,15 @@ export async function loadProfile(userId: string): Promise<LearnerProfile | null
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  const row = data as Omit<LearnerProfile, "focus_areas"> & { focus_areas: string[] | null };
-  return { ...row, focus_areas: row.focus_areas ?? [] };
+  const row = data as Omit<LearnerProfile, "focus_areas" | "app_settings"> & {
+    focus_areas: string[] | null;
+    app_settings: unknown;
+  };
+  return {
+    ...row,
+    focus_areas: row.focus_areas ?? [],
+    app_settings: normalizeApplicationSettings(row.app_settings),
+  };
 }
 
 export async function saveProfile(userId: string, profile: LearnerProfile) {
@@ -53,6 +63,7 @@ export async function saveProfile(userId: string, profile: LearnerProfile) {
     practice_goal: profile.practice_goal,
     focus_areas: profile.focus_areas,
     preferences_updated_at: profile.preferences_updated_at,
+    app_settings: profile.app_settings,
   }, { onConflict: "user_id" });
   if (error) throw error;
 }

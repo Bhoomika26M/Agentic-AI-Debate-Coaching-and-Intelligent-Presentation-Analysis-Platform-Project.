@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Check, LoaderCircle, LockKeyhole } from "lucide-react";
 import { difficultyFor, personaFor } from "../debate-catalog";
 import { loadProfile, saveProfile, type LearnerProfile } from "../../services/profiles";
+import { cacheApplicationSettings, loadApplicationSettings, type ApplicationSettings } from "../../services/app-settings";
 import {
   FOCUS_OPTIONS,
   GOAL_OPTIONS,
@@ -61,6 +62,7 @@ export function OnboardingFlow({
   const [experience, setExperience] = useState<NonNullable<LearnerProfile["experience"]>>("developing");
   const [experienceTouched, setExperienceTouched] = useState(false);
   const [retainAudio, setRetainAudio] = useState(false);
+  const [appSettings, setAppSettings] = useState<ApplicationSettings>(() => loadApplicationSettings(userId));
   const [prefs, setPrefs] = useState<LearnerPrefs>(emptyPrefs);
   const [goalNote, setGoalNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -80,6 +82,8 @@ export function OnboardingFlow({
         }
         if (data.goals) setGoalNote(data.goals);
         setRetainAudio(data.retain_audio);
+        setAppSettings(data.app_settings);
+        cacheApplicationSettings(userId, data.app_settings);
       })
       .catch(() => {})
       .finally(() => {
@@ -117,6 +121,7 @@ export function OnboardingFlow({
       experience,
       goals: goalNote.trim().slice(0, 500) || null,
       retain_audio: retainAudio,
+      app_settings: appSettings,
       ...prefsToProfileFields(stamped),
     };
   }
