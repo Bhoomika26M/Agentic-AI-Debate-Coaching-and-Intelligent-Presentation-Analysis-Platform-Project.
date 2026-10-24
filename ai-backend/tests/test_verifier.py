@@ -87,10 +87,29 @@ def test_a_leaked_private_brief_is_rejected():
         "Who pays when the corridor is louder?"
     )
     assert any(
-        "private coaching brief" in problem
+        "private prompt context" in problem
         for problem in inspect_reply(reply, brief=BRIEF)
     )
     assert inspect_reply(GOOD_REPLY, brief=BRIEF) == []
+
+
+TACTIC = (
+    "For this turn, take this debate move without announcing it: Ask the learner to "
+    "support one important factual claim with evidence or reasoning."
+)
+
+
+def test_a_leaked_tactic_is_rejected_even_without_a_planner_brief():
+    """Laya's move is private prompt context too, so the verifier must check it."""
+    reply = (
+        "I will ask the learner to support one important factual claim with evidence, "
+        "as instructed. Which claim will you defend first?"
+    )
+    assert any(
+        "private prompt context" in problem
+        for problem in inspect_reply(reply, private_context=TACTIC)
+    )
+    assert inspect_reply(GOOD_REPLY, private_context=TACTIC) == []
 
 
 def test_a_turn_must_engage_the_latest_point():

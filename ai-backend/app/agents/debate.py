@@ -1,8 +1,9 @@
 """The opponent turn: guard, memory, planner, draft, verifier, reviser, fallback."""
 
+import asyncio
 import logging
-import re
 from collections.abc import AsyncIterator
+from typing import Literal
 
 from langgraph.graph import END, StateGraph
 
@@ -14,16 +15,13 @@ from .llm import chat, stream
 from .markup import MarkerStream, strip_markers
 from .memory import summarize_history
 from .planner import plan_brief, pressure_hint
+from .response_limits import MAX_REPLY_WORDS, REPLY_LENGTH_LIMITS
 from .state import DebateState
-from .verifier import MAX_REPLY_WORDS, inspect_reply, repair_reply
+from .verifier import inspect_reply, repair_reply
 
 logger = logging.getLogger(__name__)
 
-ReplyEvent = tuple[str, str]  # ("delta" | "replace", text)
-
-_ROLE_LABEL = re.compile(
-    r"^(the )?(strategist|skeptic|diplomat|assistant|opponent|ai|coach)\s*:", re.IGNORECASE
-)
+ReplyEvent = tuple[Literal["final_delta"], str]
 
 
 def guard_node(state: DebateState) -> DebateState:
@@ -54,6 +52,8 @@ def _to_request(state: DebateState) -> DebateRequest:
         ],
         learner_argument=state.get("latest"),
         preferences=state.get("preferences"),
+        adaptive_tactics=state.get("adaptive_tactics", True),
+        reply_length=state.get("reply_length", "standard"),
     )
 
 
@@ -109,14 +109,16 @@ def _briefed_messages(state: DebateState, request: DebateRequest) -> list[dict[s
 
 async def planner_node(state: DebateState) -> DebateState:
     history = [{"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])]
-    tactic = await select_move(
-        state.get("topic", ""),
-        state.get("learner_position", "for"),
-        state.get("persona", "skeptic"),
-        state.get("difficulty", "challenge"),
-        history,
-        state.get("latest"),
-    )
+    tactic = None
+    if state.get("adaptive_tactics", True):
+        tactic = await select_move(
+            state.get("topic", ""),
+            state.get("learner_position", "for"),
+            state.get("persona", "skeptic"),
+            state.get("difficulty", "challenge"),
+            history,
+            state.get("latest"),
+        )
     if tactic:
         return {"tactic": tactic, "brief": None}
 
@@ -135,14 +137,23 @@ async def planner_node(state: DebateState) -> DebateState:
 async def draft_node(state: DebateState) -> DebateState:
     """Draft one in-persona turn, briefed by memory and planner."""
     request = _to_request(state)
-    reply = await chat(_briefed_messages(state, request), temperature=0.75, num_predict=240)
+    token_limit = 160 if request.reply_length == "concise" else 240
+    reply = await chat(_briefed_messages(state, request), temperature=0.75, num_predict=token_limit)
     reply = strip_markers(reply)
     return {"draft": reply, "reply": reply}
 
 
 async def verifier_node(state: DebateState) -> DebateState:
     draft = state.get("draft") or state.get("reply", "")
-    problems = inspect_reply(draft, latest=state.get("latest"), brief=state.get("brief"))
+    word_limit = REPLY_LENGTH_LIMITS.get(state.get("reply_length", "standard"), MAX_REPLY_WORDS)
+    history = [{"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])]
+    problems = inspect_reply(
+        draft,
+        latest=state.get("latest"),
+        # Everything private that shaped the draft: brief, history summary, tactic, pressure.
+        private_context=_private_context(state, history),
+        max_words=word_limit,
+    )
     if problems:
         logger.info("Verifier flagged the turn (%s).", "; ".join(problems))
     return {"problems": problems}
@@ -164,6 +175,7 @@ async def reviser_node(state: DebateState) -> DebateState:
         persona=state.get("persona", "skeptic"),
         learner_position=state.get("learner_position", "for"),
         latest=state.get("latest"),
+        max_words=REPLY_LENGTH_LIMITS.get(state.get("reply_length", "standard"), 110),
     )
     if revised is None:
         return {"problems": ["no usable revision"], "revise_count": 1}
@@ -233,9 +245,10 @@ async def respond_verified(state: DebateState) -> dict:
 
 
 async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
-    """Same pipeline as `respond_verified`, streamed as (kind, text) events."""
+    """Verify a complete candidate before streaming its final text."""
     if route_turn(state.get("latest")) == "redirect":
-        yield ("delta", redirect_reply(state.get("topic", "")))
+        async for event in _stream_final_reply(redirect_reply(state.get("topic", ""))):
+            yield event
         return
 
     state = {**state, **memory_node(state)}
@@ -245,35 +258,57 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
     assembled: list[str] = []
     messages = _briefed_messages(state, request)
     scrubber = MarkerStream()
-    async for delta in stream(messages, temperature=0.75, num_predict=240):
+    token_limit = 160 if request.reply_length == "concise" else 240
+    async for delta in stream(messages, temperature=0.75, num_predict=token_limit):
         clean = scrubber.feed(delta)
         if clean:
             assembled.append(clean)
-            yield ("delta", clean)
     tail = scrubber.flush()
     if tail:
         assembled.append(tail)
-        yield ("delta", tail)
 
     draft = "".join(assembled)
-    problems = inspect_reply(draft, latest=state.get("latest"), brief=state.get("brief"))
-    if not problems:
-        return
-
-    logger.info("Verifier flagged the streamed turn (%s).", "; ".join(problems))
-    revised = await repair_reply(
+    word_limit = REPLY_LENGTH_LIMITS[request.reply_length]
+    history = [{"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])]
+    private_context = _private_context(state, history)
+    problems = inspect_reply(
         draft,
-        problems,
-        topic=state.get("topic", ""),
-        persona=state.get("persona", "skeptic"),
-        learner_position=state.get("learner_position", "for"),
         latest=state.get("latest"),
+        private_context=private_context,
+        max_words=word_limit,
     )
-    if revised is not None:
-        revised = strip_markers(revised)
-        remaining = inspect_reply(revised, latest=state.get("latest"), brief=state.get("brief"))
-        if len(remaining) < len(problems):
-            yield ("replace", revised)
-            return
-        logger.info("Revision still failed the verifier (%s).", "; ".join(remaining))
-    yield ("replace", redirect_reply(state.get("topic", "")))
+    final_reply = draft
+    if problems:
+        logger.info("Verifier flagged the streamed turn (%s).", "; ".join(problems))
+        revised = await repair_reply(
+            draft,
+            problems,
+            topic=state.get("topic", ""),
+            persona=state.get("persona", "skeptic"),
+            learner_position=state.get("learner_position", "for"),
+            latest=state.get("latest"),
+            max_words=word_limit,
+        )
+        if revised is not None:
+            revised = strip_markers(revised)
+            remaining = inspect_reply(
+                revised,
+                latest=state.get("latest"),
+                private_context=private_context,
+                max_words=word_limit,
+            )
+            if not remaining:
+                final_reply = revised
+            else:
+                logger.info("Revision still failed the verifier (%s).", "; ".join(remaining))
+                final_reply = redirect_reply(state.get("topic", ""))
+        else:
+            final_reply = redirect_reply(state.get("topic", ""))
+    async for event in _stream_final_reply(final_reply):
+        yield event
+
+
+async def _stream_final_reply(reply: str) -> AsyncIterator[ReplyEvent]:
+    for start in range(0, len(reply), 42):
+        yield ("final_delta", reply[start : start + 42])
+        await asyncio.sleep(0.015)

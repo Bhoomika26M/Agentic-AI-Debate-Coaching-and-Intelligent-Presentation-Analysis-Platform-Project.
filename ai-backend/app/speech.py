@@ -3,6 +3,7 @@ import importlib.util
 import io
 import logging
 import os
+from threading import Lock
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +15,7 @@ STT_BEAM_SIZE = max(1, int(os.getenv("STT_BEAM_SIZE", "5")))
 STT_VAD = os.getenv("STT_VAD", "false").strip().lower() == "true"
 MAX_AUDIO_MB = max(1, int(os.getenv("MAX_AUDIO_MB", "10")))
 MAX_AUDIO_SEC = max(30, int(os.getenv("MAX_AUDIO_SEC", "180")))
+MAX_TRANSCRIBE_SEC = max(30, int(os.getenv("MAX_TRANSCRIBE_SEC", "240")))
 ENABLE_SER = os.getenv("ENABLE_SER", "false").strip().lower() == "true"
 ALLOWED_AUDIO_TYPES = {
     "audio/webm",
@@ -23,6 +25,7 @@ ALLOWED_AUDIO_TYPES = {
     "audio/mpeg",
 }
 _model = None
+_transcribe_lock = Lock()
 
 
 class AudioValidationError(ValueError):
@@ -31,6 +34,10 @@ class AudioValidationError(ValueError):
 
 class TranscriptionUnavailableError(RuntimeError):
     """Raised when no transcription path is configured."""
+
+
+class TranscriptionTimeoutError(TranscriptionUnavailableError):
+    """Raised when decoding exceeds the configured processing budget."""
 
 
 def _sniff_kind(data: bytes) -> str | None:
@@ -62,6 +69,26 @@ def validate_audio(filename: str, content_type: str, data: bytes) -> None:
 def check_duration(seconds: float) -> None:
     if seconds > MAX_AUDIO_SEC:
         raise AudioValidationError(f"Audio is over {MAX_AUDIO_SEC}s. Trim and retry.")
+
+
+def probe_duration(data: bytes) -> float | None:
+    """Read the container duration without decoding audio; None when it is unknown."""
+    try:
+        import av
+    except ImportError:
+        return None
+    try:
+        with av.open(io.BytesIO(data)) as container:
+            if container.duration:
+                return float(container.duration) / 1_000_000
+            durations = [
+                float(stream.duration * stream.time_base)
+                for stream in container.streams
+                if stream.duration and stream.time_base
+            ]
+            return max(durations) if durations else None
+    except (av.FFmpegError, ValueError, OSError, AttributeError):
+        return None
 
 
 def transcription_available() -> bool:
@@ -129,8 +156,11 @@ async def transcribe_audio(
         raise TranscriptionUnavailableError(
             "Hosted provider transcription is not enabled yet."
         )
+    # Reject a long recording before loading the model or decoding a single frame.
+    known_duration = probe_duration(data)
+    if known_duration is not None:
+        check_duration(known_duration)
     model = _load_model()
-    stream = io.BytesIO(data)
     options = {
         "beam_size": STT_BEAM_SIZE,
         "language": _language(),
@@ -139,18 +169,43 @@ async def transcribe_audio(
         "vad_filter": STT_VAD,
     }
     try:
-        segments, _ = await asyncio.to_thread(model.transcribe, stream, **options)
+        decoded = await asyncio.wait_for(
+            asyncio.to_thread(_decode, model, data, options),
+            timeout=MAX_TRANSCRIBE_SEC,
+        )
+    except TimeoutError as error:
+        raise TranscriptionTimeoutError(
+            f"Transcription took longer than {MAX_TRANSCRIBE_SEC}s. "
+            "Trim the recording and try again."
+        ) from error
     except (RuntimeError, OSError) as error:
         if STT_DEVICE == "cpu" or not _is_missing_cuda_library(error):
             raise
         logger.warning("CUDA libraries unavailable (%s); retrying on CPU int8.", error)
         model = _load_model(device="cpu", compute_type="int8")
-        stream.seek(0)
-        segments, _ = await asyncio.to_thread(model.transcribe, stream, **options)
-    out: list[dict[str, float | str]] = []
-    total = 0.0
-    for seg in segments:
-        total = max(total, float(seg.end))
-        out.append({"text": seg.text.strip(), "start": float(seg.start), "end": float(seg.end)})
+        try:
+            decoded = await asyncio.wait_for(
+                asyncio.to_thread(_decode, model, data, options),
+                timeout=MAX_TRANSCRIBE_SEC,
+            )
+        except TimeoutError as error:
+            raise TranscriptionTimeoutError(
+                f"Transcription took longer than {MAX_TRANSCRIBE_SEC}s. "
+                "Trim the recording and try again."
+            ) from error
+    total = max((end for _, end, _ in decoded), default=0.0)
     check_duration(total)
-    return out
+    return [
+        {"text": text, "start": start, "end": end}
+        for start, end, text in decoded
+        if text
+    ]
+
+
+def _decode(model, data: bytes, options: dict) -> list[tuple[float, float, str]]:
+    """Consume the lazy segment generator inside the worker thread."""
+    with _transcribe_lock:
+        segments, _ = model.transcribe(io.BytesIO(data), **options)
+        return [
+            (float(seg.start), float(seg.end), str(seg.text).strip()) for seg in segments
+        ]

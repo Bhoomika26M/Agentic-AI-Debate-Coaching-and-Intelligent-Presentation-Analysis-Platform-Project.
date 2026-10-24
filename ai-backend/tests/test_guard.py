@@ -17,6 +17,15 @@ OFF_MOTION = [
 DEBATE_TURNS = [
     "Schools should ban phones because attention improves in class.",
     "My opponent's claim ignores the cost of enforcement, and the data shows uptake is uneven.",
+    "A school's system prompt for its AI tutor should be published so parents can review it.",
+    "If a government ignores previous instructions from its auditors, "
+    "the public should demand an inquiry.",
+    "Students should be allowed to write essays with AI because the skill being tested "
+    "is judgement.",
+    "We should import more medicines rather than manufacture them domestically.",
+    "The system prompt used by the grading bot is part of the assessment policy.",
+    "My opponent told me to ignore previous instructions from the referee, "
+    "which is no argument at all.",
     "",
 ]
 
@@ -28,6 +37,12 @@ def test_prompt_attacks_and_off_topic_turns_are_declined(turn):
 
 @pytest.mark.parametrize("turn", DEBATE_TURNS)
 def test_real_debate_turns_reach_the_opponent(turn):
+    assert route_turn(turn) == "respond"
+
+
+@pytest.mark.parametrize("turn", DEBATE_TURNS[-6:])
+def test_benign_uses_of_trigger_terms_are_not_refused(turn):
+    """Trigger words can be part of the argument itself, so they are not an automatic refusal."""
     assert route_turn(turn) == "respond"
 
 

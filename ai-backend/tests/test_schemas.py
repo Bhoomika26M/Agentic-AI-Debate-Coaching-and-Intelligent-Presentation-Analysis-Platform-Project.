@@ -42,6 +42,25 @@ def test_a_turn_cannot_be_enormous_and_blank_means_opening():
     assert DebateRequest(**_debate(learner_argument="  ")).learner_argument == "  "
 
 
+def test_a_continued_debate_can_send_more_than_twenty_history_turns():
+    history = [
+        {"speaker": "learner", "content": f"turn {index}"} for index in range(30)
+    ]
+    assert len(DebateRequest(**_debate(history=history)).history) == 30
+    with pytest.raises(ValidationError):
+        DebateRequest(**_debate(history=[{"speaker": "learner", "content": "x"}] * 201))
+
+
+def test_an_overlong_review_gets_a_readable_limit_message():
+    turns = [{"speaker": "learner", "content": "A point."} for _ in range(201)]
+    with pytest.raises(ValidationError, match="too long to review in one pass"):
+        AnalysisRequest(
+            topic="Should schools ban phones?",
+            learner_position="for",
+            turns=turns,
+        )
+
+
 def test_memory_digests_are_bounded_and_typed():
     payload = _debate(
         memory=[

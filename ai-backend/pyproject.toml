@@ -28,12 +28,7 @@ stt = ["faster-whisper>=1.2,<2.0", "av>=12,<14"]
 default-groups = ["dev", "stt"]
 
 [tool.uv.sources]
-torch = [
-    {
-        index = "pytorch-cpu",
-        marker = "sys_platform == 'linux' and platform_machine == 'x86_64'",
-    },
-]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" }]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

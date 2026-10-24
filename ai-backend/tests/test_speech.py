@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+import time
 import types
 
 import pytest
@@ -152,3 +153,46 @@ def test_transcription_availability_is_false_when_the_import_fails(monkeypatch):
 
     monkeypatch.setattr(speech.importlib.util, "find_spec", missing)
     assert speech.transcription_available() is False
+
+
+def test_a_long_recording_is_rejected_before_the_model_loads(monkeypatch):
+    _configure(monkeypatch)
+    calls = _install_fake(monkeypatch)
+    monkeypatch.setattr(speech, "probe_duration", lambda _data: 240.0)
+
+    with pytest.raises(speech.AudioValidationError, match="over 180s"):
+        asyncio.run(speech.transcribe_audio(WEBM, "talk.webm", "audio/webm"))
+
+    assert calls["init"] == []
+    assert calls["transcribe"] == []
+
+
+def test_a_known_duration_is_probed_without_decoding(monkeypatch):
+    _configure(monkeypatch)
+    calls = _install_fake(monkeypatch)
+    seen: list[bytes] = []
+    monkeypatch.setattr(speech, "probe_duration", lambda data: seen.append(data) or 42.0)
+
+    asyncio.run(speech.transcribe_audio(WEBM, "talk.webm", "audio/webm"))
+
+    assert seen == [WEBM]
+    assert len(calls["transcribe"]) == 1
+
+
+def test_duration_probing_returns_none_for_unknown_data():
+    assert speech.probe_duration(b"not audio at all") is None
+
+
+def test_decoding_that_runs_over_budget_is_stopped(monkeypatch):
+    _configure(monkeypatch)
+    _install_fake(monkeypatch)
+    monkeypatch.setattr(speech, "MAX_TRANSCRIBE_SEC", 0.05)
+
+    def slow_decode(*_args, **_kwargs):
+        time.sleep(0.3)
+        return []
+
+    monkeypatch.setattr(speech, "_decode", slow_decode)
+
+    with pytest.raises(speech.TranscriptionTimeoutError, match="longer than"):
+        asyncio.run(speech.transcribe_audio(WEBM, "talk.webm", "audio/webm"))

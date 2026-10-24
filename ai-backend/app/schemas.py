@@ -2,6 +2,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+# A long debate is condensed and windowed by the prompts; these caps only bound the payload.
+MAX_HISTORY_TURNS = 200
+MAX_ANALYSIS_TURNS = 200
+
 FallacyLabel = Literal[
     "Ad Hominem",
     "Straw Man",
@@ -64,10 +68,12 @@ class DebateRequest(BaseModel):
     learner_position: Literal["for", "against"]
     persona: Literal["strategist", "skeptic", "diplomat"]
     difficulty: Literal["warm-up", "challenge", "cross-examination"]
-    history: list[DebateTurn] = Field(default_factory=list, max_length=20)
+    history: list[DebateTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
     learner_argument: str | None = Field(default=None, max_length=4000)
     memory: list[SessionDigest] = Field(default_factory=list, max_length=12)
     preferences: PracticePreferences | None = None
+    adaptive_tactics: bool = True
+    reply_length: Literal["concise", "standard"] = "standard"
 
 
 class AnalysisTurn(BaseModel):
@@ -78,9 +84,21 @@ class AnalysisTurn(BaseModel):
 class AnalysisRequest(BaseModel):
     topic: str = Field(min_length=3, max_length=240)
     learner_position: Literal["for", "against"]
-    turns: list[AnalysisTurn] = Field(min_length=1, max_length=40)
+    turns: list[AnalysisTurn] = Field(min_length=1, max_length=MAX_ANALYSIS_TURNS)
     persona: Literal["strategist", "skeptic", "diplomat"] | None = None
     difficulty: Literal["warm-up", "challenge", "cross-examination"] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def within_review_limit(cls, data):
+        turns = data.get("turns") if isinstance(data, dict) else None
+        if isinstance(turns, list) and len(turns) > MAX_ANALYSIS_TURNS:
+            raise ValueError(
+                f"This transcript is too long to review in one pass ({len(turns)} turns; "
+                f"the limit is {MAX_ANALYSIS_TURNS}). Continue in a shorter round or review "
+                "the latest section."
+            )
+        return data
 
     @model_validator(mode="after")
     def requires_learner_turn(self):
@@ -225,7 +243,9 @@ class ChallengeTurn(BaseModel):
 
 class ChallengeRequest(BaseModel):
     topic: str = Field(min_length=3, max_length=240)
-    history: list[ChallengeTurn] = Field(default_factory=list, max_length=20)
+    history: list[ChallengeTurn] = Field(
+        default_factory=list, max_length=MAX_HISTORY_TURNS
+    )
     latest: str = Field(min_length=1, max_length=4000)
     depth: int = Field(ge=0, le=2)
     preferences: PracticePreferences | None = None

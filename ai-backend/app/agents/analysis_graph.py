@@ -12,6 +12,7 @@ from ..schemas import (
     FallacyBranch,
     RubricBranch,
 )
+from .conversation import MAX_ANALYSIS_TURNS, window_turns
 from .llm import chat
 from .state import AnalysisState
 
@@ -37,10 +38,16 @@ def _base_system() -> str:
 
 
 def _payload(request: AnalysisRequest, task: str) -> dict:
+    summary, transcript = window_turns(
+        [turn.model_dump() for turn in request.turns],
+        recent=MAX_ANALYSIS_TURNS,
+        turn_words=80,
+    )
     return {
         "topic": request.topic,
         "learner_position": request.learner_position,
-        "transcript": [t.model_dump() for t in request.turns],
+        "transcript": transcript,
+        "earlier_summary": summary,
         "task": task,
     }
 

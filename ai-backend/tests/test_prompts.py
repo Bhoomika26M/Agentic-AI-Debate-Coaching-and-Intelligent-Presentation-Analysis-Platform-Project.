@@ -50,3 +50,17 @@ def test_an_unusable_preference_mapping_is_ignored_rather_than_raised():
     assert preference_text({"goal": "not-a-goal"}) == ""
     assert preference_text(None) == ""
     assert "evidence" in preference_text({"goal": "evidence"})
+
+
+def test_a_long_debate_is_condensed_before_it_reaches_the_model():
+    history = [
+        {"speaker": "learner" if index % 2 == 0 else "opponent", "content": f"turn {index}"}
+        for index in range(40)
+    ]
+    messages = build_messages(_request(history=history, learner_argument="My latest point."))
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "system"
+    assert "Earlier in this debate" in messages[1]["content"]
+    # One system prompt, one summary, the recent window, and the latest turn.
+    assert len(messages) == 1 + 1 + 8 + 1
+    assert messages[-1]["content"].startswith("<<learner turn")

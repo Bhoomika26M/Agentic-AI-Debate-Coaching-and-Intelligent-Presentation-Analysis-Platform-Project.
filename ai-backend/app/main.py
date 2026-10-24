@@ -14,6 +14,7 @@ from starlette.requests import Request
 
 from .agents.debate import check_reply, respond_stream
 from .agents.guard import redirect_reply, route_turn
+from .agents.laya_selector import is_available as laya_available
 from .auth import authenticate_request
 from .ollama_client import OLLAMA_MODEL, is_available, is_loaded, warm_model
 from .schemas import (
@@ -28,7 +29,14 @@ from .schemas import (
     PlanResponse,
     PresentationResponse,
 )
-from .speech import MAX_AUDIO_MB, transcription_available
+from .speech import (
+    MAX_AUDIO_MB,
+    AudioValidationError,
+    check_duration,
+    probe_duration,
+    transcription_available,
+    validate_audio,
+)
 
 # The agent graphs log through logging.info; LOG_LEVEL=WARNING silences them.
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
@@ -45,7 +53,7 @@ BUSY_MESSAGE = "The opponent could not finish this turn. Please try again."
 
 
 def sse_event(kind: str, text: str) -> str:
-    """One server-sent event; `kind` is the key the browser reads: delta, replace or error."""
+    """One server-sent event keyed by its event kind."""
     return f"data: {json.dumps({kind: text}, ensure_ascii=False)}\n\n"
 
 
@@ -108,6 +116,7 @@ async def health() -> dict[str, str | bool]:
         "model_available": available,
         "model_loaded": loaded,
         "transcription": "ready" if transcription_available() else "unavailable",
+        "adaptive_tactics_available": laya_available(),
     }
 
 
@@ -116,7 +125,7 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
     # A declined turn never needs the model or a stream slot.
     if route_turn(request.learner_argument) == "redirect":
         async def redirected() -> AsyncIterator[str]:
-            yield sse_event("delta", redirect_reply(request.topic))
+            yield sse_event("final_delta", redirect_reply(request.topic))
             yield STREAM_DONE
 
         return StreamingResponse(
@@ -161,12 +170,12 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
                         if request.preferences
                         else None
                     ),
+                    "adaptive_tactics": request.adaptive_tactics,
+                    "reply_length": request.reply_length,
                 }
             ):
-                if kind == "delta":
+                if kind == "final_delta":
                     assembled.append(text)
-                else:
-                    assembled = [text]
                 yield sse_event(kind, text)
             problem = check_reply("".join(assembled), request.topic)
             if problem is not None:
@@ -347,6 +356,21 @@ async def presentation_analysis(
     topic: str | None = Form(default=None, min_length=3, max_length=240),
 ) -> PresentationResponse:
     # Persistence stays in the browser; Python holds audio in memory and discards it.
+    data = await audio.read(MAX_AUDIO_MB * 1024 * 1024 + 1)
+    filename = audio.filename or "talk.webm"
+    content_type = audio.content_type or "audio/webm"
+    # Size, type, and duration are rejected at the boundary, before a model slot is taken.
+    try:
+        validate_audio(filename, content_type, data)
+        duration = await asyncio.to_thread(probe_duration, data)
+        if duration is not None:
+            check_duration(duration)
+    except AudioValidationError as error:
+        too_large = len(data) > MAX_AUDIO_MB * 1024 * 1024
+        raise HTTPException(
+            status_code=413 if too_large else 400,
+            detail=str(error),
+        ) from error
     if stream_slots.locked():
         raise HTTPException(
             status_code=429,
@@ -356,9 +380,8 @@ async def presentation_analysis(
     try:
         from .agents.delivery_graph import review_delivery_with_graph
 
-        data = await audio.read(MAX_AUDIO_MB * 1024 * 1024 + 1)
         result, gaps, kind = await review_delivery_with_graph(
-            data, audio.filename or "talk.webm", audio.content_type or "audio/webm", topic or None
+            data, filename, content_type, topic or None
         )
         if result is not None and not gaps:
             return PresentationResponse.model_validate({**result, "ser_reflection": []})

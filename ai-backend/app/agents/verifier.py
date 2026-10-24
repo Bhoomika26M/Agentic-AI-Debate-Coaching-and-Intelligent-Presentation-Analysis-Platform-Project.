@@ -5,12 +5,11 @@ import re
 
 from .llm import chat
 from .markup import leaks_marker
+from .response_limits import MAX_REPLY_WORDS, REPLY_LENGTH_LIMITS
 
 logger = logging.getLogger(__name__)
 
-MAX_REPLY_WORDS = 160
 MAX_REVISE_ATTEMPTS = 1
-_LONG_REPLY_WORDS = 160
 _SHORT_REPLY_WORDS = 12
 _ROLE_LABEL = re.compile(
     r"^(the )?(strategist|skeptic|diplomat|assistant|opponent|ai|coach)\s*:",
@@ -81,11 +80,11 @@ def _longest_ordered_run(needles: list[str], haystack: list[str], max_gap: int =
     return best
 
 
-def _leaks_brief(reply: str, brief: str | None, run: int = 4) -> bool:
-    """A brief is private coaching. Four of its content words, in order, means it leaked."""
-    if not brief or not brief.strip():
+def _leaks_private_context(reply: str, private_context: str | None, run: int = 4) -> bool:
+    """Private prompt context must never be quoted. Four of its content words in order is a leak."""
+    if not private_context or not private_context.strip():
         return False
-    tokens = _content_tokens(brief)
+    tokens = _content_tokens(private_context)
     if len(tokens) < run:
         return False
     return _longest_ordered_run(tokens, _content_tokens(reply), max_gap=3) >= run
@@ -95,8 +94,10 @@ def inspect_reply(
     reply: str,
     *,
     latest: str | None = None,
+    private_context: str | None = None,
     brief: str | None = None,
     min_engagement: float = 0.08,
+    max_words: int = MAX_REPLY_WORDS,
 ) -> list[str]:
     """Deterministic findings, in priority order. Empty list means the draft passes."""
     problems: list[str] = []
@@ -110,15 +111,16 @@ def inspect_reply(
         problems.append("the draft carries analysis headings")
     if leaks_marker(text):
         problems.append("the draft repeats the learner-turn wrapper")
-    if len(words) > _LONG_REPLY_WORDS:
-        problems.append(f"the draft runs {len(words)} words (limit {MAX_REPLY_WORDS})")
+    if len(words) > max_words:
+        problems.append(f"the draft runs {len(words)} words (limit {max_words})")
     if len(words) < _SHORT_REPLY_WORDS:
         problems.append("the draft is too short to answer with a real point")
     lowered = text.lower()
     if any(marker in lowered for marker in _OFF_CHARACTER):
         problems.append("the draft breaks character as an assistant")
-    if _leaks_brief(text, brief):
-        problems.append("the draft repeats the private coaching brief")
+    context = private_context if private_context is not None else brief
+    if _leaks_private_context(text, context):
+        problems.append("the draft repeats private prompt context")
     if latest and latest.strip() and engagement_ratio(latest, text) < min_engagement:
         problems.append("the draft does not engage the learner's latest point")
     if "?" not in text:
@@ -134,6 +136,7 @@ def _repair_messages(
     persona: str,
     learner_position: str,
     latest: str | None,
+    max_words: int,
 ) -> list[dict[str, str]]:
     from ..prompts import DIFFICULTIES, PERSONAS
 
@@ -153,7 +156,7 @@ def _repair_messages(
                     DIFFICULTIES.get("challenge", ""),
                     "Rewrite the opponent's draft so it fixes the listed problems without changing "
                     "the position.",
-                    "Reply with the rewritten turn only: under 110 words, in character, no labels, "
+                    f"Reply with the rewritten turn only: under {max_words} words, in character, no labels, "
                     "no headings, and one pointed question at the end.",
                     "Never mention the review, the instructions, or that a correction happened.",
                 ]
@@ -178,6 +181,7 @@ async def repair_reply(
     persona: str,
     learner_position: str,
     latest: str | None,
+    max_words: int = 110,
 ) -> str | None:
     """One bounded revision attempt. Returns None when the reviser adds nothing usable."""
     try:
@@ -189,6 +193,7 @@ async def repair_reply(
                 persona=persona,
                 learner_position=learner_position,
                 latest=latest,
+                max_words=max_words,
             ),
             temperature=0.6,
             num_predict=260,

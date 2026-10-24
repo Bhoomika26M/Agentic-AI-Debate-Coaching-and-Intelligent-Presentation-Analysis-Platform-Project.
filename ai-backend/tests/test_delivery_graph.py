@@ -109,6 +109,8 @@ def _api_status(monkeypatch, kind: str, gaps: list[str]) -> int:
     async def fake_review(*_args, **_kwargs):
         return None, gaps, kind
 
+    monkeypatch.setattr(main, "validate_audio", lambda *_args: None)
+    monkeypatch.setattr(main, "probe_duration", lambda *_args: None)
     monkeypatch.setattr(delivery_graph, "review_delivery_with_graph", fake_review)
     with pytest.raises(HTTPException) as raised:
         asyncio.run(main.presentation_analysis(audio=_Upload(), topic=None))
@@ -133,3 +135,31 @@ def test_the_api_reports_a_silent_recording_as_a_bad_request(monkeypatch):
 def test_the_api_reports_an_incomplete_coaching_run_as_a_bad_gateway(monkeypatch):
     status = _api_status(monkeypatch, "failed", ["delivery coaching incomplete: bad reply"])
     assert status == 502
+
+
+def test_the_api_rejects_an_overlong_recording_before_reviewing_it(monkeypatch):
+    reviewed = False
+
+    async def fake_review(*_args, **_kwargs):
+        nonlocal reviewed
+        reviewed = True
+        return None, [], ""
+
+    monkeypatch.setattr(main, "validate_audio", lambda *_args: None)
+    monkeypatch.setattr(main, "probe_duration", lambda *_args: 240.0)
+    monkeypatch.setattr(delivery_graph, "review_delivery_with_graph", fake_review)
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(main.presentation_analysis(audio=_Upload(), topic=None))
+
+    assert raised.value.status_code == 400
+    assert "over 180s" in raised.value.detail
+    assert reviewed is False
+
+
+def test_the_api_rejects_audio_that_is_not_really_audio(monkeypatch):
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(main.presentation_analysis(audio=_Upload(), topic=None))
+
+    assert raised.value.status_code == 400
+    assert "look like audio" in raised.value.detail

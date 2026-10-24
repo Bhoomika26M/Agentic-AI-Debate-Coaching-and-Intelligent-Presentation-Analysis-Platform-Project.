@@ -1,32 +1,39 @@
+"""A coarse routing signal for turns that are not debate.
+
+The patterns are deliberately narrow: this is not an injection defence. It only
+keeps obvious jailbreaks and clearly off-motion requests away from the model.
+Anything an opponent can answer as debate should reach the model, even when it
+happens to contain words that also appear in an attack.
+"""
+
 import re
 from typing import Literal
 
 from .markup import strip_markers
 
+# Requests aimed at the assistant, not a phrase that merely appears in a case.
 _INJECTION = [
-    r"ignore (all )?(previous|prior|above|earlier) instructions",
-    r"disregard (all )?(previous|prior|above|your|these|the) (instructions|rules|orders)",
-    r"forget (all )?(your|these|the) (instructions|rules)",
-    r"i am the admin",
-    r"i'?m the admin",
-    r"you are now an? (assistant|ai|friend|helper|expert|programmer|coder|teacher)",
-    r"reveal (your )?instructions",
-    "system prompt",
-    r"do anything now",
-    r"developer mode",
+    r"^\s*(please\s+)?(ignore|disregard|forget)\b[^.!?\n]{0,40}\b"
+    r"(previous|prior|above|earlier|your|these|the)\b[^.!?\n]{0,20}\b"
+    r"(instructions?|rules?|orders?|prompts?)\b",
+    r"\byour\s+(system\s+prompt|instructions|rules)\b",
+    r"\b(reveal|show|print|repeat)\s+(me\s+)?(your|the)\s+(system\s+)?(prompt|instructions)\b",
+    r"\bi\s*(am|'m)\s+the\s+admin\b",
+    r"\byou\s+are\s+now\s+an?\s+(assistant|ai|friend|helper|expert|programmer|coder|teacher)\b",
+    r"\bdo\s+anything\s+now\b",
+    r"\bdeveloper\s+mode\b",
 ]
 
 _OFF_MOTION = [
-    "```",
-    r"\bdef \w+\s*\(",
-    r"\bimport \w+",
-    r"\b2\s?sum\b",
-    r"\bleetcode\b",
-    r"write (me )?an? (code|function|program|script|essay|poem|story)",
-    r"write (me )?(\w+ ){1,3}(code|function|program|script)\b",
-    r"solve .* in python",
-    r"answer .* trivia",
-    r"translate .* to (french|spanish|german|hindi)",
+    r"```",
+    r"^\s*(please\s+)?(write|draft|generate|produce)\s+(me\s+)?(an?\s+)?"
+    r"(code|function|program|script|essay|poem|story)\b",
+    r"^\s*(can|could|would)\s+you\s+(please\s+)?(write|draft|generate|solve|translate)\b",
+    r"\b(write|draft|generate)\s+(me\s+)?(an?\s+)?(code|function|program|script)\b",
+    r"^\s*(import|from)\s+[a-z_][\w.]*",
+    r"\bdef\s+\w+\s*\(",
+    r"\bsolve\s+(this|the following)?\s*(leetcode|2\s?sum|problem)\b",
+    r"\btranslate\s+(this|the following)\b",
 ]
 
 _INJECTION_RES = [re.compile(p, re.IGNORECASE) for p in _INJECTION]
