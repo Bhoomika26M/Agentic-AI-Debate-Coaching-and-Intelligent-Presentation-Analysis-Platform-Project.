@@ -37,6 +37,7 @@ from .speech import (
     transcription_available,
     validate_audio,
 )
+from .usage_limits import follow_up_limiter
 
 # The agent graphs log through logging.info; LOG_LEVEL=WARNING silences them.
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
@@ -241,12 +242,12 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
         stream_slots.release()
 
 
-@app.post(
-    "/api/debate/challenge",
-    dependencies=[Depends(authenticate_request)],
-    response_model=ChallengeResponse,
-)
-async def debate_challenge(request: ChallengeRequest) -> ChallengeResponse:
+@app.post("/api/debate/challenge", response_model=ChallengeResponse)
+async def debate_challenge(
+    request: ChallengeRequest,
+    http_request: Request,
+    subject: str | None = Depends(authenticate_request),
+) -> ChallengeResponse:
     if request.depth >= 2:
         return ChallengeResponse(done=True, depth=request.depth)
     if not await is_available():
@@ -259,6 +260,15 @@ async def debate_challenge(request: ChallengeRequest) -> ChallengeResponse:
             status_code=429,
             detail="The local model is busy. Please retry in a moment.",
         )
+    identity = subject or (http_request.client.host if http_request.client else "anonymous")
+    # The client's depth is a display hint; the follow-up cap is enforced here.
+    allowed, depth = follow_up_limiter.claim(identity, request.latest)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="This turn already has two follow-ups. Make your next case.",
+            headers={"Retry-After": "60"},
+        )
     await stream_slots.acquire()
     try:
         from .agents.challenger import challenge_turn
@@ -267,18 +277,20 @@ async def debate_challenge(request: ChallengeRequest) -> ChallengeResponse:
             [{"speaker": t.speaker, "content": t.content} for t in request.history],
             request.latest,
             request.topic,
-            request.depth,
+            depth - 1,
             request.preferences.model_dump() if request.preferences else None,
         )
         if result is None:
+            follow_up_limiter.release(identity, request.latest)
             return ChallengeResponse(done=True, depth=request.depth)
         return ChallengeResponse(
             done=False,
             target_sentence=result["target_sentence"],
             follow_up=result["follow_up"],
-            depth=result["depth"],
+            depth=depth,
         )
     except HTTPError as error:
+        follow_up_limiter.release(identity, request.latest)
         logger.exception("Ollama challenger failed: %s", error)
         raise HTTPException(
             status_code=503,

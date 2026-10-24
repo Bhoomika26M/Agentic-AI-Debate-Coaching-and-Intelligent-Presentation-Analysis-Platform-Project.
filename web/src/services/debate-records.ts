@@ -14,9 +14,21 @@ export type DebateRecord = {
   created_at: string;
 };
 
-export type DebateRecordTurn = Pick<DebateMessage, "id" | "speaker" | "content"> & {
+export type DebateRecordTurn = {
+  id: string;
+  speaker: DebateMessage["speaker"];
+  content: string;
   turn_index: number;
+  kind: "standard" | "challenge";
+  challenge_depth: number | null;
+  challenge_target: string | null;
 };
+
+/** What the arena hands to saveDebateTurn, before the database names are applied. */
+export type DebateTurnInput = Pick<
+  DebateMessage,
+  "id" | "speaker" | "content" | "kind" | "challengeDepth" | "challengeTarget"
+> & { turn_index: number };
 
 function requireClient() {
   if (!supabase) throw new Error("Account storage is not configured.");
@@ -42,13 +54,17 @@ export async function createDebateRecord(
   return data.id as string;
 }
 
-export async function saveDebateTurn(sessionId: string, message: DebateRecordTurn) {
+export async function saveDebateTurn(sessionId: string, message: DebateTurnInput) {
+  const isChallenge = message.kind === "challenge";
   const { error } = await requireClient().from("debate_turns").insert({
     id: message.id,
     session_id: sessionId,
     turn_index: message.turn_index,
     speaker: message.speaker,
     content: message.content,
+    kind: isChallenge ? "challenge" : "standard",
+    challenge_depth: isChallenge ? message.challengeDepth ?? 1 : null,
+    challenge_target: isChallenge ? message.challengeTarget ?? null : null,
   });
   if (error && error.code !== "23505") throw error;
 }
@@ -87,7 +103,7 @@ export async function loadDebateRecord(sessionId: string) {
       .eq("id", sessionId)
       .single(),
     client.from("debate_turns")
-      .select("id, speaker, content, turn_index")
+      .select("id, speaker, content, turn_index, kind, challenge_depth, challenge_target")
       .eq("session_id", sessionId)
       .order("turn_index", { ascending: true }),
   ]);

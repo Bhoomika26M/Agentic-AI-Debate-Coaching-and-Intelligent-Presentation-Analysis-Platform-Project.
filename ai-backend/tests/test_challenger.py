@@ -1,10 +1,16 @@
 """The follow-up question must lean on the learner's own answers without naming them."""
 
 import asyncio
+from types import SimpleNamespace
 
+import pytest
 from fakes import make_chat
+from fastapi import HTTPException
 
+from app import main
 from app.agents import challenger
+from app.schemas import ChallengeRequest
+from app.usage_limits import TurnFollowUpLimiter
 
 REPLY = '{"target_sentence": "Because traffic hurts people.", "follow_up": "Which study shows that?"}'
 LATEST = "Because traffic hurts people."
@@ -50,6 +56,40 @@ def test_an_answer_free_session_asks_the_same_question(monkeypatch):
 def test_an_unusable_answer_mapping_is_ignored(monkeypatch):
     _, system = _run(monkeypatch, {"goal": "not-a-goal", "focus": ["vibes"]})
     assert "asked to work on" not in system
+
+
+def test_the_api_caps_follow_ups_even_when_depth_stays_zero(monkeypatch):
+    monkeypatch.setattr(main, "follow_up_limiter", TurnFollowUpLimiter(limit=2))
+
+    async def available():
+        return True
+
+    async def fake_challenge(_history, _latest, _topic, depth, _preferences=None):
+        return {
+            "target_sentence": LATEST,
+            "follow_up": "Which study shows that?",
+            "depth": depth + 1,
+        }
+
+    monkeypatch.setattr(main, "is_available", available)
+    monkeypatch.setattr(challenger, "challenge_turn", fake_challenge)
+    request = ChallengeRequest(topic="Should cities ban cars?", latest=LATEST, depth=0)
+    http_request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+
+    first = asyncio.run(
+        main.debate_challenge(request=request, http_request=http_request, subject="learner-a")
+    )
+    second = asyncio.run(
+        main.debate_challenge(request=request, http_request=http_request, subject="learner-a")
+    )
+    assert (first.depth, second.depth) == (1, 2)
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(
+            main.debate_challenge(request=request, http_request=http_request, subject="learner-a")
+        )
+    assert raised.value.status_code == 429
+    assert "two follow-ups" in raised.value.detail
 
 
 def test_pressure_stops_once_the_exchange_is_deep_enough(monkeypatch):

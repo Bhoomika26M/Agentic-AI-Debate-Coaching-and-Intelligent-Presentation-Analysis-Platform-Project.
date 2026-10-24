@@ -210,7 +210,7 @@ export function AuthView({
     <main className="auth-page">
       <section className="auth-welcome">
         <h1>Keep your<br /><em>practice close.</em></h1>
-        <p>Sign in to keep your transcripts, argument reviews, and progress. You can also continue as a guest and keep everything in this browser.</p>
+        <p>Sign in to keep your transcripts, argument reviews, and progress. As a guest you can rehearse in this tab; its transcript is cleared when you end the session.</p>
       </section>
 
       <section className="auth-workspace" aria-labelledby="auth-heading">

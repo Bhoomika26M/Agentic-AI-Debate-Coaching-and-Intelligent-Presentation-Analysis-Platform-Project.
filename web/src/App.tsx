@@ -33,6 +33,7 @@ import { generateAndSaveLearningPlan, loadSessionDigests } from "./services/plan
 import type { SessionDigest } from "./services/plan-api";
 import { addBankTopic, listBankTopics, type BankTopic } from "./services/topics";
 import { loadProfile } from "./services/profiles";
+import { cacheApplicationSettings, loadApplicationSettings } from "./services/app-settings";
 import { difficultyOptions, personas, starterTopics, type PersonaKey } from "./features/debate-catalog";
 import { buildRecommendation, hydratePrefs, isOnboardingDone, loadPrefs, preferencesFor } from "./services/learner-prefs";
 import type { OnboardingResult } from "./features/onboarding/OnboardingFlow";
@@ -199,6 +200,7 @@ export default function App() {
   const [prefsReady, setPrefsReady] = useState(false);
   // Digests the memory agent turns into the opponent's private brief.
   const memoryRef = useRef<SessionDigest[]>([]);
+  const memoryLoadedRef = useRef(false);
 
   const activePersona = useMemo(
     () => personas.find((candidate) => candidate.key === persona) ?? personas[0],
@@ -241,6 +243,7 @@ export default function App() {
       .then((profile) => {
         if (!active) return;
         hydratePrefs(user.id, profile ?? null);
+        if (profile?.app_settings) cacheApplicationSettings(user.id, profile.app_settings);
         if (profile?.display_name) setLearnerName(profile.display_name);
       })
       .catch(() => {
@@ -295,12 +298,23 @@ export default function App() {
     history: DebateMessage[],
     learnerArgument: string | null,
   ) {
+    const applicationSettings = loadApplicationSettings(user?.id ?? "guest");
+    if (applicationSettings.usePracticeHistory && user && supabaseConfigured && !memoryLoadedRef.current) {
+      try {
+        memoryRef.current = await loadSessionDigests(12);
+      } catch {
+        memoryRef.current = [];
+      }
+      memoryLoadedRef.current = true;
+    }
     const options: DebateOptions = {
       topic: activeTopic,
       learner_position: position,
       persona,
       difficulty,
       preferences: learnerAim(),
+      adaptive_tactics: applicationSettings.adaptiveTactics,
+      reply_length: applicationSettings.replyLength,
     };
     const replyId = crypto.randomUUID();
     setCueSequence((current) => current + 1);
@@ -330,7 +344,7 @@ export default function App() {
           );
         },
         controller.signal,
-        memoryRef.current,
+        applicationSettings.usePracticeHistory ? memoryRef.current : [],
       );
       setMessages((current) =>
         current.map((message) =>
@@ -340,10 +354,7 @@ export default function App() {
       setTurnError("");
     } catch (error) {
       if (controller.signal.aborted) return;
-      setMessages((current) =>
-        current.filter((message) => message.id !== replyId || message.content.length > 0)
-          .map((message) => message.id === replyId ? { ...message, pending: false } : message),
-      );
+      setMessages((current) => current.filter((message) => message.id !== replyId));
       setTurnError("That turn didn't come through. Send it again.");
     } finally {
       setStreaming(false);
@@ -484,6 +495,7 @@ export default function App() {
     savedTurnIds.current = new Set();
     let nextRecordId: string | null = null;
     memoryRef.current = [];
+    memoryLoadedRef.current = false;
     if (user && supabaseConfigured) {
       try {
         nextRecordId = await createDebateRecord({
@@ -495,11 +507,13 @@ export default function App() {
       } catch {
         setRecordNotice("The debate can continue, but this session could not be saved to your account. Check your Supabase setup.");
       }
-      try {
-        // One bounded read of recent rehearsals so the opponent can press a known weak spot.
-        memoryRef.current = await loadSessionDigests(12);
-      } catch {
-        memoryRef.current = [];
+      if (loadApplicationSettings(user.id).usePracticeHistory) {
+        try {
+          memoryRef.current = await loadSessionDigests(12);
+        } catch {
+          memoryRef.current = [];
+        }
+        memoryLoadedRef.current = true;
       }
     }
     setRecordId(nextRecordId);
@@ -777,7 +791,7 @@ export default function App() {
       try {
         await resumeDebateRecord(recordId);
       } catch {
-        setRecordNotice("Could not update the saved session status. You can keep debating — this transcript stays in the browser.");
+        setRecordNotice("Could not update the saved session status. You can keep debating — this transcript stays in this tab.");
       }
     }
     setSecondsLeft((current) => (current > 0 ? current : duration * 60));
@@ -794,6 +808,9 @@ export default function App() {
       id: turn.id,
       speaker: turn.speaker,
       content: stripControlMarkers(turn.content),
+      kind: turn.kind === "challenge" ? "challenge" : undefined,
+      challengeDepth: turn.challenge_depth ?? undefined,
+      challengeTarget: turn.challenge_target ?? undefined,
     }));
     setTopicChoice(motionTitles.includes(record.topic) ? record.topic : "");
     setCustomTopic(motionTitles.includes(record.topic) ? "" : record.topic);
@@ -823,6 +840,15 @@ export default function App() {
     setRecordId(record.id);
     savedTurnIds.current = new Set(restoredMessages.map((message) => message.id));
     memoryRef.current = [];
+    memoryLoadedRef.current = false;
+    if (user && supabaseConfigured && loadApplicationSettings(user.id).usePracticeHistory) {
+      try {
+        memoryRef.current = await loadSessionDigests(12);
+      } catch {
+        memoryRef.current = [];
+      }
+      memoryLoadedRef.current = true;
+    }
     let notice = "";
     try {
       await resumeDebateRecord(record.id);
@@ -1259,7 +1285,7 @@ export default function App() {
                       </div>
                       {message.challengeTarget && <blockquote className="challenge-target">“{message.challengeTarget}”</blockquote>}
                       <div className="message-body"><MarkdownText text={message.content} />{message.pending && <span className="stream-cursor" />}</div>
-                      {message.pending && !message.content && <div className="thinking-label"><LoaderCircle size={14} /> PREPARING A RESPONSE</div>}
+                      {message.pending && !message.content && <div className="thinking-label"><LoaderCircle size={14} /> DRAFTING, THEN CHECKING</div>}
                     </motion.article>
                   ))}
                   {continuation && continuedHistoryCount === messages.length && <div className="history-boundary">NEW ROUND · CONTINUE BELOW</div>}
@@ -1294,7 +1320,7 @@ export default function App() {
                 </div>
                 <div className="record-card"><div className="record-number">{learnerTurns.length.toString().padStart(2, "0")}</div><span>YOUR TURNS</span></div>
                 <div className="record-card"><div className="record-number">{totalWords.toString().padStart(2, "0")}</div><span>YOUR WORDS</span></div>
-                {!user && <div className="room-guest"><span>GUEST REHEARSAL</span><p>This transcript stays in this browser. Sign in to keep it in your archive.</p></div>}
+                {!user && <div className="room-guest"><span>GUEST REHEARSAL</span><p>This transcript lives only in this browser tab and is cleared when the rehearsal ends. Sign in to keep it in your archive.</p></div>}
               </aside>
             </div>
             <div className="arena-bottomline"><span>VERDICT / PRACTICE ROOM</span><span>AI RESPONSE / FINAL AFTER REVIEW</span><span>SESSION LENGTH {duration} MIN</span></div>
@@ -1479,7 +1505,7 @@ export default function App() {
                   <button className="text-link step-aside" type="button" onClick={() => setView("present")}>Or practise a take on its own <ArrowUpRight size={15} /></button>
                 </div>
               </details>
-              <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>{user ? "This transcript, its review, and any completed delivery take stay in your learner archive." : "This transcript and review stay in this browser session. Sign in before your next rehearsal to keep its transcript in your archive."}</p></div>
+              <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>{user ? "This transcript, its review, and any completed delivery take stay in your learner archive." : "This transcript and review are kept only for this tab and disappear when you close it. Sign in before a rehearsal to save it to your archive."}</p></div>
               <div className="verdict-actions">
                 <button className="button button-dark" onClick={() => setView("setup")}>Start a new rehearsal <ArrowUpRight size={16} /></button>
                 <button className="button button-light" onClick={() => void resumeSession()}><RotateCcw size={16} /> Return to the room</button>

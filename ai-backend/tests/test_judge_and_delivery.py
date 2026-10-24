@@ -81,7 +81,23 @@ def test_delivery_signals_count_words_pauses_and_fillers():
     assert signals["filler_rate_per_100w"] == round(signals["filler_count"] / 12 * 100, 1)
     assert signals["pause_count"] == 1
     assert signals["longest_pause_sec"] == 2.5
-    assert {event["kind"] for event in signals["events"]} == {"rushed", "tense"}
+    assert {event["kind"] for event in signals["events"]} == {"rushed", "paused"}
+
+
+def test_delivery_labels_name_pace_and_pauses_not_emotion():
+    segments = [
+        {"text": "The plan is simple and fair.", "start": 0.0, "end": 3.0},
+        {"text": "It gives every family a clear choice.", "start": 4.5, "end": 8.5},
+        {"text": "That is why I support it today.", "start": 10.0, "end": 14.0},
+    ]
+    events = analyze_delivery(segments)["events"]
+    labels = {event["label"] for event in events}
+    assert {"Long pause", "Steady pace"} <= labels
+    assert not any(
+        word in label.lower()
+        for label in labels
+        for word in ("tense", "flat", "nervous", "anxious", "calm")
+    )
 
 
 def test_delivery_signals_stay_sane_with_no_segments():

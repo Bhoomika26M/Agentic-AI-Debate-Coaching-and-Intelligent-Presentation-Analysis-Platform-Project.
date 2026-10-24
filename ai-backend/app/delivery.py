@@ -42,11 +42,32 @@ def analyze_delivery(segments: list[dict]) -> dict:
             events.append({"kind": "hesitant", "start": start, "end": end, "label": "Hesitant patch", "detail": "Fillers or repeats cluster here. Pause, then restart the chunk."})
     for p in pauses:
         if p["gap"] >= 1.5:
-            events.append({"kind": "tense", "start": p["start"], "end": p["end"], "label": "Tense break", "detail": f"{p['gap']}s gap. Breathe, then re-anchor on one claim."})
+            events.append(
+                {
+                    "kind": "paused",
+                    "start": p["start"],
+                    "end": p["end"],
+                    "label": "Long pause",
+                    "detail": (
+                        f"{p['gap']}s without words. Breathe, then re-anchor on one claim."
+                    ),
+                }
+            )
     if len(texts) >= 3 and wpm < 110 and fillers == 0:
         s, _, _ = texts[0]
         _, _, e = texts[-1]
-        events.append({"kind": "flat", "start": s, "end": e, "label": "Flat run", "detail": "Steady but low-variation delivery. Stress one key word per sentence."})
+        events.append(
+            {
+                "kind": "steady",
+                "start": s,
+                "end": e,
+                "label": "Steady pace",
+                "detail": (
+                    "Even transcript pace with little variation. "
+                    "Stress one key word per sentence."
+                ),
+            }
+        )
     return {
         "wpm": wpm,
         "words": words,

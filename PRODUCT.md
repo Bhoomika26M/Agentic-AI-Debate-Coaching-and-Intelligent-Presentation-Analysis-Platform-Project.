@@ -34,12 +34,12 @@ Learners can choose a curated or custom motion, their side, an opponent persona,
 - Account supports email/password sign-up and sign-in with validation (12+ characters with uppercase, lowercase, number), Google OAuth, email verification, password visibility, and a guest route. Passwords are handled by Supabase Auth; Verdict never sees or stores them.
 - Saved work is owner-scoped with RLS: debate sessions and turns, completion/resume, learner archive with transcript viewing, and saved argument reviews.
 - Argument intelligence reviews the transcript against five named rubric criteria (`clarity`, `relevance`, `evidence_strength`, `logical_consistency`, `persuasiveness`), checks eight documented fallacy types against exact transcript text, and generates five planned counterpoint styles. Incomplete model replies are retried with a repair turn (up to three attempts); a report that stays incomplete ends in a clear error, not a partial review. Limits are stated as text-only.
-- Delivery review covers four observable states (rushed, hesitant, flat, tense-voice) with explainable scores, recommendations, the learner dashboard and progress, reports, and in-app milestones. Categorical emotion recognition stays local-only opt-in; hosted review uses delivery proxies only. Other account roles and debate formats are out of scope for v1.
-- Local inference uses Ollama. Local speech uses faster-whisper tiny by default (STT_MODEL=tiny|base, optional local install); hosted transcription uses a provider key supplied by the learner, handled transiently by Python. Do not persist or log provider keys, expose them to browser code, use a project-owned paid key, or fall back to paid inference.
+- Delivery review reports four transcript-based pace and pause patterns (fast pace, hesitant patch, long pause, steady pace) with explainable scores, recommendations, the learner dashboard and progress, reports, and in-app milestones. The labels do not diagnose emotion, stress, or ability. Categorical emotion recognition stays local-only opt-in; hosted review uses delivery proxies only. Other account roles and debate formats are out of scope for v1.
+- Local inference uses Ollama. Local speech uses faster-whisper `distil-large-v3.5` by default (configurable with `STT_MODEL`, downloaded on first transcription). Hosted transcription and provider-key routing are not implemented; provider keys are rejected. Do not persist or log provider keys, expose them to browser code, use a project-owned paid key, or fall back to paid inference.
 - Recorded audio is discarded immediately by default (10MB / 180s caps). Retention is available only through an explicit learner setting.
 - Keep Python modules focused, code readable, and comments minimal.
 - Backend requires explicit `WEB_ORIGIN` and `ALLOWED_HOSTS`, applies no-store/security response headers, validates request sizes, and caps simultaneous streams (`MAX_ACTIVE_STREAMS=2`). `REQUIRE_AUTH=false` keeps guest practice open; any hosted deployment sets `REQUIRE_AUTH=true` with Supabase JWKS verification.
-- Keyboard access, visible focus, and reduced-motion support are implemented across the practice flow.
+- Keyboard access, visible focus, and reduced-motion CSS support are implemented across the practice flow.
 
 ## Brand Commitments
 
@@ -65,4 +65,4 @@ Learners can choose a curated or custom motion, their side, an opponent persona,
 
 ## Accessibility & Inclusion
 
-The product has no additional product-specific accessibility requirements yet. Keyboard access and reduced-motion refinements are deferred, and should be addressed in a later pass.
+The product has no additional product-specific accessibility requirements yet. Keyboard access, visible focus, and reduced-motion CSS are implemented; a dedicated screen-reader pass is deferred.

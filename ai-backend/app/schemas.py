@@ -192,7 +192,7 @@ class PresentationSegment(BaseModel):
 
 
 class DeliveryEvent(BaseModel):
-    kind: Literal["rushed", "hesitant", "flat", "tense"]
+    kind: Literal["rushed", "hesitant", "steady", "paused"]
     start: float = Field(ge=0, le=3600)
     end: float = Field(ge=0, le=3600)
     label: str = Field(min_length=1, max_length=60)
@@ -222,7 +222,7 @@ class PresentationRequest(BaseModel):
 class DrillCard(BaseModel):
     start: float = Field(ge=0, le=3600)
     end: float = Field(ge=0, le=3600)
-    pattern: Literal["rushed", "hesitant", "flat", "tense"]
+    pattern: Literal["rushed", "hesitant", "steady", "paused"]
     what_happened: str = Field(min_length=1, max_length=280)
     try_this: str = Field(min_length=1, max_length=280)
     example: str = Field(min_length=1, max_length=280)

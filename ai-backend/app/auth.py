@@ -26,11 +26,12 @@ if REQUIRE_AUTH and (not JWKS_URL or not JWT_ISSUER):
 
 async def authenticate_request(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
-) -> None:
+) -> str | None:
+    """Return the verified subject, or None for a guest when guest mode is allowed."""
     if credentials is None:
         if REQUIRE_AUTH:
             raise HTTPException(status_code=401, detail="Sign in to use the debate service.")
-        return
+        return None
 
     if jwks_client is None or not JWT_ISSUER:
         raise HTTPException(status_code=503, detail="Account token verification is not configured.")
@@ -40,7 +41,7 @@ async def authenticate_request(
             jwks_client.get_signing_key_from_jwt,
             credentials.credentials,
         )
-        jwt.decode(
+        claims = jwt.decode(
             credentials.credentials,
             signing_key.key,
             algorithms=["ES256", "RS256", "EdDSA"],
@@ -48,6 +49,7 @@ async def authenticate_request(
             issuer=JWT_ISSUER,
             options={"require": ["sub", "exp", "iss", "aud"]},
         )
+        return str(claims["sub"])
     except PyJWKClientConnectionError as error:
         raise HTTPException(
             status_code=503,

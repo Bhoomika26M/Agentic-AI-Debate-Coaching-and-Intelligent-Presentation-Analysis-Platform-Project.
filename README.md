@@ -12,19 +12,19 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 ## What you can do
 
-**Rehearse a live debate.** Choose a motion from your topic bank or write your own, argue for or against, pick one of three opponents (Strategist, Skeptic, Diplomat), set the pressure and a 2–10 minute clock, then trade turns with streamed replies. The opponent plans against your weakest joint, remembers what your saved sessions showed was weak, adapts its pressure to how you argue, and can press Socratic follow-ups two deep.
+**Rehearse a live debate.** Choose a motion from your topic bank or write your own, argue for or against, pick one of three opponents (Strategist, Skeptic, Diplomat), set the pressure and a 2–10 minute clock, then trade turns. Each opponent reply is drafted in full, verified, and only then displayed as a checked answer; the room labels that wait "Drafting and reviewing." The opponent plans against your weakest joint, remembers what your saved sessions showed was weak, adapts its pressure to how you argue, and can press Socratic follow-ups two deep per learner turn.
 
 **Review your arguments.** Every rehearsal gets ratings on clarity, relevance, evidence, logic, and persuasion, fallacy flags quoted from your exact words, and five counterpoints that test your case from other angles.
 
-**Get a weighted verdict.** Argument, evidence, logic, rebuttal, and communication are scored 30/20/20/15/15, each with a line of coaching behind it. The logic score names the fallacy quotes it caught, and communication carries timestamps from your delivery review when there is one.
+**Get a weighted verdict.** Argument, evidence, logic, rebuttal, and communication are combined 30/20/20/15/15 into one deterministic summary of the review and delivery signals, each with a line of coaching behind it. It is not a second, independent model judgment. The logic score names the fallacy quotes it caught, and communication carries timestamps from your delivery review when there is one.
 
-**Review your delivery.** Record or upload a closing take of up to three minutes. You get pace, filler, and pause signals with timestamps you can replay, plus short drills built around what the recording actually shows. Audio is discarded after the review unless you choose to keep it.
+**Review your delivery.** Record or upload a closing take of up to three minutes. You get transcript-based pace, filler, and pause signals with timestamps you can replay, plus short drills built around what the recording actually shows. The four labels describe observable patterns — fast pace, hesitant patch, long pause, steady pace — not the speaker's emotional state. Audio is discarded after the review unless you choose to keep it.
 
 **Follow a practice plan.** The Plan tab reads your saved sessions, names the criteria your own scores say are weakest, and drafts a drill for each, a four-week rhythm, and the one thing to work on next.
 
 **Track your progress.** Your learner space holds your archive, a profile with goals and audio preferences, and trends across sessions, streaks, average scores, and filler direction. Export sessions as CSV or print a report.
 
-**Keep your work.** A free account with email or Google saves transcripts and reviews to your archive; password recovery is built in. Guests keep everything in the browser.
+**Keep your work.** A free account with email or Google saves transcripts and reviews to your archive; password recovery is built in. A guest rehearsal lives only in the current browser tab and is cleared when the session ends.
 
 ---
 
@@ -34,7 +34,7 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 ![Setting up a rehearsal: motion, side, opponent, difficulty, and length](docs/screenshots/setup.png)
 
-**Argue it live.** Your turns and the opponent's replies stream into a single transcript, with your own turn and word counts kept beside it and the clock still running.
+**Argue it live.** Your turns and the opponent's verified replies appear in a single transcript, with your own turn and word counts kept beside it and the clock still running.
 
 ![A live rehearsal in the arena](docs/screenshots/arena.png)
 
@@ -47,8 +47,8 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 ## How it works
 
 1. You type an argument in the browser and send it to the API.
-2. A deterministic guard routes jailbreaks and off-motion tasks to an in-character redirect with no model call. On a normal learner turn, local Laya selects one move from six bounded debate tactics. Ollama writes the in-persona reply. If Laya is disabled, missing, or cannot return a supported move, the existing planner supplies its private weakest-joint brief. A verifier checks length, role labels, character breaks, leaked private context, and whether the reply engaged the latest point. A flagged turn is repaired once; a turn that still fails is replaced rather than shipped.
-3. Coaching fans rubric scoring, fallacy detection, and counterpoints into parallel branches that merge into one review. Every fallacy quote is matched against your own words, and contact details are redacted from saved reports.
+2. A narrow deterministic guard routes obvious jailbreaks and off-motion requests to an in-character redirect with no model call. It is a coarse routing signal, not a complete injection defence, so a normal argument that merely mentions a trigger phrase still reaches the model. On a normal learner turn, local Laya selects one move from six bounded debate tactics. Ollama writes the in-persona reply. If Laya is disabled, missing, or cannot return a supported move, the existing planner supplies its private weakest-joint brief. A verifier checks length, role labels, character breaks, leakage of any private prompt context (planner brief, stored-history summary, Laya tactic, pressure hint), and whether the reply engaged the latest point. A flagged turn is repaired once; a turn that still fails is replaced rather than shipped. The complete draft is reviewed before any of it is displayed.
+3. Coaching fans rubric scoring, fallacy detection, and counterpoints into parallel branches that merge into one review. Every fallacy quote is matched against your own words, and contact details are redacted from saved reports. A transcript longer than 32 turns is reviewed from a condensed older summary plus the latest 32 turns; a transcript over 200 turns is declined with a clear message instead of being truncated silently.
 4. The practice plan diagnoses weak spots from your scores, writes a drill for each, and refuses to invent weaknesses, scores, or session counts that your record does not support.
 5. Delivery review transcribes your audio to timestamped words, counts pace, fillers, pauses, and repeats in pure Python, and turns those signals into drills.
 
@@ -64,7 +64,7 @@ The model only ever receives text through the API. The browser never talks to a 
 | API | Python 3.12, FastAPI, Pydantic, LangGraph | All model calls, orchestration, and validation live here |
 | Inference | Ollama (`qwen3.5:4b` by default) | Any endpoint reachable at `OLLAMA_BASE_URL` |
 | Debate move selection | Laya, optional local PyTorch checkpoint | Chooses a fixed debate tactic; Ollama still writes the reply |
-| Speech | `faster-whisper` (optional) | Local transcription for delivery review, distilled large-v3 by default |
+| Speech | `faster-whisper` | Local transcription for delivery review; `distil-large-v3.5` by default |
 | Accounts and storage | Supabase (free tier) | Auth, Postgres with row level security, private audio bucket |
 
 ---
@@ -158,7 +158,7 @@ uv sync --extra laya
 uv run --extra laya uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The defaults already point at your local Ollama and allow the local web app. The `laya` extra installs Laya and CPU-only PyTorch on Linux x86-64. The English Laya checkpoint downloads from Hugging Face on the first debate move (about 808 MB) and is cached locally. If cold loading takes more than 10 seconds, that turn uses the existing planner while Laya continues loading in the background. Speech and test tooling install through the default `uv` groups. The first transcription downloads its own model (about 1.5 GB); `STT_DEVICE=cuda` moves transcription to an NVIDIA GPU.
+The defaults already point at your local Ollama and allow the local web app. The `laya` extra installs Laya and CPU-only PyTorch on Linux x86-64. The English Laya checkpoint downloads from Hugging Face on the first debate move (about 808 MB) and is cached locally. If cold loading takes more than 10 seconds, that turn uses the existing planner; the worker thread keeps loading for later turns, and `/api/health` reports that the package is installed, not that the checkpoint is ready. Speech and test tooling install through the default `uv` groups. The first transcription downloads its own model (about 1.5 GB); `STT_DEVICE=cuda` moves transcription to an NVIDIA GPU.
 
 Set `ENABLE_LAYA_TACTICS=false` in `ai-backend/.env` to disable Laya and use the existing planner for every turn. Laya chooses only a tactic; Ollama remains responsible for the spoken debate reply. The Laya package is optional, so the backend also falls back to the planner if the extra or checkpoint is unavailable.
 
@@ -194,6 +194,8 @@ docker compose up --build          # then open http://localhost:8080
 
 The first run downloads the Ollama image and about 3.4 GB of model. The first debate move downloads the Laya checkpoint (about 808 MB) into the persistent `hf-cache` volume. Set `EXTRAS=` to omit Laya and use the planner fallback. Accounts stay optional; fill in the Supabase values in `.env` to enable them.
 
+Compose builds the `runtime` target, so `docker compose up` does not run the backend tests. Run `make test`, `uv run pytest` in `ai-backend`, or `docker build --target test ai-backend` when you want the suite exercised.
+
 Already running Ollama on the host? Reuse it instead of the bundled service:
 
 ```bash
@@ -224,7 +226,7 @@ cd ai-backend && uv run python -c "from app.speech import transcription_availabl
 
 The default model is `distil-large-v3.5` (English only, about 1.5 GB, fetched on the first transcription). `STT_MODEL=large-v3-turbo` is the multilingual option. On CPU it runs at roughly 2.5 times realtime, so a three minute talk takes about 75 seconds. `STT_DEVICE=cuda` moves transcription onto an NVIDIA GPU, which needs CUDA 12 cuBLAS and cuDNN 9 on the machine; when they are missing the API logs a warning and falls back to CPU int8.
 
-Whisper normalises filler words such as "um" and "uh" out of the transcript, so the filler counts in a delivery review under-report.
+Whisper normalises filler words such as "um" and "uh" out of the transcript, so the filler counts in a delivery review under-report. Every delivery metric is computed from that transcript and segment timestamps; none of it measures pitch, volume, or emotion. Audio duration is read from the container before transcription starts, and decoding is capped by `MAX_TRANSCRIBE_SEC`, so an overlong or pathological upload does not hold a model slot for a full decode.
 
 ---
 
@@ -250,7 +252,8 @@ Set these in `ai-backend/.env` (see `.env.example`) unless noted.
 | `STT_LANGUAGE` | `en` | `auto` lets Whisper detect the language |
 | `STT_BEAM_SIZE` | `5` | Decoding beams; higher is more accurate and slower |
 | `STT_VAD` | `false` | Trim silence before transcription; may shift pause timings |
-| `MAX_AUDIO_MB` / `MAX_AUDIO_SEC` | `10` / `180` | Upload caps |
+| `MAX_AUDIO_MB` / `MAX_AUDIO_SEC` | `10` / `180` | Upload caps, checked before transcription; duration is read from the container |
+| `MAX_TRANSCRIBE_SEC` | `240` | Wall-clock decoding budget before the API returns a clear timeout error |
 | `ENABLE_SER` | `false` | Local-only emotion recognition; leave off on anything public |
 | `LOG_LEVEL` | `INFO` | Agent and timing logs |
 

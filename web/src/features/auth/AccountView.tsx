@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpenText, Check, Download, LoaderCircle, Printer, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpenText, Bot, Check, Download, History, LoaderCircle, MessageSquareText, Printer, RotateCcw, Sparkles } from "lucide-react";
 import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
 import { listDebateRecords, loadDebateAnalysis, loadDebateRecord, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
-import type { AnalysisReport } from "../../services/debate-api";
-import { requestJudge } from "../../services/debate-api";
+import { loadAppCapabilities, requestJudge, type AnalysisReport } from "../../services/debate-api";
 import { listPresentationFeedbacks } from "../../services/presentation-records";
 import { requestPlan, type LearningPlan } from "../../services/plan-api";
 import { listLearningPlans, loadSessionDigests, saveLearningPlan } from "../../services/plan-records";
 import { emptyProfile, loadProfile, saveProfile, type LearnerProfile } from "../../services/profiles";
+import { cacheApplicationSettings, loadApplicationSettings, type ApplicationSettings } from "../../services/app-settings";
 import { difficultyFor, personaFor, personas } from "../debate-catalog";
 import {
   FOCUS_OPTIONS,
@@ -32,7 +32,7 @@ import {
 import { useAuth } from "./AuthProvider";
 import "./account.css";
 
-type TabKey = "archive" | "progress" | "plan";
+type TabKey = "archive" | "progress" | "plan" | "settings";
 
 // The tab a learner most likely wants first, given what they said practice is for.
 function recommendedTab(prefs: LearnerPrefs): TabKey {
@@ -46,6 +46,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "archive", label: "Archive" },
   { key: "progress", label: "Progress" },
   { key: "plan", label: "Plan" },
+  { key: "settings", label: "App settings" },
 ];
 
 function opponentName(key: string) {
@@ -74,6 +75,11 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
   const [profile, setProfile] = useState<LearnerProfile>(emptyProfile);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState("");
+  const [appSettings, setAppSettings] = useState<ApplicationSettings>(() => loadApplicationSettings(user?.id ?? "guest"));
+  const [appSettingsReady, setAppSettingsReady] = useState(!user);
+  const [savingAppSettings, setSavingAppSettings] = useState(false);
+  const [appSettingsNotice, setAppSettingsNotice] = useState("");
+  const [layaStatus, setLayaStatus] = useState<"checking" | "available" | "unavailable" | "unknown">("checking");
   const [prefs, setPrefs] = useState<LearnerPrefs>(() => (user ? loadPrefs(user.id) : emptyPrefs()));
   const [settingsOpen, setSettingsOpen] = useState(() => !hasAnswers(user ? loadPrefs(user.id) : emptyPrefs()));
   const [tab, setTab] = useState<TabKey>("archive");
@@ -111,8 +117,16 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
       .finally(() => { if (active) setLoading(false); });
     if (user) {
       void loadProfile(user.id)
-        .then((data) => { if (active && data) setProfile(data); })
-        .catch(() => {});
+        .then((data) => {
+          if (!active || !data) return;
+          setProfile(data);
+          setAppSettings(data.app_settings);
+          cacheApplicationSettings(user.id, data.app_settings);
+        })
+        .catch(() => {})
+        .finally(() => { if (active) setAppSettingsReady(true); });
+    } else {
+      setAppSettingsReady(true);
     }
     return () => { active = false; };
   }, []);
@@ -120,6 +134,18 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
   useEffect(() => {
     if (tab === "progress") void loadProgress();
     else if (tab === "plan") void loadPlan();
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab !== "settings") return;
+    let active = true;
+    setLayaStatus("checking");
+    void loadAppCapabilities()
+      .then((capabilities) => {
+        if (active) setLayaStatus(capabilities.adaptive_tactics_available ? "available" : "unavailable");
+      })
+      .catch(() => { if (active) setLayaStatus("unknown"); });
+    return () => { active = false; };
   }, [tab]);
 
   async function openRecord(recordId: string) {
@@ -166,6 +192,26 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
       setProfileNotice("Saved on this device only. Your account could not be reached, so try again to sync it.");
     } finally {
       setSavingProfile(false);
+    }
+  }
+
+  async function saveApplicationSettings() {
+    if (!user || !appSettingsReady || savingAppSettings || savingProfile) return;
+    setSavingAppSettings(true);
+    setAppSettingsNotice("");
+    const cached = cacheApplicationSettings(user.id, appSettings);
+    try {
+      await saveProfile(user.id, { ...profile, app_settings: appSettings });
+      setProfile((current) => ({ ...current, app_settings: appSettings }));
+      setAppSettingsNotice(cached
+        ? "Saved to your account. These choices will apply to your next debate turn."
+        : "Saved to your account. Browser storage is unavailable, so changes may take a moment to reach the debate room.");
+    } catch {
+      setAppSettingsNotice(cached
+        ? "Saved on this device, but account sync failed. Check your connection and try again."
+        : "Could not save these settings. Check your connection and browser storage, then try again.");
+    } finally {
+      setSavingAppSettings(false);
     }
   }
 
@@ -358,7 +404,7 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
 
       <details className="account-settings" open={settingsOpen} onToggle={(event) => setSettingsOpen(event.currentTarget.open)}>
         <summary>
-          <span><b>Profile and practice settings</b><small>Update your learner profile, goals, opponent, and session defaults.</small></span>
+          <span><b>Learner profile and practice defaults</b><small>Update your goals, opponent, and session setup.</small></span>
           <span className="account-settings-action">{setupComplete ? "Edit settings" : "Set up your room"}</span>
         </summary>
       <div className="account-setup-band">
@@ -497,7 +543,7 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
       </div>
       </details>
 
-      <div className="account-tabs no-print" role="group" aria-label="Archive, progress, or plan">
+      <div className="account-tabs no-print" role="group" aria-label="Account sections">
         {TABS.map((item) => (
           <button
             key={item.key}
@@ -642,6 +688,105 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
         </section>
       )}
 
+      {tab === "settings" && (
+        <section className="account-app-settings" aria-labelledby="app-settings-heading">
+          <div className="archive-heading">
+            <div>
+              <h2 id="app-settings-heading">How your debate coach works</h2>
+              <p>Choose whether the coach can use Laya and your saved practice when shaping replies.</p>
+            </div>
+          </div>
+
+          <div className="app-settings-list">
+            <div className="app-setting-row">
+              <div className="app-setting-copy">
+                <span className="app-setting-icon"><Bot size={17} /></span>
+                <div>
+                  <h3>Adaptive debate moves</h3>
+                  <p>Let Laya choose a focused move, such as asking for evidence or testing an assumption. The debate coach still writes the reply.</p>
+                  <p className={`app-setting-status ${layaStatus}`} role="status">
+                    {layaStatus === "checking" && "Checking availability…"}
+                    {layaStatus === "available" && "Installed. The checkpoint loads on first use, so that turn may take longer; standard replies continue if it cannot load."}
+                    {layaStatus === "unavailable" && "Not available in this app right now. Standard debate replies still work."}
+                    {layaStatus === "unknown" && "Could not check right now. Standard debate replies still work if Laya cannot load."}
+                  </p>
+                </div>
+              </div>
+              <label className="app-switch" aria-label="Use adaptive debate moves">
+                <input
+                  type="checkbox"
+                  checked={appSettings.adaptiveTactics}
+                  disabled={!appSettingsReady}
+                  onChange={(event) => setAppSettings((current) => ({ ...current, adaptiveTactics: event.target.checked }))}
+                />
+                <span aria-hidden="true" />
+              </label>
+            </div>
+
+            <div className="app-setting-row">
+              <div className="app-setting-copy">
+                <span className="app-setting-icon"><History size={17} /></span>
+                <div>
+                  <h3>Use saved practice history</h3>
+                  <p>Allow up to 12 short summaries of earlier sessions to guide the opponent. Turn this off to keep past practice out of debate prompts.</p>
+                  <p className="app-setting-status">Your saved transcripts remain in your archive either way.</p>
+                </div>
+              </div>
+              <label className="app-switch" aria-label="Use saved practice history">
+                <input
+                  type="checkbox"
+                  checked={appSettings.usePracticeHistory}
+                  disabled={!appSettingsReady}
+                  onChange={(event) => setAppSettings((current) => ({ ...current, usePracticeHistory: event.target.checked }))}
+                />
+                <span aria-hidden="true" />
+              </label>
+            </div>
+
+            <div className="app-setting-row app-setting-length">
+              <div className="app-setting-copy">
+                <span className="app-setting-icon"><MessageSquareText size={17} /></span>
+                <div>
+                  <h3>Opponent reply length</h3>
+                  <p>Choose a shorter point or give the opponent more room to build its case.</p>
+                </div>
+              </div>
+              <div className="app-length-options" role="radiogroup" aria-label="Opponent reply length">
+                <button
+                  type="button"
+                  role="radio"
+                  disabled={!appSettingsReady}
+                  aria-checked={appSettings.replyLength === "concise"}
+                  className={appSettings.replyLength === "concise" ? "selected" : ""}
+                  onClick={() => setAppSettings((current) => ({ ...current, replyLength: "concise" }))}
+                >
+                  <b>Short</b><small>One direct point</small>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  disabled={!appSettingsReady}
+                  aria-checked={appSettings.replyLength === "standard"}
+                  className={appSettings.replyLength === "standard" ? "selected" : ""}
+                  onClick={() => setAppSettings((current) => ({ ...current, replyLength: "standard" }))}
+                >
+                  <b>Standard</b><small>More room to rebut</small>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="app-settings-foot">
+            <p>{appSettingsReady ? "Saved choices apply to the next reply. Practice history is loaded when needed for a debate." : "Reading the settings saved to your account."}</p>
+            <button className="button button-dark" type="button" onClick={() => void saveApplicationSettings()} disabled={!user || !appSettingsReady || savingAppSettings || savingProfile}>
+              {savingAppSettings ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}
+              {savingAppSettings ? "Saving settings" : "Save app settings"}
+            </button>
+          </div>
+          {appSettingsNotice && <div className="inline-notice" role="status">{appSettingsNotice}</div>}
+        </section>
+      )}
+
       {tab === "archive" && <div className={`account-layout${selected ? " has-selected" : ""}`}>
         <section className="account-archive" aria-labelledby="archive-heading">
           <div className="archive-heading">
@@ -684,8 +829,13 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
             <div className="record-detail-meta">{opponentName(selected.session.persona)} · {selected.session.learner_position === "for" ? "In favour" : "Against"} · {formatDate(selected.session.started_at)}</div>
             <div className="record-detail-turns">
               {selected.turns.map((turn) => (
-                <article className={`record-turn ${turn.speaker}`} key={turn.id}>
-                  <span>{turn.speaker === "learner" ? "YOUR CASE" : opponentName(selected.session.persona).toUpperCase()}</span>
+                <article className={`record-turn ${turn.speaker}${turn.kind === "challenge" ? " is-challenge" : ""}`} key={turn.id}>
+                  <span>
+                    {turn.kind === "challenge"
+                      ? `FOLLOW-UP ${turn.challenge_depth ?? 1} OF 2`
+                      : turn.speaker === "learner" ? "YOUR CASE" : opponentName(selected.session.persona).toUpperCase()}
+                  </span>
+                  {turn.challenge_target && <blockquote className="record-turn-target">“{turn.challenge_target}”</blockquote>}
                   <p><MarkdownText text={turn.content} compact /></p>
                 </article>
               ))}
@@ -706,7 +856,7 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
               <button className="button button-dark" onClick={() => onContinue(selected.session, selected.turns)}>
                 Continue in the debate room <ArrowRight size={15} />
               </button>
-              <p>Saved turns will appear in the room with a fresh clock. The earlier case review is cleared because it no longer covers the extended transcript.</p>
+              <p>Saved turns, including follow-ups, will appear in the room with a fresh clock. The earlier case review is cleared because it no longer covers the extended transcript.</p>
             </div>
           </section>
         )}

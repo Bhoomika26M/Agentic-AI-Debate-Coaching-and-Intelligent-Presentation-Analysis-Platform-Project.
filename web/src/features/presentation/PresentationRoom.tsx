@@ -9,6 +9,14 @@ import "./presentation.css";
 
 const MAX_SEC = 180;
 
+// Pattern ids stay stable in the API; the labels describe what the transcript actually shows.
+const PATTERN_LABELS: Record<string, string> = {
+  rushed: "fast pace",
+  hesitant: "hesitant patch",
+  paused: "long pause",
+  steady: "steady pace",
+};
+
 function formatStamp(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
   const s = Math.floor(seconds % 60).toString().padStart(2, "0");
@@ -216,7 +224,7 @@ export function PresentationRoom({ topic, sessionId, compact, onResult }: { topi
         <div className="present-drills">
           {result.report.drills.map((d, i) => (
             <article key={i}>
-              <button onClick={() => seek(d.start)} aria-label={`Replay drill ${i + 1} at ${formatStamp(d.start)}`}>{formatStamp(d.start)}–{formatStamp(d.end)} · {d.pattern.toUpperCase()} — replay</button>
+              <button onClick={() => seek(d.start)} aria-label={`Replay drill ${i + 1} at ${formatStamp(d.start)}`}>{formatStamp(d.start)}–{formatStamp(d.end)} · {(PATTERN_LABELS[d.pattern] ?? d.pattern).toUpperCase()} — replay</button>
               <p>{d.what_happened}</p>
               <small>TRY THIS: {d.try_this}</small>
               <p className="present-example">SAY: {d.example}</p>
