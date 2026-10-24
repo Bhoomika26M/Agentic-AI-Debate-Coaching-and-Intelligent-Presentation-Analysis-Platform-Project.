@@ -162,7 +162,7 @@ The defaults already point at your local Ollama and allow the local web app. The
 
 Set `ENABLE_LAYA_TACTICS=false` in `ai-backend/.env` to disable the tactical layer and use the existing planner for every turn. Laya chooses only a tactic; Ollama remains responsible for the spoken debate reply. Clear argument shapes are handled before Laya is consulted, so the package is optional and a missing checkpoint only affects ambiguous turns.
 
-This first version does not claim debate-specific accuracy. The policy validates that Laya returns one of the five supported vulnerability moves, and it does not use confidence scores as a gate. A 24-turn hand-labeled baseline lives in `ai-backend/evals/laya_moves.jsonl`; `make eval-laya` reports agreement for policy-routed and Laya-routed turns separately. The set is small, some labels are debatable, and agreement is not coaching accuracy or learner improvement.
+This first version does not claim debate-specific accuracy. The policy validates that Laya returns one of the five supported vulnerability moves, and it does not use confidence scores as a gate. A 24-turn tuning baseline lives in `ai-backend/evals/laya_moves.jsonl`; `make eval-laya` reports agreement for policy-routed and Laya-routed turns separately. A separate 30-turn held-out check in `ai-backend/evals/laya_holdout.jsonl` records acceptable alternative moves; `make eval-laya-holdout` reports strict and acceptable agreement. The sets are small, some labels are debatable, and agreement is not coaching accuracy or learner improvement.
 
 From the repository root, `make api` and `make web` start the same two services. `make test` runs the backend pytest suite and the frontend typecheck; `make e2e` builds the web app and runs its Playwright suite (`npx playwright install chromium` once). The browser tests mock the API and Supabase REST responses, so they need no Ollama, account, or network.
 
@@ -307,7 +307,7 @@ Two things are deliberately not in this release: managed multi-tenant inference,
 ## Project layout
 
 - `web/src/` — views, API clients, session handling, and styles. `features/` holds the arena, verdict, delivery room, learner space, and onboarding; `services/` holds typed API and Supabase clients.
-- `ai-backend/app/` — routes in `main.py`, request schemas, the Ollama client, auth, speech, delivery signals, and the `agents/` graphs that orchestrate a debate turn, a review, a delivery pass, and a practice plan. `ai-backend/evals/` holds the small labeled baseline for the tactical selector.
+- `ai-backend/app/` — routes in `main.py`, request schemas, the Ollama client, auth, speech, delivery signals, and the `agents/` graphs that orchestrate a debate turn, a review, a delivery pass, and a practice plan. `ai-backend/evals/` holds the tuning baseline and the separate held-out check for the tactical selector.
 - `supabase/migrations/` — sessions, turns, analyses, delivery feedback, profiles, topic bank, learning plans, and the private audio bucket, each with owner-scoped access rules.
 - `docker-compose.yml`, `ai-backend/Dockerfile`, `web/Dockerfile` — the whole stack in containers, with an nginx front end that proxies `/api` and streams server-sent events unbuffered.
 - `ai-backend/.env.example`, `web/.env.example`, `.env.docker.example` — every setting above with safe defaults.

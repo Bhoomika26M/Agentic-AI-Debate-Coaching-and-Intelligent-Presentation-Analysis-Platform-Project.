@@ -1,5 +1,5 @@
 # Local development commands. Run `make api` and `make web` in two terminals.
-.PHONY: sync api web test e2e eval-laya build
+.PHONY: sync api web test e2e eval-laya eval-laya-holdout build
 
 sync:
 	cd ai-backend && uv sync --extra laya
@@ -20,6 +20,9 @@ e2e:
 
 eval-laya:
 	cd ai-backend && uv run python evals/evaluate_laya.py
+
+eval-laya-holdout:
+	cd ai-backend && uv run python evals/evaluate_laya.py --data evals/laya_holdout.jsonl
 
 build:
 	cd web && npm run build
