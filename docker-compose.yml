@@ -46,6 +46,10 @@ services:
       WEB_ORIGIN: http://localhost:8080
       ALLOWED_HOSTS: localhost,127.0.0.1,api
       REQUIRE_AUTH: ${REQUIRE_AUTH:-false}
+      # "public" refuses to start without REQUIRE_AUTH=true and explicit https origins.
+      DEPLOYMENT_ENV: ${DEPLOYMENT_ENV:-local}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      MODEL_RATE_LIMIT_PER_MINUTE: ${MODEL_RATE_LIMIT_PER_MINUTE:-12}
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_JWKS_URL: ${SUPABASE_JWKS_URL:-}
       SUPABASE_JWT_ISSUER: ${SUPABASE_JWT_ISSUER:-}

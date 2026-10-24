@@ -164,7 +164,7 @@ Set `ENABLE_LAYA_TACTICS=false` in `ai-backend/.env` to disable Laya and use the
 
 This first version does not claim debate-specific accuracy: it validates that Laya returns one of the six known tactics and does not use confidence scores as a gate. Evaluate it on real labeled debate turns before expanding its role.
 
-From the repository root, `make api` and `make web` start the same two services, and `make test` runs both test suites.
+From the repository root, `make api` and `make web` start the same two services. `make test` runs the backend pytest suite and the frontend typecheck; `make e2e` builds the web app and runs its Playwright suite (`npx playwright install chromium` once). The browser tests mock the API and Supabase REST responses, so they need no Ollama, account, or network.
 
 **3. Start the web app**
 
@@ -241,6 +241,9 @@ Set these in `ai-backend/.env` (see `.env.example`) unless noted.
 | `WEB_ORIGIN` | `http://127.0.0.1:5173` | Exact allowed browser origins, comma separated; wildcards are rejected |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1,0.0.0.0` | Hosts the API will answer for |
 | `REQUIRE_AUTH` | `false` | Set to `true` with Supabase configured before any public deployment |
+| `DEPLOYMENT_ENV` | `local` | `local` allows guest mode. `public` refuses to start unless auth is required, every origin is `https`, and hosts are not loopback |
+| `RATE_LIMIT_PER_MINUTE` | `60` | Per-IP API requests per minute, per process; `/api/health` is exempt |
+| `MODEL_RATE_LIMIT_PER_MINUTE` | `12` | Per-learner (or guest IP) model-backed requests per minute, per process |
 | `SUPABASE_URL` | empty | Enables token verification for signed-in requests |
 | `SUPABASE_JWKS_URL` | derived | Override only if you serve JWKS elsewhere |
 | `MAX_ACTIVE_STREAMS` | `2` | Concurrent model streams per process before requests are answered with 429 |
@@ -273,7 +276,7 @@ In `web/.env`: `VITE_API_BASE_URL` (blank uses the dev proxy or a same-origin `/
 | `POST /api/coach/plan` | Practice plan from your own record, grounded in diagnosed weak spots |
 | `POST /api/presentation/analyze` | Audio upload plus optional motion; returns transcript, delivery signals, and drills |
 
-With `REQUIRE_AUTH=true`, every endpoint except health requires a signed-in token.
+With `REQUIRE_AUTH=true`, every endpoint except health requires a signed-in token. In guest mode, model-backed endpoints are capped by client IP; signed-in requests are capped per learner. Both limits are process-local.
 
 ---
 
@@ -281,7 +284,9 @@ With `REQUIRE_AUTH=true`, every endpoint except health requires a signed-in toke
 
 The web app builds to static files, so it can be hosted anywhere. A Render blueprint is included as `render.yaml`, and `web/vercel.json` carries the same headers for Vercel, including a content security policy, immutable caching for hashed assets, and `microphone=(self)` for recording.
 
-The API needs a host that can run a container and reach a model endpoint. Point `VITE_API_BASE_URL` at its HTTPS origin, set `WEB_ORIGIN` and `ALLOWED_HOSTS` to the exact origins you serve from, and turn on `REQUIRE_AUTH=true` with Supabase configured.
+The API needs a host that can run a container and reach a model endpoint. Point `VITE_API_BASE_URL` at its HTTPS origin, set `WEB_ORIGIN` and `ALLOWED_HOSTS` to the exact origins you serve from, then set `DEPLOYMENT_ENV=public` and `REQUIRE_AUTH=true` with Supabase configured. `DEPLOYMENT_ENV=public` makes the API refuse to start with guest mode, an `http` origin, or a loopback host; it is a startup guard, not a substitute for a proxy-level limiter.
+
+Rate limits are held in each API process. If you run more than one instance, add a shared rate limiter at the proxy or a shared store; the in-process counters do not coordinate across workers.
 
 Two things are deliberately not in this release: managed multi-tenant inference, and per-learner provider keys for hosted generation. Until a deployment has its own authenticated API in front of a model, keep it private.
 
@@ -291,8 +296,8 @@ Two things are deliberately not in this release: managed multi-tenant inference,
 
 - Prompt construction, model calls, transcription, and coaching happen server-side. The browser never talks to a model directly.
 - Signed-in data is owner-scoped by Postgres row level security. The API holds no database credential, so a leaked API token cannot read another learner's archive.
-- API replies carry `no-store` headers; the service starts only with explicit origins and hosts, and rejects wildcards.
-- Request sizes are bounded, concurrent streams are capped, and learner text is always treated as data, never as instructions.
+- API replies carry `no-store` headers, including SSE streams; the service starts only with explicit origins and hosts, and rejects wildcards.
+- Request sizes are bounded, concurrent streams are capped, and per-IP plus per-learner request limits return `429` with `Retry-After`. Learner text is always treated as data, never as instructions.
 - Recorded audio is discarded immediately after review unless the learner opts into retention, in which case it is stored in a private per-owner bucket.
 - Contact details are redacted from saved coaching reports, and categorical emotion recognition stays local and off by default.
 

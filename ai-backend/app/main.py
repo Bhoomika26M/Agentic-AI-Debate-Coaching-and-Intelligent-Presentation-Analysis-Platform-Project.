@@ -8,15 +8,17 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from httpx import HTTPError
 from starlette.requests import Request
 
 from .agents.debate import check_reply, respond_stream
 from .agents.guard import redirect_reply, route_turn
 from .agents.laya_selector import is_available as laya_available
-from .auth import authenticate_request
+from .auth import REQUIRE_AUTH, authenticate_request
 from .ollama_client import OLLAMA_MODEL, is_available, is_loaded, warm_model
+from .rate_limit import client_key, enforce_model_rate_limit, request_limiter
+from .runtime_config import validate_deployment
 from .schemas import (
     AnalysisEnvelope,
     AnalysisRequest,
@@ -88,6 +90,12 @@ allowed_hosts = os.getenv(
 allowed_hosts = [host.strip() for host in allowed_hosts if host.strip()]
 if not allowed_hosts or "*" in allowed_hosts:
     raise ValueError("ALLOWED_HOSTS must contain explicit host names.")
+DEPLOYMENT_ENV = validate_deployment(
+    environment=os.getenv("DEPLOYMENT_ENV", "local"),
+    require_auth=REQUIRE_AUTH,
+    origins=origins,
+    allowed_hosts=allowed_hosts,
+)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 app.add_middleware(
     CORSMiddleware,
@@ -99,11 +107,23 @@ app.add_middleware(
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    response = await call_next(request)
+    response = None
+    # Health checks are exempt so an operator can always probe a saturated API.
+    if request.url.path.startswith("/api/") and request.url.path != "/api/health":
+        allowed, retry_after = request_limiter.allow(client_key(request))
+        if not allowed:
+            response = JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Wait a moment and try again."},
+                headers={"Retry-After": str(retry_after)},
+            )
+    if response is None:
+        response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    response.headers.setdefault("Cache-Control", "no-store")
+    # Streaming responses must not weaken this to no-cache: no-store is the privacy promise.
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 
@@ -121,7 +141,10 @@ async def health() -> dict[str, str | bool]:
     }
 
 
-@app.post("/api/debate/stream", dependencies=[Depends(authenticate_request)])
+@app.post(
+    "/api/debate/stream",
+    dependencies=[Depends(authenticate_request), Depends(enforce_model_rate_limit)],
+)
 async def debate_stream(request: DebateRequest) -> StreamingResponse:
     # A declined turn never needs the model or a stream slot.
     if route_turn(request.learner_argument) == "redirect":
@@ -132,7 +155,7 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
         return StreamingResponse(
             redirected(),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            headers={"X-Accel-Buffering": "no"},
         )
     if not await is_available():
         raise HTTPException(
@@ -191,13 +214,13 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
     return StreamingResponse(
         events(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={"X-Accel-Buffering": "no"},
     )
 
 
 @app.post(
     "/api/debate/analyze",
-    dependencies=[Depends(authenticate_request)],
+    dependencies=[Depends(authenticate_request), Depends(enforce_model_rate_limit)],
     response_model=AnalysisEnvelope,
 )
 async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
@@ -242,7 +265,11 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
         stream_slots.release()
 
 
-@app.post("/api/debate/challenge", response_model=ChallengeResponse)
+@app.post(
+    "/api/debate/challenge",
+    dependencies=[Depends(enforce_model_rate_limit)],
+    response_model=ChallengeResponse,
+)
 async def debate_challenge(
     request: ChallengeRequest,
     http_request: Request,
@@ -302,7 +329,7 @@ async def debate_challenge(
 
 @app.post(
     "/api/coach/plan",
-    dependencies=[Depends(authenticate_request)],
+    dependencies=[Depends(authenticate_request), Depends(enforce_model_rate_limit)],
     response_model=PlanResponse,
 )
 async def coach_plan_endpoint(request: PlanRequest) -> PlanResponse:
@@ -360,7 +387,7 @@ async def debate_judge(request: JudgeRequest) -> JudgeVerdict:
 
 @app.post(
     "/api/presentation/analyze",
-    dependencies=[Depends(authenticate_request)],
+    dependencies=[Depends(authenticate_request), Depends(enforce_model_rate_limit)],
     response_model=PresentationResponse,
 )
 async def presentation_analysis(

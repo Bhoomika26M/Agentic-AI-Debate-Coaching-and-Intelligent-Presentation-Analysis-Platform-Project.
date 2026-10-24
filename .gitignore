@@ -21,6 +21,8 @@ models/
 coverage/
 dist/
 build/
+test-results/
+playwright-report/
 .next/
 out/
 
