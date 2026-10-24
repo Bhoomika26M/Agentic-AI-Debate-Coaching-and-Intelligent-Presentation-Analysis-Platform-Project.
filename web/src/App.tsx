@@ -1055,7 +1055,7 @@ export default function App() {
             </div>
             <div className="setup-heading">
               <h1>{learnerName ? `Set up your debate, ${learnerName.split(/\s+/)[0]}.` : "Set up your debate."}</h1>
-              <p>{learnerName ? "Picked for your level — change anything before you step in." : "Two quick choices, then you are in the room. You can change anything in the next round."}</p>
+              <p>{learnerName ? "Chosen for your level. Adjust any detail before you step in." : "Choose a motion, side and opponent, then set the pace. Change anything before you begin."}</p>
               <div className="setup-progress" role="status" aria-label="Setup summary">
                 <span className={activeTopic.trim() ? "is-set" : "is-missing"}>MOTION · {activeTopic.trim() ? "SET" : "CHOOSE ONE"}</span>
                 <span className="is-set">SIDE · {position.toUpperCase()}</span>
@@ -1159,7 +1159,9 @@ export default function App() {
             </div>
 
             <div className="setup-bottom">
-              <div className="local-note"><LockKeyhole size={14} /><span>No account needed. Sign in to keep this transcript in your archive.</span></div>
+              {!authLoading && !user && (
+                <div className="local-note"><LockKeyhole size={14} /><span>No account needed. Sign in to keep this transcript in your archive.</span></div>
+              )}
               <button className="button button-dark setup-submit" onClick={() => void startSession()} disabled={!activeTopic.trim() || startingSession}>
                 {startingSession ? "Setting up..." : "Start rehearsal"} {!startingSession && <ArrowRight size={17} />}
               </button>

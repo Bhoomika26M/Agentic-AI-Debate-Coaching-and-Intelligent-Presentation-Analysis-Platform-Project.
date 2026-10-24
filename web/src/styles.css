@@ -190,7 +190,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .setup-heading h1 { font-size: clamp(2.3rem, 3.9vw, 3.4rem); line-height: 1; letter-spacing: -.03em; }
 .setup-heading h1 span { color: #8d4035; font-style: italic; }
 .setup-heading > p { max-width: 43ch; margin: 0 0 4px; color: #554e45; font-size: 13px; line-height: 1.65; }
-.setup-progress { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 18px; color: #8a8177; font: 8px var(--mono); letter-spacing: .06em; }
+.setup-progress { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 18px; color: #665d52; font: 9px/1.5 var(--mono); letter-spacing: .04em; }
 .setup-progress .is-set { color: var(--ink); font-weight: 700; }
 .setup-progress .is-missing { color: #8d4035; font-weight: 700; }
 .recent-motions { margin-bottom: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -251,10 +251,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .duration-setting input { width: 100%; min-height: 44px; margin: 12px 0 4px; accent-color: var(--cue); }
 .range-labels { display: flex; justify-content: space-between; color: #6b6459; font: 8px var(--mono); }
 .setup-bottom { position: sticky; bottom: 10px; z-index: 20; margin-top: 18px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border: 1px solid #c9bda9; background: #f4eee2; box-shadow: 0 12px 26px rgba(33, 29, 24, .1); }
-.local-note { display: flex; align-items: center; gap: 8px; color: #514a40; font-size: 10px; line-height: 1.5; }
+.local-note { display: flex; align-items: center; gap: 8px; color: #514a40; font-size: 11px; line-height: 1.5; }
 .local-note svg { flex: 0 0 auto; color: var(--green); }
 .emblem-mark { display: block; }
 .setup-submit { min-width: 205px; }
+.setup-submit:only-child { margin-inline-start: auto; }
 
 .arena-page { min-height: 100vh; padding: 0 34px 12px; color: var(--paper-light); background: var(--stage); }
 .arena-header { min-height: 65px; margin: 0 -34px; padding: 0 34px; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--paper-light); background: var(--stage); border-bottom: 1px solid var(--stage-line); }
@@ -510,6 +511,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .record-card { padding: 8px 4px; }
 }
 
+@media (max-width: 900px) {
+  .setup-page { padding-inline: clamp(20px, 4.2vw, 36px); }
+  .setup-layout { grid-template-columns: minmax(0, 1fr); gap: 13px; }
+  .setup-continue { min-height: 44px; margin: 2px 0 0; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; color: var(--paper-light); background: var(--stage-raised); border: 1px solid var(--stage-line); font-size: 12px; font-weight: 650; }
+  .setup-bottom { position: static; }
+}
+
 @media (max-width: 760px) {
   .analysis-rubric { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .analysis-rating:nth-child(3) { border-right: 0; }
@@ -561,14 +569,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .setup-heading { margin: 22px 0 20px; grid-template-columns: 1fr; gap: 10px; }
   .setup-heading h1 { font-size: clamp(2.1rem, 8vw, 3rem); }
   .setup-heading > p { max-width: 52ch; }
-  .setup-layout { grid-template-columns: 1fr; gap: 13px; }
   .score-summary { grid-template-columns: 1fr; gap: 16px; padding: 18px; }
   .review-head { flex-direction: column; align-items: stretch; }
   .review-head .button { width: 100%; }
   .delivery-body { padding: 14px; }
   .disclosure > summary { font-size: 12.5px; }
   .recap-turn { grid-template-columns: 1fr; gap: 6px; }
-  .setup-continue { min-height: 44px; margin: 2px 0 0; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; color: var(--paper-light); background: var(--stage-raised); border: 1px solid var(--stage-line); font-size: 12px; font-weight: 650; }
   .setup-panel { padding: 17px; }
   .arena-page { padding: 0 15px 9px; }
   .arena-header { min-height: 58px; margin: 0 -15px; padding: 0 15px; }
@@ -678,7 +684,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .difficulty-options button small { font-size: 8px; }
   .setup-bottom { align-items: stretch; flex-direction: column; gap: 13px; }
   .setup-submit { width: 100%; }
-  .local-note { font-size: 9px; }
+  .local-note { font-size: 10px; }
   .end-button { min-height: 44px; padding: 0 10px; font-size: 8px; }
   .arena-casebar h1 { font-size: 15px; }
   .arena-clock { min-width: 84px; padding: 9px 6px; font-size: 12px; }
