@@ -53,6 +53,7 @@ class PracticePreferences(BaseModel):
 class DebateTurn(BaseModel):
     speaker: Literal["learner", "opponent"]
     content: str = Field(min_length=1, max_length=4000)
+    kind: Literal["standard", "challenge"] | None = None
 
 
 class SessionDigest(BaseModel):
@@ -239,6 +240,7 @@ class PresentationReport(BaseModel):
 class ChallengeTurn(BaseModel):
     speaker: Literal["learner", "opponent"]
     content: str = Field(min_length=1, max_length=4000)
+    kind: Literal["standard", "challenge"] | None = None
 
 
 class ChallengeRequest(BaseModel):

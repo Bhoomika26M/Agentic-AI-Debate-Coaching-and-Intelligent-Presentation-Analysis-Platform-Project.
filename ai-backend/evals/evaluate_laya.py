@@ -1,7 +1,8 @@
-"""Score Laya's move selection against a small hand-labeled debate baseline.
+"""Score the tactical selector against a small hand-labeled debate baseline.
 
-This measures agreement with human labels on 24 turns. It does not measure
-whether the chosen move improved a learner's practice.
+The selector uses argument-shape rules first and Laya only for ambiguous turns.
+Results are reported separately for those paths. This measures agreement with
+human labels on 24 turns; it does not measure whether a move improved practice.
 
 Run after installing the `laya` extra and downloading the checkpoint:
     cd ai-backend && uv run python evals/evaluate_laya.py
@@ -60,22 +61,30 @@ def validate_rows(rows: list[dict], moves: set[str]) -> list[str]:
 
 
 async def evaluate(rows: list[dict]) -> tuple[list[dict], int]:
-    from app.agents.laya_selector import select_move
+    from app.agents.laya_selector import rule_based_move, select_move
 
     results: list[dict] = []
     no_move = 0
     for row in rows:
+        history = row.get("history") or []
         move = await select_move(
             row["topic"],
             row["learner_position"],
             row["persona"],
             row["difficulty"],
-            row.get("history") or [],
+            history,
             row["latest"],
         )
         if move is None:
             no_move += 1
-        results.append({**row, "predicted_move": move, "correct": move == row["expected_move"]})
+        results.append(
+            {
+                **row,
+                "predicted_move": move,
+                "correct": move == row["expected_move"],
+                "source": "policy" if rule_based_move(history, row["latest"]) else "laya",
+            }
+        )
     return results, no_move
 
 
@@ -131,9 +140,17 @@ def main() -> int:
         )
         return 0
 
+    policy = [result for result in results if result["source"] == "policy"]
+    laya = [result for result in results if result["source"] == "laya"]
+    policy_correct = sum(1 for result in policy if result["correct"])
+    laya_correct = sum(1 for result in laya if result["correct"])
     print(f"Labeled turns: {len(results)}")
     print(f"Move agreement: {correct}/{len(results)} ({accuracy:.1%})")
     print(f"No move returned: {no_move}")
+    print(
+        f"Policy-routed: {policy_correct}/{len(policy)}; "
+        f"Laya-routed: {laya_correct}/{len(laya)}"
+    )
     print("\nExpected -> predicted:")
     for (expected, predicted), count in sorted(confusion.items()):
         print(f"  {expected} -> {predicted}: {count}")
@@ -147,7 +164,8 @@ def main() -> int:
             )
     print(
         f"\nBaseline only: {len(results)} turns is too small to claim coaching accuracy, "
-        "and label agreement is not learner improvement."
+        "and the policy rules were shaped on this same set, so treat the result as a "
+        "regression baseline rather than held-out accuracy."
     )
     return 0
 

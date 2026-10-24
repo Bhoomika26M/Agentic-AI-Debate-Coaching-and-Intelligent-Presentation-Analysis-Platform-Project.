@@ -12,7 +12,7 @@ function modelHistory(turns: DebateMessage[]) {
   return turns
     .filter((turn) => !turn.pending && turn.content.trim())
     .slice(-MODEL_HISTORY_TURNS)
-    .map(({ speaker, content }) => ({ speaker, content }));
+    .map(({ speaker, content, kind }) => (kind ? { speaker, content, kind } : { speaker, content }));
 }
 
 export type DebateMessage = {

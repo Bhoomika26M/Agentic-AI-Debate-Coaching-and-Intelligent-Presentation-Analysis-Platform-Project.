@@ -4,7 +4,14 @@ import asyncio
 import time
 
 from app.agents import laya_selector
-from app.agents.laya_selector import _decision_state, move_instruction, select_move
+from app.agents.laya_selector import (
+    LAYA_CRITERIA,
+    MOVE_INSTRUCTIONS,
+    _decision_state,
+    move_instruction,
+    rule_based_move,
+    select_move,
+)
 
 HISTORY = [
     {"speaker": "learner", "content": "Phones distract students."},
@@ -24,7 +31,7 @@ class FakeAgent:
         return {"answers": {"move": {"choice": self.move}}}
 
 
-def _run(monkeypatch, agent=None, loader=None) -> str | None:
+def _run(monkeypatch, agent=None, loader=None, *, history=None, latest=None) -> str | None:
     monkeypatch.setattr(laya_selector, "_AGENT", agent)
     if loader is not None:
         monkeypatch.setattr(laya_selector, "_load_agent", loader)
@@ -34,8 +41,8 @@ def _run(monkeypatch, agent=None, loader=None) -> str | None:
             "for",
             "skeptic",
             "challenge",
-            HISTORY,
-            "Attention improves without phones.",
+            HISTORY if history is None else history,
+            "Attention improves without phones." if latest is None else latest,
         )
     )
 
@@ -50,6 +57,68 @@ def test_availability_follows_the_installed_package(monkeypatch):
     assert laya_selector.is_available() is False
 
 
+def test_argument_shapes_route_without_loading_the_checkpoint(monkeypatch):
+    def explode():
+        raise AssertionError("A clear argument shape must not load Laya")
+
+    assert _run(
+        monkeypatch,
+        loader=explode,
+        latest="Phones should be banned because 82 percent of teachers say attention has fallen.",
+    ) == "probe_evidence"
+    assert _run(
+        monkeypatch,
+        loader=explode,
+        latest="A ban only works if every suburb gets a reliable bus route first.",
+    ) == "test_assumption"
+    assert _run(
+        monkeypatch,
+        loader=explode,
+        latest="AI graders are always fairer than tired teachers.",
+    ) == "offer_counterexample"
+    assert _run(
+        monkeypatch,
+        loader=explode,
+        latest="Free buses would help low-income workers get to jobs.",
+    ) == "trace_consequences"
+    assert _run(
+        monkeypatch,
+        loader=explode,
+        latest="Four-day weeks are better because productivity is a mindset.",
+    ) == "clarify_claim"
+
+
+def test_a_turn_after_a_challenge_answers_before_probing(monkeypatch):
+    def explode():
+        raise AssertionError("Turn shape alone settles this move")
+
+    move = _run(
+        monkeypatch,
+        loader=explode,
+        history=[
+            {
+                "speaker": "opponent",
+                "content": "Which evidence shows that?",
+                "kind": "challenge",
+            }
+        ],
+        latest="Attention improves when phones are away.",
+    )
+    assert move == "answer_then_probe"
+    assert rule_based_move([], "Attention improves when phones are away.") is None
+    assert (
+        rule_based_move(
+            [{"speaker": "opponent", "content": "Which evidence shows that?"}],
+            "Attention improves when phones are away.",
+        )
+        is None
+    )
+
+
+def test_laya_chooses_only_among_concrete_vulnerabilities():
+    assert set(LAYA_CRITERIA) == set(MOVE_INSTRUCTIONS) - {"answer_then_probe"}
+
+
 def test_a_supported_move_is_returned_with_its_instruction(monkeypatch):
     move = _run(monkeypatch, FakeAgent("probe_evidence"))
     assert move == "probe_evidence"
@@ -58,6 +127,7 @@ def test_a_supported_move_is_returned_with_its_instruction(monkeypatch):
 
 def test_an_unsupported_move_falls_back(monkeypatch):
     assert _run(monkeypatch, FakeAgent("invent_a_new_move")) is None
+    assert _run(monkeypatch, FakeAgent("answer_then_probe")) is None
 
 
 def test_a_failed_prediction_falls_back(monkeypatch):
@@ -93,13 +163,14 @@ def test_no_latest_turn_means_no_move(monkeypatch):
     )
 
 
-def test_disabling_laya_skips_the_checkpoint(monkeypatch):
+def test_disabling_the_tactical_layer_skips_rules_and_the_checkpoint(monkeypatch):
     def explode():
-        raise AssertionError("Laya is disabled")
+        raise AssertionError("The tactical layer is disabled")
 
     monkeypatch.setattr(laya_selector, "ENABLED", False)
     monkeypatch.setattr(laya_selector, "_load_agent", explode)
     assert _run(monkeypatch) is None
+    assert _run(monkeypatch, latest="82 percent of teachers say attention has fallen.") is None
 
 
 def test_a_missing_package_skips_the_checkpoint(monkeypatch):

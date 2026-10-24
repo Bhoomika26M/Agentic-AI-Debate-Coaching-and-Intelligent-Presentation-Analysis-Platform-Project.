@@ -5,6 +5,7 @@ from typing import Annotated, Literal, NotRequired, TypedDict
 class DebateTurnState(TypedDict):
     speaker: Literal["learner", "opponent"]
     content: str
+    kind: NotRequired[Literal["standard", "challenge"]]
 
 
 class DebateState(TypedDict, total=False):

@@ -111,7 +111,14 @@ def _briefed_messages(state: DebateState, request: DebateRequest) -> list[dict[s
 
 
 async def planner_node(state: DebateState) -> DebateState:
-    history = [{"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])]
+    history = [
+        {
+            "speaker": t["speaker"],
+            "content": t["content"],
+            "kind": t.get("kind"),
+        }
+        for t in state.get("history", [])
+    ]
     tactic = None
     if state.get("adaptive_tactics", True):
         tactic = await select_move(

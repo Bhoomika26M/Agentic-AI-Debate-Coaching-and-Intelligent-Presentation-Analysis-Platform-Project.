@@ -184,7 +184,11 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
                     "persona": request.persona,
                     "difficulty": request.difficulty,
                     "history": [
-                        {"speaker": t.speaker, "content": t.content}
+                        {
+                            "speaker": t.speaker,
+                            "content": t.content,
+                            "kind": t.kind,
+                        }
                         for t in request.history
                     ],
                     "latest": request.learner_argument,

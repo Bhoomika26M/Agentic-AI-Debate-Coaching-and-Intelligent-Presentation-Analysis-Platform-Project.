@@ -51,6 +51,29 @@ def test_a_continued_debate_can_send_more_than_twenty_history_turns():
         DebateRequest(**_debate(history=[{"speaker": "learner", "content": "x"}] * 201))
 
 
+def test_a_history_turn_can_be_marked_as_a_challenge():
+    request = DebateRequest(
+        **_debate(
+            history=[
+                {
+                    "speaker": "opponent",
+                    "content": "How do you answer that?",
+                    "kind": "challenge",
+                }
+            ]
+        )
+    )
+    assert request.history[0].kind == "challenge"
+    with pytest.raises(ValidationError):
+        DebateRequest(
+            **_debate(
+                history=[
+                    {"speaker": "opponent", "content": "How?", "kind": "invented"}
+                ]
+            )
+        )
+
+
 def test_an_overlong_review_gets_a_readable_limit_message():
     turns = [{"speaker": "learner", "content": "A point."} for _ in range(201)]
     with pytest.raises(ValidationError, match="too long to review in one pass"):

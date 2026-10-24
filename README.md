@@ -47,7 +47,7 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 ## How it works
 
 1. You type an argument in the browser and send it to the API.
-2. A narrow deterministic guard routes obvious jailbreaks and off-motion requests to an in-character redirect with no model call. It is a coarse routing signal, not a complete injection defence, so a normal argument that merely mentions a trigger phrase still reaches the model. On a normal learner turn, local Laya selects one move from six bounded debate tactics. Ollama writes the in-persona reply. If Laya is disabled, missing, or cannot return a supported move, the existing planner supplies its private weakest-joint brief. A verifier checks length, role labels, character breaks, leakage of any private prompt context (planner brief, stored-history summary, Laya tactic, pressure hint), and whether the reply engaged the latest point. A flagged turn is repaired once; a turn that still fails is replaced rather than shipped. The complete draft is reviewed before any of it is displayed.
+2. A narrow deterministic guard routes obvious jailbreaks and off-motion requests to an in-character redirect with no model call. It is a coarse routing signal, not a complete injection defence, so a normal argument that merely mentions a trigger phrase still reaches the model. On a normal learner turn, a small deterministic argument-shape policy handles clear cases: it answers a challenge before probing, presses unsourced evidence, tests a load-bearing premise, challenges an absolute claim, traces a policy's consequences, or clarifies a vague causal claim. Ambiguous turns go to local Laya, which chooses among those five concrete vulnerabilities rather than the generic follow-up move. Ollama writes the in-persona reply. If the tactical layer is disabled, or no rule and no supported Laya move are available, the existing planner supplies its private weakest-joint brief. A verifier checks length, role labels, character breaks, leakage of any private prompt context (planner brief, stored-history summary, Laya tactic, pressure hint), and whether the reply engaged the latest point. A flagged turn is repaired once; a turn that still fails is replaced rather than shipped. The complete draft is reviewed before any of it is displayed.
 3. Coaching fans rubric scoring, fallacy detection, and counterpoints into parallel branches that merge into one review. Every fallacy quote is matched against your own words, and contact details are redacted from saved reports. A transcript longer than 32 turns is reviewed from a condensed older summary plus the latest 32 turns; a transcript over 200 turns is declined with a clear message instead of being truncated silently.
 4. The practice plan diagnoses weak spots from your scores, writes a drill for each, and refuses to invent weaknesses, scores, or session counts that your record does not support.
 5. Delivery review transcribes your audio to timestamped words, counts pace, fillers, pauses, and repeats in pure Python, and turns those signals into drills.
@@ -63,7 +63,7 @@ The model only ever receives text through the API. The browser never talks to a 
 | Web app | React 19, TypeScript, Vite | Landing, setup, live arena, verdict, delivery room, learner space |
 | API | Python 3.12, FastAPI, Pydantic, LangGraph | All model calls, orchestration, and validation live here |
 | Inference | Ollama (`qwen3.5:4b` by default) | Any endpoint reachable at `OLLAMA_BASE_URL` |
-| Debate move selection | Laya, optional local PyTorch checkpoint | Chooses a fixed debate tactic; Ollama still writes the reply |
+| Debate move selection | Deterministic argument-shape policy, plus Laya as an optional local PyTorch checkpoint | Clear turns are routed by policy; Laya chooses an ambiguous five-way vulnerability. Ollama still writes the reply |
 | Speech | `faster-whisper` | Local transcription for delivery review; `distil-large-v3.5` by default |
 | Accounts and storage | Supabase (free tier) | Auth, Postgres with row level security, private audio bucket |
 
@@ -158,11 +158,11 @@ uv sync --extra laya
 uv run --extra laya uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The defaults already point at your local Ollama and allow the local web app. The `laya` extra installs Laya and CPU-only PyTorch on Linux x86-64. The English Laya checkpoint downloads from Hugging Face on the first debate move (about 808 MB) and is cached locally. If cold loading takes more than 10 seconds, that turn uses the existing planner; the worker thread keeps loading for later turns, and `/api/health` reports that the package is installed, not that the checkpoint is ready. Speech and test tooling install through the default `uv` groups. The first transcription downloads its own model (about 1.5 GB); `STT_DEVICE=cuda` moves transcription to an NVIDIA GPU.
+The defaults already point at your local Ollama and allow the local web app. The `laya` extra installs Laya and CPU-only PyTorch on Linux x86-64. The English Laya checkpoint downloads from Hugging Face on the first debate move (about 808 MB) and is cached locally. If cold loading takes more than 10 seconds, that ambiguous turn uses the existing planner; the worker thread keeps loading for later turns, and `/api/health` reports that the package is installed, not that the checkpoint is ready. Speech and test tooling install through the default `uv` groups. The first transcription downloads its own model (about 1.5 GB); `STT_DEVICE=cuda` moves transcription to an NVIDIA GPU.
 
-Set `ENABLE_LAYA_TACTICS=false` in `ai-backend/.env` to disable Laya and use the existing planner for every turn. Laya chooses only a tactic; Ollama remains responsible for the spoken debate reply. The Laya package is optional, so the backend also falls back to the planner if the extra or checkpoint is unavailable.
+Set `ENABLE_LAYA_TACTICS=false` in `ai-backend/.env` to disable the tactical layer and use the existing planner for every turn. Laya chooses only a tactic; Ollama remains responsible for the spoken debate reply. Clear argument shapes are handled before Laya is consulted, so the package is optional and a missing checkpoint only affects ambiguous turns.
 
-This first version does not claim debate-specific accuracy: it validates that Laya returns one of the six known tactics and does not use confidence scores as a gate. A 24-turn hand-labeled baseline lives in `ai-backend/evals/laya_moves.jsonl`; `make eval-laya` reports agreement with those labels. That measures label agreement only, not coaching accuracy or learner improvement, and the set is too small to treat as a benchmark.
+This first version does not claim debate-specific accuracy. The policy validates that Laya returns one of the five supported vulnerability moves, and it does not use confidence scores as a gate. A 24-turn hand-labeled baseline lives in `ai-backend/evals/laya_moves.jsonl`; `make eval-laya` reports agreement for policy-routed and Laya-routed turns separately. The set is small, some labels are debatable, and agreement is not coaching accuracy or learner improvement.
 
 From the repository root, `make api` and `make web` start the same two services. `make test` runs the backend pytest suite and the frontend typecheck; `make e2e` builds the web app and runs its Playwright suite (`npx playwright install chromium` once). The browser tests mock the API and Supabase REST responses, so they need no Ollama, account, or network.
 
@@ -247,7 +247,7 @@ Set these in `ai-backend/.env` (see `.env.example`) unless noted.
 | `SUPABASE_URL` | empty | Enables token verification for signed-in requests |
 | `SUPABASE_JWKS_URL` | derived | Override only if you serve JWKS elsewhere |
 | `MAX_ACTIVE_STREAMS` | `2` | Concurrent model streams per process before requests are answered with 429 |
-| `ENABLE_LAYA_TACTICS` | `true` | Use local Laya to choose a bounded debate move; set false to use the planner |
+| `ENABLE_LAYA_TACTICS` | `true` | Use the argument-shape policy and local Laya for ambiguous moves; set false to use the planner |
 | `PLANNER_EVERY_N_TURNS` | `2` | How often the fallback planner re-plans against your weakest joint |
 | `STT_MODEL` | `distil-large-v3.5` | English-only Whisper model for delivery review; use `large-v3-turbo` for multilingual |
 | `STT_DEVICE` | `cpu` | Set `cuda` to transcribe on an NVIDIA GPU; needs CUDA 12 cuBLAS/cuDNN 9, and falls back to CPU when they are missing |
@@ -307,7 +307,7 @@ Two things are deliberately not in this release: managed multi-tenant inference,
 ## Project layout
 
 - `web/src/` — views, API clients, session handling, and styles. `features/` holds the arena, verdict, delivery room, learner space, and onboarding; `services/` holds typed API and Supabase clients.
-- `ai-backend/app/` — routes in `main.py`, request schemas, the Ollama client, auth, speech, delivery signals, and the `agents/` graphs that orchestrate a debate turn, a review, a delivery pass, and a practice plan. `ai-backend/evals/` holds the small labeled baseline for Laya's move choices.
+- `ai-backend/app/` — routes in `main.py`, request schemas, the Ollama client, auth, speech, delivery signals, and the `agents/` graphs that orchestrate a debate turn, a review, a delivery pass, and a practice plan. `ai-backend/evals/` holds the small labeled baseline for the tactical selector.
 - `supabase/migrations/` — sessions, turns, analyses, delivery feedback, profiles, topic bank, learning plans, and the private audio bucket, each with owner-scoped access rules.
 - `docker-compose.yml`, `ai-backend/Dockerfile`, `web/Dockerfile` — the whole stack in containers, with an nginx front end that proxies `/api` and streams server-sent events unbuffered.
 - `ai-backend/.env.example`, `web/.env.example`, `.env.docker.example` — every setting above with safe defaults.
