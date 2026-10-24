@@ -28,8 +28,8 @@ import {
   type DebateOptions,
   type JudgeVerdict,
 } from "./services/debate-api";
-import { createDebateRecord, finishDebateRecord, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn } from "./services/debate-records";
-import { loadSessionDigests } from "./services/plan-records";
+import { createDebateRecord, deleteDebateAnalysis, finishDebateRecord, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn, type DebateRecord, type DebateRecordTurn } from "./services/debate-records";
+import { generateAndSaveLearningPlan, loadSessionDigests } from "./services/plan-records";
 import type { SessionDigest } from "./services/plan-api";
 import { addBankTopic, listBankTopics, type BankTopic } from "./services/topics";
 import { loadProfile } from "./services/profiles";
@@ -42,6 +42,7 @@ import { OpponentEmblem } from "./components/OpponentEmblem";
 import { EmptyCueArt } from "./components/CueArt";
 import { MarkdownText } from "./components/Markdown";
 import type { PresentationResult } from "./services/presentation-api";
+import { stripControlMarkers } from "./utils/text";
 
 const AccountView = lazy(() => import("./features/auth/AccountView").then((m) => ({ default: m.AccountView })));
 const AuthView = lazy(() => import("./features/auth/AuthView").then((m) => ({ default: m.AuthView })));
@@ -127,6 +128,8 @@ type ArenaSnapshot = {
   sessionId: number;
   startedAt: number;
   recordId: string | null;
+  continuation?: boolean;
+  continuedHistoryCount?: number;
   savedAt: number;
 };
 
@@ -166,6 +169,8 @@ export default function App() {
   const [cueSequence, setCueSequence] = useState(0);
   const [cueVisible, setCueVisible] = useState(false);
   const [recordId, setRecordId] = useState<string | null>(null);
+  const [continuation, setContinuation] = useState(false);
+  const [continuedHistoryCount, setContinuedHistoryCount] = useState(0);
   const [recordNotice, setRecordNotice] = useState("");
   const [startingSession, setStartingSession] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
@@ -175,6 +180,9 @@ export default function App() {
   const [analysis, setAnalysis] = useState<AnalysisReport | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
+  const [analysisSaved, setAnalysisSaved] = useState(false);
+  const [planUpdateStatus, setPlanUpdateStatus] = useState<"idle" | "updating" | "updated" | "failed">("idle");
+  const [planUpdateError, setPlanUpdateError] = useState("");
   const [deliveryResult, setDeliveryResult] = useState<PresentationResult | null>(null);
   const [judge, setJudge] = useState<JudgeVerdict | null>(null);
   const [judgeLoading, setJudgeLoading] = useState(false);
@@ -184,6 +192,8 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const reviewInFlightRef = useRef(false);
+  const planUpdateInFlightRef = useRef(false);
   const savedTurnIds = useRef(new Set<string>());
   const routedForRef = useRef<string | null>(null);
   const [prefsReady, setPrefsReady] = useState(false);
@@ -321,13 +331,6 @@ export default function App() {
         },
         controller.signal,
         memoryRef.current,
-        (corrected) => {
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === replyId ? { ...message, content: corrected } : message,
-            ),
-          );
-        },
       );
       setMessages((current) =>
         current.map((message) =>
@@ -381,7 +384,7 @@ export default function App() {
     if (view !== "arena") return;
     const snapshot: ArenaSnapshot = {
       messages, draft, secondsLeft, duration, topicChoice, customTopic,
-      position, persona, difficulty, sessionId, startedAt, recordId,
+      position, persona, difficulty, sessionId, startedAt, recordId, continuation, continuedHistoryCount,
       savedAt: Date.now(),
     };
     try {
@@ -389,7 +392,7 @@ export default function App() {
     } catch {
       /* Private browsing or quota — the live session is unaffected. */
     }
-  }, [view, messages, draft, secondsLeft, duration, topicChoice, customTopic, position, persona, difficulty, sessionId, startedAt, recordId]);
+  }, [view, messages, draft, secondsLeft, duration, topicChoice, customTopic, position, persona, difficulty, sessionId, startedAt, recordId, continuation, continuedHistoryCount]);
 
   useEffect(() => {
     try {
@@ -453,10 +456,15 @@ export default function App() {
     setRecordNotice("");
     setAnalysis(null);
     setAnalysisError("");
+    setAnalysisSaved(false);
+    setPlanUpdateStatus("idle");
+    setPlanUpdateError("");
     setDeliveryResult(null);
     setJudge(null);
     setJudgeError("");
     setMessages([]);
+    setContinuation(false);
+    setContinuedHistoryCount(0);
     setDraft("");
     if (prefill) {
       setPosition(prefill.position);
@@ -512,10 +520,34 @@ export default function App() {
     setStartingSession(false);
   }
 
+  async function updatePlanFromSavedWork() {
+    if (!user || !recordId || planUpdateInFlightRef.current) return;
+    planUpdateInFlightRef.current = true;
+    setPlanUpdateStatus("updating");
+    setPlanUpdateError("");
+    try {
+      const profile = await loadProfile(user.id).catch(() => null);
+      const currentPrefs = loadPrefs(user.id);
+      await generateAndSaveLearningPlan(user.id, {
+        goals: profile?.goals ?? null,
+        experience: profile?.experience ?? currentPrefs.experience,
+        preferences: preferencesFor(currentPrefs),
+      }, session?.access_token);
+      setPlanUpdateStatus("updated");
+    } catch (error) {
+      setPlanUpdateStatus("failed");
+      setPlanUpdateError(error instanceof Error ? error.message : "The practice plan could not be updated.");
+    } finally {
+      planUpdateInFlightRef.current = false;
+    }
+  }
+
   async function reviewDebate() {
-    if (analysisLoading || learnerTurns.length === 0) return;
+    if (analysisLoading || reviewInFlightRef.current || learnerTurns.length === 0) return;
+    reviewInFlightRef.current = true;
     setAnalysisLoading(true);
     setAnalysisError("");
+    setAnalysisSaved(false);
     setJudge(null);
     setJudgeError("");
     try {
@@ -526,18 +558,28 @@ export default function App() {
         difficulty,
       }, messages, session?.access_token);
       setAnalysis(report);
+      let reviewSaved = false;
       if (recordId) {
         try {
           await saveDebateAnalysis(recordId, report);
+          reviewSaved = true;
+          setAnalysisSaved(true);
         } catch {
           setAnalysisError("The review is ready, but could not be saved to your learner archive.");
         }
+      }
+      if (user && recordId && reviewSaved) {
+        await updatePlanFromSavedWork();
+      } else if (user && recordId) {
+        setPlanUpdateStatus("failed");
+        setPlanUpdateError("The review could not be saved, so the practice plan was not updated.");
       }
       // The weighted verdict is deterministic, so show it without a second click.
       if (report.ratings) void runJudge(report, deliveryResult);
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "The coach could not review this transcript.");
     } finally {
+      reviewInFlightRef.current = false;
       setAnalysisLoading(false);
     }
   }
@@ -585,6 +627,7 @@ export default function App() {
       });
     }
     setView("verdict");
+    if (user && recordId && learnerTurns.length > 0) void reviewDebate();
   }
 
   async function submitArgument(event: FormEvent<HTMLFormElement>) {
@@ -658,12 +701,20 @@ export default function App() {
     setDifficulty(snapshot.difficulty);
     setDuration(snapshot.duration);
     setSecondsLeft(remaining);
-    setMessages(snapshot.messages.map((message) => ({ ...message, pending: false })));
+    setMessages(
+      snapshot.messages.map((message) => ({
+        ...message,
+        content: stripControlMarkers(message.content),
+        pending: false,
+      })),
+    );
     savedTurnIds.current = new Set(snapshot.messages.map((message) => message.id));
     setDraft(snapshot.draft);
     setSessionId(snapshot.sessionId);
     setStartedAt(snapshot.startedAt);
     setRecordId(snapshot.recordId);
+    setContinuation(snapshot.continuation ?? false);
+    setContinuedHistoryCount(Math.min(snapshot.continuedHistoryCount ?? 0, snapshot.messages.length));
     setStreaming(false);
     setCueVisible(false);
     setRecordNotice("");
@@ -689,6 +740,8 @@ export default function App() {
     setMessages([]);
     setSessionId(0);
     setRecordId(null);
+    setContinuation(false);
+    setContinuedHistoryCount(0);
     setRecordNotice("");
   }
 
@@ -730,6 +783,61 @@ export default function App() {
     setSecondsLeft((current) => (current > 0 ? current : duration * 60));
     setStartedAt(Date.now());
     setView("arena");
+  }
+
+  async function continueSavedDebate(record: DebateRecord, turns: DebateRecordTurn[]) {
+    if (startingSession) return;
+    setStartingSession(true);
+    abortRef.current?.abort();
+    clearSnapshot();
+    const restoredMessages: DebateMessage[] = turns.map((turn) => ({
+      id: turn.id,
+      speaker: turn.speaker,
+      content: stripControlMarkers(turn.content),
+    }));
+    setTopicChoice(motionTitles.includes(record.topic) ? record.topic : "");
+    setCustomTopic(motionTitles.includes(record.topic) ? "" : record.topic);
+    setPosition(record.learner_position);
+    setPersona(record.persona);
+    setDifficulty(record.difficulty);
+    setDuration(record.duration_minutes);
+    setSecondsLeft(record.duration_minutes * 60);
+    setStartedAt(Date.now());
+    setMessages(restoredMessages);
+    setDraft("");
+    setAnalysis(null);
+    setAnalysisError("");
+    setAnalysisSaved(false);
+    setPlanUpdateStatus("idle");
+    setPlanUpdateError("");
+    setDeliveryResult(null);
+    setJudge(null);
+    setJudgeError("");
+    setConfirmEnd(false);
+    setStreaming(false);
+    setCueVisible(false);
+    setTurnError("");
+    setChallengeError("");
+    setContinuation(true);
+    setContinuedHistoryCount(restoredMessages.length);
+    setRecordId(record.id);
+    savedTurnIds.current = new Set(restoredMessages.map((message) => message.id));
+    memoryRef.current = [];
+    let notice = "";
+    try {
+      await resumeDebateRecord(record.id);
+    } catch {
+      notice = "The conversation is loaded, but its archive status could not be updated.";
+    }
+    try {
+      await deleteDebateAnalysis(record.id);
+    } catch {
+      notice = "The conversation is loaded, but its earlier case review could not be cleared. Review again when you finish.";
+    }
+    setRecordNotice(notice);
+    setSessionId((current) => current + 1);
+    setView("arena");
+    setStartingSession(false);
   }
 
   const elapsed = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
@@ -779,6 +887,7 @@ export default function App() {
                   ? (
                     <DashboardView
                       userId={user.id}
+                      accessToken={session?.access_token}
                       displayName={learnerName}
                       resume={savedSnapshot && savedSnapshot.messages.length > 0 ? {
                         turns: savedSnapshot.messages.filter((message) => message.speaker === "learner").length,
@@ -800,7 +909,7 @@ export default function App() {
             <Suspense fallback={<div className="inline-notice" role="status">Loading your archive…</div>}>
               {authLoading
                 ? <div className="inline-notice" role="status">Checking your sign-in…</div>
-                : <AccountView onStart={() => setView("setup")} onSignOut={handleSignOut} />}
+                : <AccountView onStart={() => setView("setup")} onContinue={(record, turns) => void continueSavedDebate(record, turns)} onSignOut={handleSignOut} />}
             </Suspense>
           </motion.div>
         )}
@@ -854,7 +963,7 @@ export default function App() {
                     <div><span className="case-label">LIVE CUE / 01</span><b>Your opening argument</b></div>
                     <span className="cue-preview-state"><i /> READY</span>
                   </div>
-                  <div className="case-bottomline"><span>STREAMED EXCHANGE</span><span>AI OPPONENT / LIVE</span></div>
+                  <div className="case-bottomline"><span>RESPONSE AFTER REVIEW</span><span>AI OPPONENT / FINAL</span></div>
                 </motion.div>
               </div>
             </section>
@@ -1065,7 +1174,7 @@ export default function App() {
           <motion.main key="arena" className="arena-page" {...pageMotion}>
             <header className="arena-header">
               <button className="arena-brand" onClick={returnHome} aria-label="Return home"><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button>
-              <div className="arena-session"><span>LIVE REHEARSAL</span><i /> <span>ACT / {String(sessionId).slice(-4).padStart(4, "0")}</span></div>
+              <div className="arena-session"><span>{continuation ? "CONTINUED REHEARSAL" : "LIVE REHEARSAL"}</span><i /> <span>ACT / {String(sessionId).slice(-4).padStart(4, "0")}</span></div>
               <div className="arena-header-actions"><button className={`end-button${confirmEnd ? " armed" : ""}`} onClick={requestEndSession}>{confirmEnd ? "Tap again to end" : "End session"} <X size={15} /></button></div>
             </header>
 
@@ -1075,6 +1184,8 @@ export default function App() {
               <span className="statusbar-turn">TURN {Math.max(1, learnerTurns.length + 1).toString().padStart(2, "0")}</span>
               <span className={`statusbar-clock ${secondsLeft < 60 ? "clock-urgent" : ""}`}><i aria-hidden="true" />{formatTime(secondsLeft)}</span>
             </div>
+
+            {continuation && <div className="continuation-banner" role="status"><b>CONTINUATION</b><span>Earlier turns are loaded below. This round has a fresh clock, and new turns will join the same archive.</span></div>}
 
             <div className="arena-casebar">
               <div><span className="casebar-label">MOTION</span><h1>{activeTopic}</h1></div>
@@ -1095,7 +1206,7 @@ export default function App() {
               </aside>
 
               <section className="transcript-panel" role="region" aria-label="Live debate transcript">
-                <div className="transcript-heading"><div><h2>The debate</h2></div><span className="round-counter"><span>TURN</span> {Math.max(1, learnerTurns.length + 1).toString().padStart(2, "0")}</span></div>
+                <div className="transcript-heading"><div><h2>The debate</h2>{continuation && <p>Earlier turns from your archive are part of this conversation.</p>}</div><span className="round-counter"><span>TURN</span> {Math.max(1, learnerTurns.length + 1).toString().padStart(2, "0")}</span></div>
                 <AnimatePresence initial={false}>
                   {cueVisible && (
                     <motion.div
@@ -1124,7 +1235,7 @@ export default function App() {
                   {messages.map((message, index) => (
                     <motion.article
                       key={message.id}
-                      className={`message-card ${message.speaker === "learner" ? "message-learner" : "message-opponent"} ${message.kind === "challenge" ? "message-challenge" : ""}`}
+                      className={`message-card ${message.speaker === "learner" ? "message-learner" : "message-opponent"} ${message.kind === "challenge" ? "message-challenge" : ""} ${continuation && index < continuedHistoryCount ? "message-history" : ""}`}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.28 }}
@@ -1141,12 +1252,15 @@ export default function App() {
                             : message.speaker === "learner" ? "YOUR CASE" : activePersona.name.toUpperCase()}
                         </span>
                         <span>TURN {Math.ceil((index + 1) / 2).toString().padStart(2, "0")}</span>
+                        {continuation && index === 0 && <span className="history-marker">{continuedHistoryCount > 0 ? "SAVED TRANSCRIPT" : "NEW ROUND"}</span>}
+                        {continuation && continuedHistoryCount > 0 && index === continuedHistoryCount && <span className="history-marker">NEW ROUND</span>}
                       </div>
                       {message.challengeTarget && <blockquote className="challenge-target">“{message.challengeTarget}”</blockquote>}
                       <div className="message-body"><MarkdownText text={message.content} />{message.pending && <span className="stream-cursor" />}</div>
                       {message.pending && !message.content && <div className="thinking-label"><LoaderCircle size={14} /> PREPARING A RESPONSE</div>}
                     </motion.article>
                   ))}
+                  {continuation && continuedHistoryCount === messages.length && <div className="history-boundary">NEW ROUND · CONTINUE BELOW</div>}
                   <div ref={bottomRef} />
                 </div>
                 <form className="argument-composer" onSubmit={(event) => void submitArgument(event)}>
@@ -1167,7 +1281,7 @@ export default function App() {
                     disabled={streaming || secondsLeft === 0}
                   />
                   {challengeError && <div className="inline-notice" role="status">{challengeError}</div>}
-                  <div className="composer-bottom"><span>One claim at a time — aim for 1–2 sentences. Enter sends · Shift + Enter adds a line.</span><button className="challenge-button" type="button" onClick={() => void requestFollowUp()} disabled={challenging || streaming || learnerTurns.length === 0 || challengeDepth() >= 2 || secondsLeft === 0} title={learnerTurns.length === 0 ? "Make your case first — follow-ups unlock after your opening turn" : "Ask the coach to press your latest point"}>{challenging ? <LoaderCircle size={15} className="spin" /> : <Sparkles size={14} />} <span>{challengeDepth() >= 2 ? "Follow-ups done" : learnerTurns.length === 0 ? "Make a case first" : "Ask a follow-up"}</span></button><button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">{streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />} <span>{streaming ? "Opponent is replying" : "Make your case"}</span></button></div>
+                  <div className="composer-bottom"><span>One claim at a time — aim for 1–2 sentences. Enter sends · Shift + Enter adds a line.</span><button className="challenge-button" type="button" onClick={() => void requestFollowUp()} disabled={challenging || streaming || learnerTurns.length === 0 || challengeDepth() >= 2 || secondsLeft === 0} title={learnerTurns.length === 0 ? "Make your case first — follow-ups unlock after your opening turn" : "Ask the coach to press your latest point"}>{challenging ? <LoaderCircle size={15} className="spin" /> : <Sparkles size={14} />} <span>{challengeDepth() >= 2 ? "Follow-ups done" : learnerTurns.length === 0 ? "Make a case first" : "Ask a follow-up"}</span></button><button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">{streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />} <span>{streaming ? "Drafting and reviewing" : "Make your case"}</span></button></div>
                 </form>
               </section>
 
@@ -1181,7 +1295,7 @@ export default function App() {
                 {!user && <div className="room-guest"><span>GUEST REHEARSAL</span><p>This transcript stays in this browser. Sign in to keep it in your archive.</p></div>}
               </aside>
             </div>
-            <div className="arena-bottomline"><span>VERDICT / PRACTICE ROOM</span><span>AI OPPONENT STREAMED LIVE</span><span>SESSION LENGTH {duration} MIN</span></div>
+            <div className="arena-bottomline"><span>VERDICT / PRACTICE ROOM</span><span>AI RESPONSE / FINAL AFTER REVIEW</span><span>SESSION LENGTH {duration} MIN</span></div>
           </motion.main>
         )}
 
@@ -1213,7 +1327,24 @@ export default function App() {
                   </p>
                 )}
                 {analysisLoading && <p className="review-intro" role="status"><LoaderCircle className="spin" size={14} /> Reading your case. Give it a moment.</p>}
-                {analysisError && <div className="analysis-error" role="alert">{analysisError}</div>}
+                {analysisError && (
+                  <div className="analysis-error" role="alert">
+                    {analysisError}
+                    {user && recordId && !analysisSaved && <button className="button button-light" type="button" onClick={() => void reviewDebate()} disabled={analysisLoading}>Retry review</button>}
+                  </div>
+                )}
+                {user && recordId && planUpdateStatus !== "idle" && (
+                  <div className={`plan-refresh-message is-${planUpdateStatus}`} role={planUpdateStatus === "failed" ? "alert" : "status"}>
+                    {planUpdateStatus === "updating" && <><LoaderCircle className="spin" size={14} /> Refreshing your practice plan from this saved review…</>}
+                    {planUpdateStatus === "updated" && <><Check size={14} /> Practice plan refreshed using the latest saved review and available history.</>}
+                    {planUpdateStatus === "failed" && <>
+                      <span>{planUpdateError}</span>
+                      {analysisSaved
+                        ? <button className="button button-light" type="button" onClick={() => void updatePlanFromSavedWork()} disabled={planUpdateInFlightRef.current}>Retry plan update</button>
+                        : <button className="button button-light" type="button" onClick={() => void reviewDebate()} disabled={analysisLoading}>Retry review</button>}
+                    </>}
+                  </div>
+                )}
                 {(analysis?.gaps ?? []).length > 0 && (
                   <div className="inline-notice" role="status">
                     <span>Partial review — {analysis?.gaps.join(" ")} The finished sections are below; running it again may complete the rest.</span>
@@ -1250,8 +1381,12 @@ export default function App() {
 
                   {(analysis.strengths.length > 0 || analysis.next_steps.length > 0) && (
                     <div className="analysis-coaching-grid">
-                      <section className="analysis-coaching-card"><span>WHAT WORKED</span>{analysis.strengths.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
-                      <section className="analysis-coaching-card"><span>DO THIS NEXT</span>{analysis.next_steps.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
+                      {analysis.strengths.length > 0 && (
+                        <section className="analysis-coaching-card"><span>WHAT WORKED</span>{analysis.strengths.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
+                      )}
+                      {analysis.next_steps.length > 0 && (
+                        <section className="analysis-coaching-card is-next"><span>DO THIS NEXT</span>{analysis.next_steps.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
+                      )}
                     </div>
                   )}
 

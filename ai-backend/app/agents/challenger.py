@@ -3,6 +3,7 @@ import logging
 
 from ..prompts import preference_text
 from .llm import chat
+from .markup import strip_markers
 
 logger = logging.getLogger(__name__)
 MAX_DEPTH = 2
@@ -52,7 +53,8 @@ async def challenge_turn(
             },
         )
         parsed = json.loads(content)
-        target, follow_up = str(parsed["target_sentence"]).strip(), str(parsed["follow_up"]).strip()
+        target = strip_markers(str(parsed["target_sentence"]).strip())
+        follow_up = strip_markers(str(parsed["follow_up"]).strip())
         if not target or not follow_up:
             return None
         if target not in (latest or ""):

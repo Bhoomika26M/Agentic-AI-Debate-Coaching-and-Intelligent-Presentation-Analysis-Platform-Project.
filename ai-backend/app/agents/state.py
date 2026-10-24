@@ -19,6 +19,7 @@ class DebateState(TypedDict, total=False):
     memory: list[dict]
     memory_brief: str | None
     brief: str | None
+    tactic: str | None
     draft: str
     reply: str
     problems: list[str]
@@ -72,3 +73,4 @@ class DeliveryState(TypedDict, total=False):
     signals: dict
     report: dict
     gaps: list[str]
+    error_kind: str

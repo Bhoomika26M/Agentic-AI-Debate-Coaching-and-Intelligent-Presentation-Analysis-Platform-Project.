@@ -107,6 +107,14 @@ export async function saveDebateAnalysis(sessionId: string, report: AnalysisRepo
   if (error) throw error;
 }
 
+export async function deleteDebateAnalysis(sessionId: string) {
+  const { error } = await requireClient()
+    .from("debate_analyses")
+    .delete()
+    .eq("session_id", sessionId);
+  if (error) throw error;
+}
+
 export async function loadDebateAnalysis(sessionId: string) {
   const { data, error } = await requireClient()
     .from("debate_analyses")

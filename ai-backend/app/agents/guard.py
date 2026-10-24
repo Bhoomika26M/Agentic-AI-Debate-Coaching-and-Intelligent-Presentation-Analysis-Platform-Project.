@@ -1,6 +1,8 @@
 import re
 from typing import Literal
 
+from .markup import strip_markers
+
 _INJECTION = [
     r"ignore (all )?(previous|prior|above|earlier) instructions",
     r"disregard (all )?(previous|prior|above|your|these|the) (instructions|rules|orders)",
@@ -44,7 +46,7 @@ def route_turn(content: str | None) -> Route:
 
 
 def redirect_reply(topic: str) -> str:
-    clean = " ".join(topic.split())
+    clean = " ".join(strip_markers(topic).split())
     return (
         f"I'm staying in character as your debate opponent on \"{clean}\", "
         "so I can't help with that. What's your strongest reason for your side?"

@@ -14,9 +14,31 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-stt = ["faster-whisper>=1.0,<2.0", "av>=12,<14"]
 ser = ["speechbrain>=1.0,<2.0"]
+laya = [
+    "laya>=0.4.14,<0.5",
+    "torch>=2.14",
+]
+
+[dependency-groups]
 dev = ["pytest>=8.0,<10.0", "ruff>=0.6,<1.0"]
+stt = ["faster-whisper>=1.2,<2.0", "av>=12,<14"]
+
+[tool.uv]
+default-groups = ["dev", "stt"]
+
+[tool.uv.sources]
+torch = [
+    {
+        index = "pytorch-cpu",
+        marker = "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.ruff]
 line-length = 100

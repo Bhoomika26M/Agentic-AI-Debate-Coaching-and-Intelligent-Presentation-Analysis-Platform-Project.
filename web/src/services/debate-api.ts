@@ -1,4 +1,5 @@
 import { apiUrl } from "../config";
+import { createMarkerScrubber, stripControlMarkers } from "../utils/text";
 import type { SessionDigest } from "./plan-api";
 
 export type Speaker = "learner" | "opponent";
@@ -45,7 +46,12 @@ export async function requestChallenge(
     const error = await response.json().catch(() => null);
     throw new Error(error?.detail ?? "The coach could not ask a follow-up.");
   }
-  return (await response.json()) as ChallengeResult;
+  const result = (await response.json()) as ChallengeResult;
+  return {
+    ...result,
+    target_sentence: result.target_sentence ? stripControlMarkers(result.target_sentence) : null,
+    follow_up: result.follow_up ? stripControlMarkers(result.follow_up) : null,
+  };
 }
 
 /** The learner's own onboarding answers, sent so the coaching can aim at what they asked for. */
@@ -140,7 +146,6 @@ export async function streamOpponentReply(
   onDelta: (delta: string) => void,
   signal: AbortSignal,
   memory: SessionDigest[] = [],
-  onCorrected?: (reply: string) => void,
 ) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
@@ -166,7 +171,10 @@ export async function streamOpponentReply(
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  const scrubber = createMarkerScrubber();
   let buffer = "";
+  let draft = "";
+  let replacement: string | null = null;
 
   while (true) {
     const { value, done } = await reader.read();
@@ -182,7 +190,14 @@ export async function streamOpponentReply(
         .find((line) => line.startsWith("data: "))
         ?.slice(6);
 
-      if (data === "[DONE]") return;
+      if (data === "[DONE]") {
+        const tail = scrubber.flush();
+        if (tail && replacement === null) draft += tail;
+        const reply = replacement ?? draft;
+        if (!reply.trim()) throw new Error("The opponent returned an empty reply.");
+        onDelta(reply);
+        return;
+      }
       if (data) {
         let payload: { delta?: string; replace?: string; error?: string };
         try {
@@ -191,11 +206,15 @@ export async function streamOpponentReply(
           continue;
         }
         if (payload.error) throw new Error(payload.error);
-        if (payload.delta) onDelta(payload.delta);
-        // The verifier rejected the streamed draft; swap the whole turn for the corrected one.
-        if (payload.replace) (onCorrected ?? (() => undefined))(payload.replace);
+        if (payload.delta) {
+          const clean = scrubber.push(payload.delta);
+          if (clean) draft += clean;
+        }
+        if (payload.replace) replacement = stripControlMarkers(payload.replace);
       }
       boundary = buffer.indexOf("\n\n");
     }
   }
+
+  throw new Error("The opponent reply ended before the final response was ready.");
 }

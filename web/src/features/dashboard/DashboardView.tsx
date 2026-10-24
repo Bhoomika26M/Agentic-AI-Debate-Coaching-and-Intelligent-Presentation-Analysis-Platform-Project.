@@ -26,12 +26,15 @@ import { listPresentationFeedbacks } from "../../services/presentation-records";
 import { loadProfile, type LearnerProfile } from "../../services/profiles";
 import { listBankTopics, type BankTopic } from "../../services/topics";
 import type { AnalysisReport } from "../../services/debate-api";
+import { generateAndSaveLearningPlan, listLearningPlans, type StoredPlan } from "../../services/plan-records";
 import {
   buildRecommendation,
   goalLine,
   loadPrefs,
   orderedStarterTopics,
+  preferencesFor,
   purposeLine,
+  type GoalKey,
   type LearnerPrefs,
 } from "../../services/learner-prefs";
 import "./dashboard.css";
@@ -80,6 +83,18 @@ type Tally = {
   deliveries: number;
 };
 
+type GoalSnapshot = {
+  title: string;
+  score: number | null;
+  scoreLabel: string;
+  detail: string;
+  comparison: string;
+  caveat: string;
+  activity: { at: string; pressure: boolean }[];
+  breakdown: { label: string; score: number }[];
+  pressureFocus: boolean;
+};
+
 function dayKey(value: string) {
   return new Date(value).toISOString().slice(0, 10);
 }
@@ -104,6 +119,125 @@ function greeting() {
 
 function formatWhen(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(value));
+}
+
+function formatScore(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+function goalSnapshot(
+  goal: GoalKey | null,
+  customGoal: string | null,
+  records: DebateRecord[],
+  analyses: (AnalysisReport | null)[],
+): GoalSnapshot | null {
+  const completed = records.filter((record) => record.status === "completed");
+  const activity = completed
+    .slice()
+    .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime())
+    .map((record) => ({ at: record.started_at, pressure: record.difficulty === "cross-examination" }));
+  const reviewed = records
+    .map((record, index) => ({ record, analysis: analyses[index] }))
+    .filter((item) => item.record.status === "completed" && item.analysis?.ratings);
+  const average = (report: AnalysisReport | null | undefined, keys: (typeof CRITERIA)[number][]) => {
+    const scores = keys
+      .map((key) => report?.ratings?.[key]?.score)
+      .filter((value): value is number => typeof value === "number");
+    return scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null;
+  };
+
+  let keys: (typeof CRITERIA)[number][] = [];
+  let title = "";
+  let caveat = "";
+  if (goal === "structure") {
+    keys = ["clarity", "logical_consistency"];
+    title = "Case structure";
+  } else if (goal === "evidence") {
+    keys = ["evidence_strength"];
+    title = "Evidence";
+  } else if (goal === "win") {
+    keys = [...CRITERIA];
+    title = "Case review average";
+    caveat = "This is a rubric average, not a win rate. The app does not record round winners.";
+  } else if (goal === "nerves") {
+    return {
+      title: "Rehearsal exposure",
+      score: null,
+      scoreLabel: `${completed.length} completed`,
+      detail: `${completed.length} completed debate ${completed.length === 1 ? "session" : "sessions"} in your saved record.`,
+      comparison: "",
+      caveat: "Practice count only. It does not measure anxiety or confidence directly.",
+      activity,
+      breakdown: [],
+      pressureFocus: false,
+    };
+  } else if (goal === "hostile") {
+    const count = completed.filter((record) => record.difficulty === "cross-examination").length;
+    return {
+      title: "High-pressure practice",
+      score: null,
+      scoreLabel: `${count} rounds`,
+      detail: `${count} completed ${count === 1 ? "round used" : "rounds used"} the cross-examination setting.`,
+      comparison: "",
+      caveat: "This counts selected difficulty, not rebuttal quality. Review scores do not isolate hostile-question skill.",
+      activity,
+      breakdown: [],
+      pressureFocus: true,
+    };
+  } else if (customGoal?.trim()) {
+    return {
+      title: customGoal.trim(),
+      score: null,
+      scoreLabel: `${completed.length} completed`,
+      detail: `${completed.length} completed debate ${completed.length === 1 ? "session" : "sessions"} in your saved record.`,
+      comparison: "",
+      caveat: "Your custom goal is not directly scored by the current review rubric.",
+      activity,
+      breakdown: [],
+      pressureFocus: false,
+    };
+  } else {
+    return null;
+  }
+
+  const scores = reviewed
+    .map(({ analysis }) => average(analysis, keys))
+    .filter((value): value is number => value !== null);
+  const latest = scores[0] ?? null;
+  const earliest = scores[scores.length - 1] ?? null;
+  const latestScoredReview = reviewed.find(({ analysis }) => average(analysis, keys) !== null)?.analysis;
+  const breakdown = keys.flatMap((key) => {
+    const score = latestScoredReview?.ratings?.[key]?.score;
+    return typeof score === "number" ? [{ label: CRITERIA_LABELS[key], score: formatScore(score) }] : [];
+  });
+  const change = scores.length > 1 && latest !== null && earliest !== null
+    ? latest - earliest
+    : null;
+  const comparison = change === null
+    ? scores.length === 1 ? "One scored review available so far." : "A scored review is needed to show this goal on the rubric."
+    : change === 0
+      ? `At the same level as the earliest of ${scores.length} available reviews.`
+      : `${Math.abs(formatScore(change)).toFixed(1)} ${change > 0 ? "higher" : "lower"} than the earliest of ${scores.length} available reviews.`;
+
+  return {
+    title,
+    score: latest === null ? null : formatScore(latest),
+    scoreLabel: latest === null ? "No score yet" : `${formatScore(latest).toFixed(1)} / 5`,
+    detail: latest === null
+      ? "Your completed rounds are saved, but none of the available reviews includes this score yet."
+      : `Latest available review across ${goal === "structure" ? "clarity and logic" : goal === "evidence" ? "evidence strength" : "the five argument criteria"}.`,
+    comparison,
+    caveat,
+    activity: [],
+    breakdown,
+    pressureFocus: false,
+  };
+}
+
+function validGoal(value: string | null | undefined): GoalKey | null {
+  return value === "structure" || value === "evidence" || value === "nerves" || value === "hostile" || value === "win"
+    ? value
+    : null;
 }
 
 function buildTally(records: DebateRecord[], analyses: (AnalysisReport | null)[], feedbacks: { signals?: { filler_rate_per_100w?: number } }[]): Tally {
@@ -236,12 +370,14 @@ function buildCues(tally: Tally, prefs: LearnerPrefs, go: (view: "setup" | "acco
 
 export function DashboardView({
   userId,
+  accessToken,
   displayName,
   resume,
   onLaunch,
   onNavigate,
 }: {
   userId: string;
+  accessToken?: string;
   displayName: string | null;
   resume: { turns: number; topic: string; onResume: () => void; onDiscard: () => void } | null;
   onLaunch: (prefill: { topic: string; position: "for" | "against"; persona: PersonaKey; difficulty: DifficultyKey; duration: number }) => void;
@@ -257,6 +393,10 @@ export function DashboardView({
   const [feedbacks, setFeedbacks] = useState<{ signals?: { filler_rate_per_100w?: number } }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [storedPlan, setStoredPlan] = useState<StoredPlan | null>(null);
+  const [planLoading, setPlanLoading] = useState(true);
+  const [planWorking, setPlanWorking] = useState(false);
+  const [planError, setPlanError] = useState("");
 
   const suggestedMotions = useMemo(() => {
     const ordered = orderedStarterTopics(starterTopics, prefs);
@@ -322,13 +462,48 @@ export function DashboardView({
     return () => { active = false; };
   }, [userId]);
 
+  useEffect(() => {
+    let active = true;
+    setPlanLoading(true);
+    setPlanError("");
+    void listLearningPlans(1)
+      .then((plans) => { if (active) setStoredPlan(plans[0] ?? null); })
+      .catch(() => { if (active) setPlanError("Your practice plan did not load. Try again in a moment."); })
+      .finally(() => { if (active) setPlanLoading(false); });
+    return () => { active = false; };
+  }, [userId]);
+
   const tally = useMemo(() => buildTally(records, analyses, feedbacks), [records, analyses, feedbacks]);
   const cues = useMemo(() => buildCues(tally, prefs, onNavigate), [tally, prefs, onNavigate]);
+  const activeGoal = prefs.goal ?? validGoal(profile?.practice_goal);
+  const goalProgress = useMemo(
+    () => goalSnapshot(activeGoal, profile?.goals ?? null, records, analyses),
+    [activeGoal, profile?.goals, records, analyses],
+  );
   const slot = SLOTS.find((option) => option.key === slotKey) ?? SLOTS[1];
   const activePersona = personas.find((person) => person.key === persona) ?? personas[1];
   const activeTopic = custom.trim() || topic;
   const firstName = (displayName ?? profile?.display_name ?? "").trim().split(/\s+/)[0];
   const recent = records.slice(0, 5);
+  const planIsBehind = Boolean(storedPlan && records[0] && new Date(records[0].started_at) > new Date(storedPlan.created_at));
+
+  async function refreshPlan() {
+    if (planWorking) return;
+    setPlanWorking(true);
+    setPlanError("");
+    try {
+      const created = await generateAndSaveLearningPlan(userId, {
+        goals: profile?.goals ?? null,
+        experience: profile?.experience ?? prefs.experience,
+        preferences: preferencesFor(prefs),
+      }, accessToken);
+      setStoredPlan(created);
+    } catch (error) {
+      setPlanError(error instanceof Error ? error.message : "The coach could not update your practice plan.");
+    } finally {
+      setPlanWorking(false);
+    }
+  }
 
   function takeTheFloor() {
     if (!activeTopic.trim()) return;
@@ -348,7 +523,7 @@ export function DashboardView({
           <h1 id="dash-heading">{greeting()}{firstName ? `, ${firstName}` : ""}.</h1>
           <p className="dash-sub">
             {purposeLine(prefs)}
-            {prefs.goal ? ` · working on ${goalLine(prefs.goal)}` : ""}
+            {activeGoal ? ` · working on ${goalLine(activeGoal)}` : ""}
           </p>
         </div>
         <button className="dash-space-link" type="button" onClick={() => onNavigate("account")}>
@@ -369,7 +544,7 @@ export function DashboardView({
         </div>
       )}
 
-      {error && <div className="dash-notice" role="status">{error}</div>}
+      {error && <div className="dash-notice" role="alert">{error}</div>}
 
       <section className="board" aria-label="Set up your next rehearsal">
         <div className="board-launch">
@@ -475,22 +650,155 @@ export function DashboardView({
         </div>
       </section>
 
+      <section className="dash-direction" aria-label="Goal progress and practice plan">
+        <div className="dash-direction-goal">
+          <h2 className="dash-direction-title"><Target size={16} aria-hidden="true" /> Your goal</h2>
+          {goalProgress ? (
+            <>
+              <div className="goal-progress-title">
+                <h3>{goalProgress.title}</h3>
+                <b>{goalProgress.scoreLabel}</b>
+              </div>
+              {goalProgress.score !== null && goalProgress.breakdown.length > 0 && (
+                <div className="goal-score-chart" role="group" aria-label={`Latest rubric breakdown for ${goalProgress.title}`}>
+                  {goalProgress.breakdown.map((item) => (
+                    <div className="goal-score-row" key={item.label}>
+                      <span>{item.label}</span>
+                      <div className="goal-score-track" role="img" aria-label={`${item.label}: ${item.score.toFixed(1)} out of 5`}>
+                        <span style={{ transform: `scaleX(${Math.max(0, Math.min(1, item.score / 5))})` }} />
+                      </div>
+                      <b>{item.score.toFixed(1)}</b>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {goalProgress.activity.length > 0 && (
+                <div className="goal-session-activity">
+                  <div className="goal-session-heading">
+                    <span>Saved session record</span>
+                    <small>One mark per session</small>
+                  </div>
+                  <ol className="goal-session-grid" aria-label="Completed sessions in saved record">
+                    {goalProgress.activity.map((session, index) => (
+                      <li
+                        className={session.pressure && goalProgress.pressureFocus ? "is-pressure" : ""}
+                        key={`${session.at}-${index}`}
+                        aria-label={`Session ${index + 1}, ${formatWhen(session.at)}${session.pressure ? ", cross-examination setting" : ""}`}
+                        title={`Session ${index + 1}, ${formatWhen(session.at)}${session.pressure ? ", cross-examination" : ""}`}
+                      >
+                        <span aria-hidden="true" />
+                      </li>
+                    ))}
+                  </ol>
+                  {goalProgress.pressureFocus && (
+                    <div className="goal-session-legend" aria-label="Session setting legend">
+                      <span><i className="is-pressure" /> Cross-examination</span>
+                      <span><i /> Other setting</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              <p className="goal-progress-detail">{goalProgress.detail}</p>
+              {goalProgress.comparison && <p className="goal-progress-comparison">{goalProgress.comparison}</p>}
+              {goalProgress.caveat && <p className="goal-progress-caveat">{goalProgress.caveat}</p>}
+              {goalProgress.score === null && goalProgress.scoreLabel === "No score yet" && !loading && (
+                <p className="goal-progress-caveat">Run a rehearsal and complete its review to start a scored comparison.</p>
+              )}
+            </>
+          ) : (
+            <div className="goal-progress-empty">
+              <p>Choose a goal in Learner space to see the evidence your record can support.</p>
+              <button className="dash-text-link" type="button" onClick={() => onNavigate("account")}>Set a goal <ArrowUpRight size={14} /></button>
+            </div>
+          )}
+        </div>
+
+        <div className="dash-direction-plan">
+          <div className="dash-plan-heading">
+            <div>
+              <h2 className="dash-direction-title"><Sparkles size={16} aria-hidden="true" /> Current practice plan</h2>
+              <p>Coach-generated from saved reviews when available and your practice preferences.</p>
+            </div>
+            <button className="dash-text-link" type="button" onClick={() => onNavigate("account")}>Learner space <ArrowUpRight size={14} /></button>
+          </div>
+
+          {planLoading ? (
+            <p className="dash-quiet" role="status"><LoaderCircle size={14} className="spin" /> Loading your latest plan…</p>
+          ) : storedPlan ? (
+            <div className="dash-plan-content">
+              <div className="dash-plan-meta">
+                <span>{storedPlan.sessions_considered} observations considered</span>
+                <span>Updated {formatWhen(storedPlan.created_at)}</span>
+              </div>
+              <h3>{storedPlan.plan.headline}</h3>
+              <p className="dash-plan-summary">{storedPlan.plan.summary}</p>
+              <div className="dash-plan-route">
+                <div className="dash-plan-node">
+                  <span className="dash-plan-node-mark"><Play size={13} aria-hidden="true" /></span>
+                  <div>
+                    <h3>Next session</h3>
+                    <p>{storedPlan.plan.next_session}</p>
+                  </div>
+                </div>
+                {storedPlan.plan.drills[0] && (
+                  <div className="dash-plan-node dash-plan-drill">
+                    <span className="dash-plan-node-mark"><Target size={14} aria-hidden="true" /></span>
+                    <div className="dash-plan-drill-content">
+                      <div className="dash-plan-drill-heading">
+                        <h3>{storedPlan.plan.drills[0].title}</h3>
+                        <span><Clock3 size={12} aria-hidden="true" /> {storedPlan.plan.drills[0].minutes} min</span>
+                      </div>
+                      {storedPlan.plan.drills[0].steps.length > 0 && (
+                        <ol className="dash-drill-steps">
+                          {storedPlan.plan.drills[0].steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}
+                        </ol>
+                      )}
+                      <p className="dash-drill-check"><Check size={13} aria-hidden="true" /> {storedPlan.plan.drills[0].success_check}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {storedPlan.plan.gaps.length > 0 && <p className="dash-plan-gap">{storedPlan.plan.gaps[0]}</p>}
+              {planIsBehind && <p className="dash-plan-gap">A newer saved rehearsal began after this plan was created.</p>}
+              {planError && <p className="dash-plan-gap" role="alert">{planError}</p>}
+            </div>
+          ) : (
+            <div className="dash-plan-empty">
+              <p>{planError || "No saved plan yet. Build one from your available reviews and preferences."}</p>
+            </div>
+          )}
+
+          <div className="dash-plan-actions">
+            <button className="button button-dark" type="button" onClick={() => void refreshPlan()} disabled={planWorking || planLoading}>
+              {planWorking ? <LoaderCircle className="spin" size={14} /> : <Sparkles size={14} />}
+              {storedPlan ? "Update plan" : "Build my plan"}
+            </button>
+            {planWorking && <span role="status">Reviewing your saved observations…</span>}
+          </div>
+        </div>
+      </section>
+
       <div className="dash-columns">
         <section className="dash-panel dash-tally" aria-labelledby="tally-heading">
-          <h2 id="tally-heading">The tally</h2>
+          <div className="dash-panel-heading">
+            <h2 id="tally-heading">The tally</h2>
+            <p>Up to 30 recent rounds, 6 argument reviews, and 8 delivery takes.</p>
+          </div>
           {loading ? (
             <p className="dash-quiet" role="status"><LoaderCircle size={14} className="spin" /> Reading your record…</p>
+          ) : error ? (
+            <p className="dash-quiet">Your tally is unavailable until your record loads.</p>
           ) : (
             <div className="tally-grid">
-              <div><span>REHEARSALS</span><b>{tally.sessions}</b><small>{tally.completed} completed</small></div>
+              <div><span>RECENT ROUNDS</span><b>{tally.sessions}</b><small>{tally.completed} completed</small></div>
               <div><span>STREAK</span><b>{tally.streak}<small className="unit">d</small></b><small>{tally.thisWeek} this week</small></div>
               <div>
-                <span>ARGUMENT AVG</span>
+                <span>RECENT ARGUMENT AVG</span>
                 <b>{tally.avgArgument !== null ? tally.avgArgument.toFixed(1) : "—"}<small className="unit">/5</small></b>
-                <small>{tally.avgArgument !== null ? "across your five criteria" : "needs one review"}</small>
+                <small>{tally.avgArgument !== null ? "across up to 6 reviews" : "needs one review"}</small>
               </div>
               <div>
-                <span>FILLER RATE</span>
+                <span>LATEST FILLER RATE</span>
                 <b>{tally.fillerLast !== null ? tally.fillerLast.toFixed(1) : "—"}<small className="unit">/100w</small></b>
                 <small>
                   {tally.fillerFirst !== null && tally.fillerLast !== null && tally.fillerFirst !== tally.fillerLast
@@ -507,7 +815,11 @@ export function DashboardView({
 
         <section className="dash-panel dash-cues" aria-labelledby="cues-heading">
           <h2 id="cues-heading"><Sparkles size={15} aria-hidden="true" /> Next cues</h2>
-          {cues.length === 0 ? (
+          {loading ? (
+            <p className="dash-quiet" role="status"><LoaderCircle size={14} className="spin" /> Finding your next cue…</p>
+          ) : error ? (
+            <p className="dash-quiet">Your practice cues will return when your record is available.</p>
+          ) : cues.length === 0 ? (
             <p className="dash-quiet">Nothing to catch up on. Set up a round when you are ready.</p>
           ) : (
             <ul className="cue-list">
@@ -536,6 +848,8 @@ export function DashboardView({
         </div>
         {loading ? (
           <p className="dash-quiet" role="status"><LoaderCircle size={14} className="spin" /> Loading your rehearsals…</p>
+        ) : error ? (
+          <p className="dash-quiet">Your rehearsal list is unavailable until your record loads.</p>
         ) : recent.length === 0 ? (
           <div className="dash-empty">
             <span className="dash-empty-mark" aria-hidden="true"><BookOpenText size={20} /></span>

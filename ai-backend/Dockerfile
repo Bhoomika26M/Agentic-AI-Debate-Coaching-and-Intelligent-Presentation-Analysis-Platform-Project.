@@ -1,4 +1,4 @@
-# Debate coach inference service; build from ai-backend/ (EXTRAS=--extra stt adds transcription).
+# Debate coach inference service; build from ai-backend/ (EXTRAS=--extra ser adds the emotion model).
 FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -20,7 +20,7 @@ COPY app ./app
 
 # Verification stage: the same suite the repository runs locally, with no Ollama needed.
 FROM base AS test
-RUN uv sync --frozen --extra dev
+RUN uv sync --frozen --no-default-groups --group dev
 COPY tests ./tests
 RUN python -m pytest
 

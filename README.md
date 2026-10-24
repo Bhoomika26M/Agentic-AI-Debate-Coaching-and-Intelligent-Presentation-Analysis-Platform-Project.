@@ -47,7 +47,7 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 ## How it works
 
 1. You type an argument in the browser and send it to the API.
-2. Five agents answer a turn: a deterministic guard routes jailbreaks and off-motion tasks to an in-character redirect with no model call, a memory agent reduces your saved history into a private brief, a planner names the weakest joint in the transcript, the responder streams an in-persona reply, and a verifier inspects it for length, role labels, character breaks, leaked brief text, and whether it actually engaged your latest point. A flagged turn is repaired once; a turn that still fails is replaced rather than shipped.
+2. A deterministic guard routes jailbreaks and off-motion tasks to an in-character redirect with no model call. On a normal learner turn, local Laya selects one move from six bounded debate tactics. Ollama writes the in-persona reply. If Laya is disabled, missing, or cannot return a supported move, the existing planner supplies its private weakest-joint brief. A verifier checks length, role labels, character breaks, leaked private context, and whether the reply engaged the latest point. A flagged turn is repaired once; a turn that still fails is replaced rather than shipped.
 3. Coaching fans rubric scoring, fallacy detection, and counterpoints into parallel branches that merge into one review. Every fallacy quote is matched against your own words, and contact details are redacted from saved reports.
 4. The practice plan diagnoses weak spots from your scores, writes a drill for each, and refuses to invent weaknesses, scores, or session counts that your record does not support.
 5. Delivery review transcribes your audio to timestamped words, counts pace, fillers, pauses, and repeats in pure Python, and turns those signals into drills.
@@ -63,7 +63,8 @@ The model only ever receives text through the API. The browser never talks to a 
 | Web app | React 19, TypeScript, Vite | Landing, setup, live arena, verdict, delivery room, learner space |
 | API | Python 3.12, FastAPI, Pydantic, LangGraph | All model calls, orchestration, and validation live here |
 | Inference | Ollama (`qwen3.5:4b` by default) | Any endpoint reachable at `OLLAMA_BASE_URL` |
-| Speech | `faster-whisper` (optional) | Local transcription for delivery review |
+| Debate move selection | Laya, optional local PyTorch checkpoint | Chooses a fixed debate tactic; Ollama still writes the reply |
+| Speech | `faster-whisper` (optional) | Local transcription for delivery review, distilled large-v3 by default |
 | Accounts and storage | Supabase (free tier) | Auth, Postgres with row level security, private audio bucket |
 
 ---
@@ -153,11 +154,17 @@ If Ollama does not start on its own, run `ollama serve` in a terminal and leave 
 ```bash
 cd ai-backend
 cp .env.example .env
-uv sync
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv sync --extra laya
+uv run --extra laya uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The defaults already point at your local Ollama and allow the local web app. For delivery review, install the speech extra with `uv sync --extra stt`.
+The defaults already point at your local Ollama and allow the local web app. The `laya` extra installs Laya and CPU-only PyTorch on Linux x86-64. The English Laya checkpoint downloads from Hugging Face on the first debate move (about 808 MB) and is cached locally. If cold loading takes more than 10 seconds, that turn uses the existing planner while Laya continues loading in the background. Speech and test tooling install through the default `uv` groups. The first transcription downloads its own model (about 1.5 GB); `STT_DEVICE=cuda` moves transcription to an NVIDIA GPU.
+
+Set `ENABLE_LAYA_TACTICS=false` in `ai-backend/.env` to disable Laya and use the existing planner for every turn. Laya chooses only a tactic; Ollama remains responsible for the spoken debate reply. The Laya package is optional, so the backend also falls back to the planner if the extra or checkpoint is unavailable.
+
+This first version does not claim debate-specific accuracy: it validates that Laya returns one of the six known tactics and does not use confidence scores as a gate. Evaluate it on real labeled debate turns before expanding its role.
+
+From the repository root, `make api` and `make web` start the same two services, and `make test` runs both test suites.
 
 **3. Start the web app**
 
@@ -177,13 +184,15 @@ Practice works without this. To save sessions to an archive, create a Supabase p
 
 ## Docker
 
+To include Laya in the API image, copy `.env.docker.example` to `.env` before building. It sets `EXTRAS=--extra laya`.
+
 One command starts the API, the web app, and an Ollama service with the model pulled:
 
 ```bash
 docker compose up --build          # then open http://localhost:8080
 ```
 
-The first run downloads the Ollama image and about 3.4 GB of model. The web container serves the built app and proxies `/api` to the API, so the browser only ever talks to one origin. Accounts stay optional: copy `.env.docker.example` to `.env` and fill in your Supabase values to enable them.
+The first run downloads the Ollama image and about 3.4 GB of model. The first debate move downloads the Laya checkpoint (about 808 MB) into the persistent `hf-cache` volume. Set `EXTRAS=` to omit Laya and use the planner fallback. Accounts stay optional; fill in the Supabase values in `.env` to enable them.
 
 Already running Ollama on the host? Reuse it instead of the bundled service:
 
@@ -191,7 +200,31 @@ Already running Ollama on the host? Reuse it instead of the bundled service:
 docker compose up api web          # with OLLAMA_BASE_URL=http://host.docker.internal:11434 in .env
 ```
 
-Add `EXTRAS=--extra stt` to `.env` to build the API image with local transcription.
+Local transcription is built into the API image, and downloaded Hugging Face models are kept in the `hf-cache` volume. Set `EXTRAS=--extra laya` in `.env` to install Laya in the API image. Add `ser` to the extras only if you also want the optional emotion model.
+
+---
+
+## Speech and transcription
+
+Delivery review transcribes locally with `faster-whisper`, so audio never leaves the machine.
+
+| Where | What to do |
+| --- | --- |
+| Local API | `uv sync --extra laya`, then `uv run --extra laya uvicorn app.main:app ...` |
+| Docker | Already included in the image; the downloaded model is kept in the `hf-cache` volume |
+
+The speech packages are a `uv` dependency group that `uv sync` installs by default, so a plain sync never removes local transcription. The Delivery Room reports transcription as unavailable only when the group is left out.
+
+`GET /api/health` reports `"transcription": "ready"` or `"unavailable"`, so you can check the wiring without uploading audio:
+
+```bash
+curl -s http://127.0.0.1:8000/api/health
+cd ai-backend && uv run python -c "from app.speech import transcription_available; print(transcription_available())"
+```
+
+The default model is `distil-large-v3.5` (English only, about 1.5 GB, fetched on the first transcription). `STT_MODEL=large-v3-turbo` is the multilingual option. On CPU it runs at roughly 2.5 times realtime, so a three minute talk takes about 75 seconds. `STT_DEVICE=cuda` moves transcription onto an NVIDIA GPU, which needs CUDA 12 cuBLAS and cuDNN 9 on the machine; when they are missing the API logs a warning and falls back to CPU int8.
+
+Whisper normalises filler words such as "um" and "uh" out of the transcript, so the filler counts in a delivery review under-report.
 
 ---
 
@@ -209,8 +242,14 @@ Set these in `ai-backend/.env` (see `.env.example`) unless noted.
 | `SUPABASE_URL` | empty | Enables token verification for signed-in requests |
 | `SUPABASE_JWKS_URL` | derived | Override only if you serve JWKS elsewhere |
 | `MAX_ACTIVE_STREAMS` | `2` | Concurrent model streams per process before requests are answered with 429 |
-| `PLANNER_EVERY_N_TURNS` | `2` | How often the opponent re-plans against your weakest joint |
-| `STT_MODEL` | `tiny` | Whisper size for delivery review |
+| `ENABLE_LAYA_TACTICS` | `true` | Use local Laya to choose a bounded debate move; set false to use the planner |
+| `PLANNER_EVERY_N_TURNS` | `2` | How often the fallback planner re-plans against your weakest joint |
+| `STT_MODEL` | `distil-large-v3.5` | English-only Whisper model for delivery review; use `large-v3-turbo` for multilingual |
+| `STT_DEVICE` | `cpu` | Set `cuda` to transcribe on an NVIDIA GPU; needs CUDA 12 cuBLAS/cuDNN 9, and falls back to CPU when they are missing |
+| `STT_COMPUTE_TYPE` | `int8` CPU / `float16` CUDA | CTranslate2 precision override |
+| `STT_LANGUAGE` | `en` | `auto` lets Whisper detect the language |
+| `STT_BEAM_SIZE` | `5` | Decoding beams; higher is more accurate and slower |
+| `STT_VAD` | `false` | Trim silence before transcription; may shift pause timings |
 | `MAX_AUDIO_MB` / `MAX_AUDIO_SEC` | `10` / `180` | Upload caps |
 | `ENABLE_SER` | `false` | Local-only emotion recognition; leave off on anything public |
 | `LOG_LEVEL` | `INFO` | Agent and timing logs |
@@ -223,7 +262,7 @@ In `web/.env`: `VITE_API_BASE_URL` (blank uses the dev proxy or a same-origin `/
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /api/health` | Model readiness |
+| `GET /api/health` | Model and transcription readiness |
 | `POST /api/debate/stream` | Streams one opponent reply over server-sent events, ending with `[DONE]` |
 | `POST /api/debate/analyze` | Argument review: ratings, fallacy flags, counterpoints, disclosed gaps |
 | `POST /api/debate/challenge` | One Socratic follow-up, or done at depth 2 |

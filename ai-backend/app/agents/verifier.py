@@ -4,6 +4,7 @@ import logging
 import re
 
 from .llm import chat
+from .markup import leaks_marker
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,8 @@ def inspect_reply(
         problems.append("the draft opens with a speaker label")
     if "##" in text:
         problems.append("the draft carries analysis headings")
+    if leaks_marker(text):
+        problems.append("the draft repeats the learner-turn wrapper")
     if len(words) > _LONG_REPLY_WORDS:
         problems.append(f"the draft runs {len(words)} words (limit {MAX_REPLY_WORDS})")
     if len(words) < _SHORT_REPLY_WORDS:

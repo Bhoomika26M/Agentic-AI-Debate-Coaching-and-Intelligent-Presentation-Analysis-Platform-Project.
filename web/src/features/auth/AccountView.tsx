@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowUpRight, BookOpenText, Check, Download, LoaderCircle, Printer, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpenText, Check, Download, LoaderCircle, Printer, RotateCcw, Sparkles } from "lucide-react";
 import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
 import { listDebateRecords, loadDebateAnalysis, loadDebateRecord, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
@@ -59,7 +59,11 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSignOut: () => Promise<void> }) {
+export function AccountView({ onStart, onContinue, onSignOut }: {
+  onStart: () => void;
+  onContinue: (session: DebateRecord, turns: DebateRecordTurn[]) => void;
+  onSignOut: () => Promise<void>;
+}) {
   const { user, session } = useAuth();
   const [records, setRecords] = useState<DebateRecord[]>([]);
   const [selected, setSelected] = useState<{ session: DebateRecord; turns: DebateRecordTurn[]; analysis: AnalysisReport | null } | null>(null);
@@ -71,7 +75,8 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState("");
   const [prefs, setPrefs] = useState<LearnerPrefs>(() => (user ? loadPrefs(user.id) : emptyPrefs()));
-  const [tab, setTab] = useState<TabKey>(() => recommendedTab(user ? loadPrefs(user.id) : emptyPrefs()));
+  const [settingsOpen, setSettingsOpen] = useState(() => !hasAnswers(user ? loadPrefs(user.id) : emptyPrefs()));
+  const [tab, setTab] = useState<TabKey>("archive");
   const [storedPlan, setStoredPlan] = useState<{ plan: LearningPlan; created_at: string; sessions_considered: number } | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState("");
@@ -87,10 +92,6 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
   const recommendation = useMemo(() => buildRecommendation(profile.experience, prefs), [profile.experience, prefs]);
   const setupComplete = hasAnswers(prefs);
   const recommended = useMemo(() => recommendedTab(prefs), [prefs]);
-  const orderedTabs = useMemo(
-    () => [...TABS].sort((a, b) => (a.key === recommended ? -1 : b.key === recommended ? 1 : 0)),
-    [recommended],
-  );
   const introLine = useMemo(() => {
     if (!setupComplete) return "Two minutes in your room tunes your opponent, your pressure, and the cue waiting on your dashboard.";
     const parts = [
@@ -348,6 +349,18 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
         <p className="account-intro-mail">{user?.email ?? "Learner account"}</p>
       </section>
 
+      <section className="account-overview" aria-label="Recent rehearsal summary">
+        <div><span>RECENT RECORDS</span><b>{loading ? "–" : records.length.toString().padStart(2, "0")}</b><small>Up to 30 saved sessions</small></div>
+        <div><span>COMPLETED</span><b>{loading ? "–" : records.filter((record) => record.status === "completed").length.toString().padStart(2, "0")}</b><small>In recent records</small></div>
+        <div><span>IN PROGRESS</span><b>{loading ? "–" : records.filter((record) => record.status === "in_progress").length.toString().padStart(2, "0")}</b><small>Can be continued</small></div>
+        <div><span>LATEST REHEARSAL</span><b className="account-latest">{loading ? "Loading" : records[0] ? formatDate(records[0].started_at) : "Not yet"}</b><small>{records[0]?.topic ?? "Your first session will appear here"}</small></div>
+      </section>
+
+      <details className="account-settings" open={settingsOpen} onToggle={(event) => setSettingsOpen(event.currentTarget.open)}>
+        <summary>
+          <span><b>Profile and practice settings</b><small>Update your learner profile, goals, opponent, and session defaults.</small></span>
+          <span className="account-settings-action">{setupComplete ? "Edit settings" : "Set up your room"}</span>
+        </summary>
       <div className="account-setup-band">
         <section className="account-profile" aria-labelledby="profile-heading">
           <div className="archive-heading">
@@ -482,9 +495,10 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
           {profileNotice && <div className="inline-notice" role="status">{profileNotice}</div>}
         </section>
       </div>
+      </details>
 
       <div className="account-tabs no-print" role="group" aria-label="Archive, progress, or plan">
-        {orderedTabs.map((item) => (
+        {TABS.map((item) => (
           <button
             key={item.key}
             type="button"
@@ -628,10 +642,10 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
         </section>
       )}
 
-      {tab === "archive" && <div className="account-layout">
+      {tab === "archive" && <div className={`account-layout${selected ? " has-selected" : ""}`}>
         <section className="account-archive" aria-labelledby="archive-heading">
           <div className="archive-heading">
-            <div><h2 id="archive-heading">Rehearsal archive</h2><p>Sessions saved to your learner account.</p></div>
+            <div><h2 id="archive-heading">Rehearsal archive</h2><p>Open a transcript to review it or continue the conversation in the debate room.</p></div>
             <span>{records.length.toString().padStart(2, "0")}</span>
           </div>
 
@@ -688,6 +702,12 @@ export function AccountView({ onStart, onSignOut }: { onStart: () => void; onSig
               <span>YOUR NEXT MOVES</span>
               {selected.analysis.next_steps.map((step, index) => <p key={`${index}-${step}`}>{step}</p>)}
             </section>}
+            <div className="record-detail-actions">
+              <button className="button button-dark" onClick={() => onContinue(selected.session, selected.turns)}>
+                Continue in the debate room <ArrowRight size={15} />
+              </button>
+              <p>Saved turns will appear in the room with a fresh clock. The earlier case review is cleared because it no longer covers the extended transcript.</p>
+            </div>
           </section>
         )}
       </div>}

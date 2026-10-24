@@ -20,13 +20,19 @@ async def transcribe_node(state: DeliveryState) -> DeliveryState:
             state.get("content_type", "audio/webm"),
         )
     except AudioValidationError as error:
-        return {"segments": [], "gaps": [str(error)]}
+        return {"segments": [], "gaps": [str(error)], "error_kind": "audio"}
     except TranscriptionUnavailableError as error:
-        return {"segments": [], "gaps": [str(error)]}
+        return {"segments": [], "gaps": [str(error)], "error_kind": "unavailable"}
     kept = [s for s in segments if str(s.get("text", "")).strip()]
     if not kept:
-        return {"segments": [], "gaps": ["No speech detected in that recording. Record closer to the mic and try again."]}
-    return {"segments": kept, "gaps": []}
+        return {
+            "segments": [],
+            "gaps": [
+                "No speech detected in that recording. Record closer to the mic and try again."
+            ],
+            "error_kind": "no_speech",
+        }
+    return {"segments": kept, "gaps": [], "error_kind": ""}
 
 
 async def signals_node(state: DeliveryState) -> DeliveryState:
@@ -44,7 +50,11 @@ async def coach_node(state: DeliveryState) -> DeliveryState:
     try:
         report = await coach_delivery(request)
     except IncompletePresentationError as error:
-        return {"report": None, "gaps": [f"delivery coaching incomplete: {error}"]}
+        return {
+            "report": None,
+            "gaps": [f"delivery coaching incomplete: {error}"],
+            "error_kind": "failed",
+        }
     cleaned, count = scrub_report(report.model_dump())
     if count:
         logger.info("Scrubbed %d contact span(s) from delivery report.", count)
@@ -72,11 +82,12 @@ delivery_graph = build_delivery_graph()
 
 async def review_delivery_with_graph(
     audio: bytes, filename: str, content_type: str, topic: str | None
-) -> tuple[dict | None, list[str]]:
+) -> tuple[dict | None, list[str], str]:
     out = await delivery_graph.ainvoke(
         {"audio": audio, "filename": filename, "content_type": content_type, "topic": topic}
     )
     gaps: list[str] = list(out.get("gaps", []))
+    kind = str(out.get("error_kind", ""))
     if out.get("report") and out.get("segments") and out.get("signals"):
         transcript = " ".join(s.get("text", "") for s in out["segments"])
         return {
@@ -85,10 +96,10 @@ async def review_delivery_with_graph(
             "signals": out["signals"],
             "report": out["report"],
             "retained": False,
-        }, gaps
+        }, gaps, kind
     partial: dict = {}
     if out.get("segments"):
         partial["segments"] = out["segments"]
     if out.get("signals"):
         partial["signals"] = out["signals"]
-    return (partial or None), gaps or ["delivery review incomplete"]
+    return (partial or None), gaps or ["delivery review incomplete"], kind or "failed"

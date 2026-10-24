@@ -1,7 +1,8 @@
 import { supabase } from "../features/auth/supabase";
 import { listDebateRecords, loadDebateAnalysis } from "./debate-records";
 import { listPresentationFeedbacks } from "./presentation-records";
-import type { LearningPlan, SessionDigest } from "./plan-api";
+import { requestPlan, type LearningPlan, type SessionDigest } from "./plan-api";
+import type { PracticePreferences } from "./debate-api";
 
 export type StoredPlan = {
   id: string;
@@ -68,6 +69,20 @@ export async function saveLearningPlan(
     .single();
   if (error) throw error;
   return data as StoredPlan;
+}
+
+export async function generateAndSaveLearningPlan(
+  userId: string,
+  input: {
+    goals: string | null;
+    experience: string | null;
+    preferences?: PracticePreferences | null;
+  },
+  accessToken?: string,
+) {
+  const digests = await loadSessionDigests(12);
+  const result = await requestPlan({ ...input, digests }, accessToken);
+  return saveLearningPlan(userId, result.plan, digests.length);
 }
 
 export async function listLearningPlans(limit = 6) {

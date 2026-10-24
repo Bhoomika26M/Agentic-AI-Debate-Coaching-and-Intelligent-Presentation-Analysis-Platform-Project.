@@ -9,7 +9,9 @@ from langgraph.graph import END, StateGraph
 from ..prompts import build_messages
 from ..schemas import DebateRequest
 from .guard import redirect_reply, route_turn
+from .laya_selector import move_instruction, select_move
 from .llm import chat, stream
+from .markup import MarkerStream, strip_markers
 from .memory import summarize_history
 from .planner import plan_brief, pressure_hint
 from .state import DebateState
@@ -48,8 +50,7 @@ def _to_request(state: DebateState) -> DebateRequest:
         persona=state.get("persona", "skeptic"),  # type: ignore[arg-type]
         difficulty=state.get("difficulty", "challenge"),  # type: ignore[arg-type]
         history=[
-            {"speaker": t["speaker"], "content": t["content"]}
-            for t in state.get("history", [])
+            {"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])
         ],
         learner_argument=state.get("latest"),
         preferences=state.get("preferences"),
@@ -83,6 +84,9 @@ def _private_context(state: DebateState, history: list[dict]) -> str | None:
     summary = state.get("memory_brief")
     if summary:
         parts.append(f"Private history, never quote it. {summary}")
+    tactic = move_instruction(state.get("tactic"))
+    if tactic:
+        parts.append(f"For this turn, take this debate move without announcing it: {tactic}")
     pressure = _pressure_line(history, state.get("latest"))
     if pressure:
         parts.append(pressure)
@@ -96,19 +100,26 @@ def _private_context(state: DebateState, history: list[dict]) -> str | None:
 
 def _briefed_messages(state: DebateState, request: DebateRequest) -> list[dict[str, str]]:
     messages = build_messages(request)
-    history = [
-        {"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])
-    ]
+    history = [{"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])]
     context = _private_context(state, history)
     if context:
-        messages = messages + [{"role": "system", "content": context}]
+        messages = [messages[0], {"role": "system", "content": context}, *messages[1:]]
     return messages
 
 
 async def planner_node(state: DebateState) -> DebateState:
-    history = [
-        {"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])
-    ]
+    history = [{"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])]
+    tactic = await select_move(
+        state.get("topic", ""),
+        state.get("learner_position", "for"),
+        state.get("persona", "skeptic"),
+        state.get("difficulty", "challenge"),
+        history,
+        state.get("latest"),
+    )
+    if tactic:
+        return {"tactic": tactic, "brief": None}
+
     brief = await plan_brief(
         history,
         state.get("latest"),
@@ -118,13 +129,14 @@ async def planner_node(state: DebateState) -> DebateState:
     )
     if brief:
         logger.info("Planner briefed this turn.")
-    return {"brief": brief}
+    return {"brief": brief, "tactic": None}
 
 
 async def draft_node(state: DebateState) -> DebateState:
     """Draft one in-persona turn, briefed by memory and planner."""
     request = _to_request(state)
     reply = await chat(_briefed_messages(state, request), temperature=0.75, num_predict=240)
+    reply = strip_markers(reply)
     return {"draft": reply, "reply": reply}
 
 
@@ -154,6 +166,9 @@ async def reviser_node(state: DebateState) -> DebateState:
         latest=state.get("latest"),
     )
     if revised is None:
+        return {"problems": ["no usable revision"], "revise_count": 1}
+    revised = strip_markers(revised)
+    if not revised:
         return {"problems": ["no usable revision"], "revise_count": 1}
     return {
         "draft": revised,
@@ -185,14 +200,16 @@ def build_debate_graph():
     graph.add_node("accept", accept_node)
     graph.set_entry_point("guard")
     graph.add_conditional_edges(
-        "guard", lambda s: s.get("route", "respond"),
+        "guard",
+        lambda s: s.get("route", "respond"),
         {"respond": "memory", "redirect": "redirect"},
     )
     graph.add_edge("memory", "planner")
     graph.add_edge("planner", "draft")
     graph.add_edge("draft", "verifier")
     graph.add_conditional_edges(
-        "verifier", _after_verify,
+        "verifier",
+        _after_verify,
         {"accept": "accept", "revise": "reviser", "fallback": "fallback"},
     )
     graph.add_edge("reviser", "verifier")
@@ -209,7 +226,7 @@ async def respond_verified(state: DebateState) -> dict:
     """Run one turn through the whole graph."""
     out = await debate_graph.ainvoke(state)
     return {
-        "reply": out.get("reply", ""),
+        "reply": strip_markers(out.get("reply", "")),
         "verified": bool(out.get("verified")),
         "problems": list(out.get("problems", [])),
     }
@@ -227,9 +244,16 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
     request = _to_request(state)
     assembled: list[str] = []
     messages = _briefed_messages(state, request)
+    scrubber = MarkerStream()
     async for delta in stream(messages, temperature=0.75, num_predict=240):
-        assembled.append(delta)
-        yield ("delta", delta)
+        clean = scrubber.feed(delta)
+        if clean:
+            assembled.append(clean)
+            yield ("delta", clean)
+    tail = scrubber.flush()
+    if tail:
+        assembled.append(tail)
+        yield ("delta", tail)
 
     draft = "".join(assembled)
     problems = inspect_reply(draft, latest=state.get("latest"), brief=state.get("brief"))
@@ -246,6 +270,7 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
         latest=state.get("latest"),
     )
     if revised is not None:
+        revised = strip_markers(revised)
         remaining = inspect_reply(revised, latest=state.get("latest"), brief=state.get("brief"))
         if len(remaining) < len(problems):
             yield ("replace", revised)

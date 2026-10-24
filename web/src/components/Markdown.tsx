@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { stripControlMarkers } from "../utils/text";
+
 const CODE_RE = /(`[^`\n]+`)/;
 const BOLDITALIC_RE = /(\*\*\*[^*\n]+?\*\*\*)/;
 const BOLD_RE = /(\*\*[^*\n]+?\*\*)/;
@@ -66,7 +68,7 @@ function renderLinesWithBreaks(text: string, keyPrefix: string): ReactNode[] {
 }
 
 export function MarkdownText({ text, compact }: { text: string; compact?: boolean }) {
-  const blocks = text.split(/\n{2,}/);
+  const blocks = stripControlMarkers(text).trim().split(/\n{2,}/);
   return (
     <>
       {blocks.map((block, i) => {

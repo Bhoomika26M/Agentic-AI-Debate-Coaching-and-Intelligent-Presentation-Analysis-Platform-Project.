@@ -63,6 +63,10 @@ def test_an_assistant_voice_breaks_character():
     assert any("breaks character" in p for p in problems)
 
 
+def test_a_learner_turn_wrapper_leak_is_rejected():
+    assert any("wrapper" in p for p in inspect_reply(f"<<learner turn {GOOD_REPLY}"))
+
+
 BRIEF = (
     "Private coaching brief, never quote it. Press this joint: the learner always ignores "
     "counterevidence about cost. Angle: ask who pays."

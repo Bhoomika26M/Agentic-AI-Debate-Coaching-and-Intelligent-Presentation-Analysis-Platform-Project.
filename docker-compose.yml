@@ -29,7 +29,7 @@ services:
     build:
       context: ./ai-backend
       target: runtime
-      # Set EXTRAS to "--extra stt" to enable local transcription for delivery review.
+      # Optional extras only; local transcription is part of the default dependency groups.
       args:
         EXTRAS: ${EXTRAS:-}
     restart: unless-stopped
@@ -42,14 +42,25 @@ services:
       # Point at http://host.docker.internal:11434 to reuse a host Ollama (docker compose up api web).
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
+      ENABLE_LAYA_TACTICS: ${ENABLE_LAYA_TACTICS:-true}
       WEB_ORIGIN: http://localhost:8080
       ALLOWED_HOSTS: localhost,127.0.0.1,api
       REQUIRE_AUTH: ${REQUIRE_AUTH:-false}
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_JWKS_URL: ${SUPABASE_JWKS_URL:-}
       SUPABASE_JWT_ISSUER: ${SUPABASE_JWT_ISSUER:-}
+      # Transcription ships with the image; these only tune the speech model.
+      STT_MODEL: ${STT_MODEL:-distil-large-v3.5}
+      STT_DEVICE: ${STT_DEVICE:-cpu}
+      STT_COMPUTE_TYPE: ${STT_COMPUTE_TYPE:-}
+      STT_LANGUAGE: ${STT_LANGUAGE:-en}
+      STT_BEAM_SIZE: ${STT_BEAM_SIZE:-5}
+      STT_VAD: ${STT_VAD:-false}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      # Keeps downloaded Hugging Face models across image rebuilds.
+      - hf-cache:/root/.cache/huggingface
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
@@ -79,3 +90,4 @@ services:
 
 volumes:
   ollama-models:
+  hf-cache:

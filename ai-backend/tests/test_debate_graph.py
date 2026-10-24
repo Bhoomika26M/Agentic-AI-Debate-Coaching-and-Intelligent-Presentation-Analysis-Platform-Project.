@@ -93,6 +93,24 @@ def test_streaming_emits_deltas_as_the_draft_forms(monkeypatch):
     assert "".join(text for _, text in events) == "".join(chunks)
 
 
+def test_streaming_strips_the_learner_turn_wrapper(monkeypatch):
+    chunks = [
+        "<</learner turn>>\n",
+        "You lean on attention gains, ",
+        "but a ban moves the same distraction ",
+        "into the corridor. Which evidence shows focus ",
+        "improving without a phone-free school?",
+    ]
+    monkeypatch.setattr(debate, "stream", make_stream(chunks))
+
+    async def collect():
+        return [event async for event in debate.respond_stream(_state())]
+
+    events = asyncio.run(collect())
+    assert all(kind == "delta" for kind, _ in events)
+    assert "".join(text for _, text in events) == "".join(chunks[1:])
+
+
 def test_streaming_announces_a_verifier_correction(monkeypatch):
     # "Skeptic: ..." streams first, then the verifier rejects it and the repair is announced.
     monkeypatch.setattr(debate, "stream", make_stream([f"Skeptic: {GOOD_DRAFT}"]))

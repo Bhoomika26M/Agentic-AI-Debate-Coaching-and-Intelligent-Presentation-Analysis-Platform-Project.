@@ -16,7 +16,25 @@
 .account-intro-line { max-width: 62ch; margin: 0; color: #4b453c; font-size: 13px; line-height: 1.65; }
 .account-intro-line.is-open { color: #8d4035; }
 .account-intro-mail { margin: 10px 0 0; color: #6d655a; font: 10px var(--mono); }
+.account-overview { margin: 0 0 28px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #bdb19c; border-bottom: 1px solid #bdb19c; }
+.account-overview > div { min-width: 0; padding: 13px 15px; display: grid; align-content: start; gap: 6px; border-right: 1px solid #d4c8b4; }
+.account-overview > div:first-child { padding-left: 0; }
+.account-overview > div:last-child { padding-right: 0; border-right: 0; }
+.account-overview span { color: #5e574d; font: 8px var(--mono); letter-spacing: .07em; }
+.account-overview b { font: 500 22px/1.1 var(--serif); font-variant-numeric: tabular-nums; }
+.account-overview b.account-latest { font-size: 15px; }
+.account-overview small { overflow: hidden; color: #5b5348; font-size: 10px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.account-settings { margin-bottom: 28px; border: 1px solid #c9bda9; background: var(--paper-light); }
+.account-settings > summary { min-height: 68px; padding: 13px 16px; display: flex; align-items: center; justify-content: space-between; gap: 18px; cursor: pointer; list-style: none; }
+.account-settings > summary::-webkit-details-marker { display: none; }
+.account-settings > summary > span:first-child { display: grid; gap: 5px; }
+.account-settings > summary b { font: 500 17px var(--serif); }
+.account-settings > summary small { color: #5b5348; font-size: 10px; line-height: 1.5; }
+.account-settings-action { flex: 0 0 auto; color: #8d4035; font: 8px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.account-settings[open] > summary { border-bottom: 1px solid #c9bda9; }
+.account-settings .account-setup-band { margin: 0; padding: 16px; }
 .account-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr); align-items: start; gap: 30px; }
+.account-layout:not(.has-selected) { grid-template-columns: 1fr; }
 .account-profile { margin-bottom: 30px; padding: 20px; border: 1px solid #c9bda9; background: var(--paper-light); }
 .account-setup-band { margin-bottom: 30px; display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); align-items: start; gap: 22px; }
 .account-setup-band .account-profile { margin-bottom: 0; }
@@ -72,6 +90,9 @@
 .record-detail-head h2 { margin: 7px 0 0; font: 500 19px/1.3 var(--serif); }
 .record-detail-head button { width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid #b9ad98; color: #514a40; background: transparent; cursor: pointer; }
 .record-detail-meta { padding: 11px 18px; border-bottom: 1px solid #e0d7c8; }
+.record-detail-actions { padding: 16px 18px; border-top: 1px solid #d3c8b7; background: #f7f0e3; }
+.record-detail-actions .button { width: 100%; justify-content: center; }
+.record-detail-actions p { margin: 9px 0 0; color: #5b5348; font-size: 10px; line-height: 1.5; }
 .record-detail-turns { max-height: 490px; padding: 14px; overflow: auto; }
 .record-turn { margin-bottom: 12px; padding: 12px; border: 1px solid #ded3c1; background: #f2ecdf; }
 .record-turn.learner { margin-left: 22px; background: #eee5d7; }
@@ -85,6 +106,10 @@
   .account-layout { grid-template-columns: 1fr; }
   .record-detail { max-width: 700px; }
   .account-setup-band { grid-template-columns: 1fr; gap: 18px; }
+  .account-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .account-overview > div:nth-child(2) { border-right: 0; }
+  .account-overview > div:nth-child(n + 3) { border-top: 1px solid #d4c8b4; }
+  .account-overview > div:nth-child(3) { padding-left: 0; }
 }
 
 @media (max-width: 760px) {
@@ -92,6 +117,9 @@
   .account-intro { margin: 28px 0 24px; }
   .account-intro h1 { font-size: 42px; }
   .account-layout { gap: 22px; }
+  .account-overview { margin-bottom: 22px; }
+  .account-settings > summary { align-items: flex-start; }
+  .account-settings .account-setup-band { padding: 12px; }
 }
 
 @media (max-width: 420px) {

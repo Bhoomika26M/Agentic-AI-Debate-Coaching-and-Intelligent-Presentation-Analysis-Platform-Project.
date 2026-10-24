@@ -28,7 +28,7 @@ from .schemas import (
     PlanResponse,
     PresentationResponse,
 )
-from .speech import MAX_AUDIO_MB
+from .speech import MAX_AUDIO_MB, transcription_available
 
 # The agent graphs log through logging.info; LOG_LEVEL=WARNING silences them.
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
@@ -107,6 +107,7 @@ async def health() -> dict[str, str | bool]:
         "model": OLLAMA_MODEL,
         "model_available": available,
         "model_loaded": loaded,
+        "transcription": "ready" if transcription_available() else "unavailable",
     }
 
 
@@ -208,7 +209,9 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
         if report is None:
             detail = "The local model returned an incomplete coaching review. Try the review again."
             if gaps:
-                detail = f"Incomplete coaching review ({'; '.join(gaps[:3])}). Try the review again."
+                detail = (
+                f"Incomplete coaching review ({'; '.join(gaps[:3])}). Try the review again."
+            )
             raise HTTPException(status_code=502, detail=detail)
         return AnalysisEnvelope.model_validate({**report, "gaps": gaps})
     except HTTPError as error:
@@ -340,7 +343,7 @@ async def debate_judge(request: JudgeRequest) -> JudgeVerdict:
     response_model=PresentationResponse,
 )
 async def presentation_analysis(
-    audio: UploadFile = File(...),
+    audio: UploadFile = File(...),  # noqa: B008 - FastAPI reads the upload from this default.
     topic: str | None = Form(default=None, min_length=3, max_length=240),
 ) -> PresentationResponse:
     # Persistence stays in the browser; Python holds audio in memory and discards it.
@@ -354,26 +357,28 @@ async def presentation_analysis(
         from .agents.delivery_graph import review_delivery_with_graph
 
         data = await audio.read(MAX_AUDIO_MB * 1024 * 1024 + 1)
-        result, gaps = await review_delivery_with_graph(
+        result, gaps, kind = await review_delivery_with_graph(
             data, audio.filename or "talk.webm", audio.content_type or "audio/webm", topic or None
         )
         if result is not None and not gaps:
             return PresentationResponse.model_validate({**result, "ser_reflection": []})
         detail = "; ".join(gaps[:3]) if gaps else "Delivery review failed."
-        if "over " in detail or "webm" in detail or "No audio" in detail or "filename" in detail:
-            raise HTTPException(status_code=413, detail=detail)
-        if "unavailable" in detail:
-            raise HTTPException(status_code=503, detail=detail)
-        if "No speech" in detail:
-            raise HTTPException(status_code=400, detail=detail)
-        raise HTTPException(status_code=502, detail=f"{detail} Try again.")
+        status = {"audio": 413, "unavailable": 503, "no_speech": 400}.get(kind, 502)
+        if status == 502:
+            raise HTTPException(status_code=502, detail=f"{detail} Try again.")
+        raise HTTPException(status_code=status, detail=detail)
     except HTTPError as error:
         logger.exception("Ollama delivery coaching failed: %s", error)
-        raise HTTPException(status_code=503, detail="The local model could not finish delivery review.") from error
+        raise HTTPException(
+            status_code=503, detail="The local model could not finish delivery review."
+        ) from error
     except HTTPException:
         raise
     except Exception as error:
         logger.exception("Delivery review failed unexpectedly: %s", error)
-        raise HTTPException(status_code=503, detail="Delivery review failed. Check the backend logs and try again.") from error
+        raise HTTPException(
+            status_code=503,
+            detail="Delivery review failed. Check the backend logs and try again.",
+        ) from error
     finally:
         stream_slots.release()
