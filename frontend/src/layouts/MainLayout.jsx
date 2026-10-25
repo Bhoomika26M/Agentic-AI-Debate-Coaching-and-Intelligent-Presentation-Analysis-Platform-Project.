@@ -18,6 +18,7 @@ export const MainLayout = () => {
 
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { label: 'AI Sparring', path: '/simulation', icon: Sparkles },
     { label: 'Topics', path: '/topics', icon: Compass },
     { label: 'Sessions', path: '/sessions', icon: Calendar },
     { label: 'Profile & Skills', path: '/profile', icon: User },

@@ -22,6 +22,7 @@ import { TopicsPage } from './pages/topics/TopicsPage';
 import { SessionsListPage } from './pages/sessions/SessionsListPage';
 import { CreateSessionWizard } from './pages/sessions/CreateSessionWizard';
 import { SessionRoomPage } from './pages/sessions/SessionRoomPage';
+import { AISimulationPage } from './pages/simulation/AISimulationPage';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 
 const queryClient = new QueryClient({
@@ -65,6 +66,7 @@ export default function App() {
             >
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="simulation" element={<AISimulationPage />} />
               <Route path="topics" element={<TopicsPage />} />
               <Route path="sessions" element={<SessionsListPage />} />
               <Route path="sessions/new" element={<CreateSessionWizard />} />
