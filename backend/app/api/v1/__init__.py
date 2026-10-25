@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1 import auth, users, profile, skills, goals, topics, sessions, analysis
+from app.api.v1 import auth, users, profile, skills, goals, topics, sessions, analysis, simulation
 
 api_router = APIRouter()
 
@@ -11,3 +11,4 @@ api_router.include_router(goals.router, prefix="/goals", tags=["Learning Goals"]
 api_router.include_router(topics.router, prefix="/topics", tags=["Debate Topics"])
 api_router.include_router(sessions.router, prefix="/sessions", tags=["Debate Sessions"])
 api_router.include_router(analysis.router, prefix="/analysis", tags=["AI Debate Analysis & Fallacies"])
+api_router.include_router(simulation.router, prefix="/simulation", tags=["AI Debate Simulation & Coaching"])
