@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../api/client';
@@ -6,9 +7,10 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Input } from '../../components/ui/Input';
-import { Compass, Plus, Search, Filter, BookOpen, AlertCircle } from 'lucide-react';
+import { Compass, Plus, Search, Filter, BookOpen, AlertCircle, X, Sparkles, Play } from 'lucide-react';
 
 export const TopicsPage = () => {
+  const navigate = useNavigate();
   const { isCoach, isEducator, isAdmin } = useAuth();
   const queryClient = useQueryClient();
 
@@ -16,6 +18,7 @@ export const TopicsPage = () => {
   const [selectedDifficulty, setSelectedDifficulty] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [examiningTopic, setExaminingTopic] = useState(null);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -173,12 +176,93 @@ export const TopicsPage = () => {
                 <span className="text-[10px] text-arena-muted font-mono">
                   Added {new Date(t.created_at).toLocaleDateString()}
                 </span>
-                <Button variant="secondary" size="sm">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setExaminingTopic(t)}
+                >
                   Examine Motion
                 </Button>
               </div>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Examine Motion Modal */}
+      {examiningTopic && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <Card className="w-full max-w-xl bg-arena-bg-card border-arena-amber/30 p-6 space-y-5">
+            <div className="flex items-start justify-between gap-4 pb-3 border-b border-white/10">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Badge variant="amber">{examiningTopic.category}</Badge>
+                  <span className="text-[10px] font-mono text-arena-muted">
+                    Difficulty: {examiningTopic.difficulty}
+                  </span>
+                </div>
+                <h3 className="text-xl font-serif font-bold text-white leading-snug">
+                  {examiningTopic.title}
+                </h3>
+              </div>
+              <button
+                onClick={() => setExaminingTopic(null)}
+                className="text-arena-muted hover:text-white p-1 rounded-lg hover:bg-white/5"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <strong className="text-[10px] font-mono uppercase tracking-wider text-arena-muted block mb-1">
+                  Chamber Context & Background:
+                </strong>
+                <p className="text-arena-parchment leading-relaxed bg-arena-bg-elevated/70 p-3.5 rounded-xl border border-white/5">
+                  {examiningTopic.description}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div className="p-3 rounded-xl bg-arena-prop/10 border border-arena-prop/20">
+                  <strong className="text-arena-prop text-[11px] block mb-1 font-serif">
+                    Proposition Angle
+                  </strong>
+                  <span className="text-arena-muted text-[10px] leading-relaxed">
+                    Affirm the core motion by establishing systemic urgency and structural benefits.
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-arena-opp/10 border border-arena-opp/20">
+                  <strong className="text-arena-opp text-[11px] block mb-1 font-serif">
+                    Opposition Angle
+                  </strong>
+                  <span className="text-arena-muted text-[10px] leading-relaxed">
+                    Dissect unintended secondary externalities and offer non-coercive counter-policies.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setExaminingTopic(null)}
+              >
+                Close
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  navigate('/simulation');
+                }}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                Spar with AI Opponent
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
 
