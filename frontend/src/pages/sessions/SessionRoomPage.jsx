@@ -17,9 +17,12 @@ import {
   ArrowLeft,
   Upload,
   CheckCircle2,
-  Send
+  Send,
+  FileCheck
 } from 'lucide-react';
 import { AIAnalysisPanel } from '../../components/analysis/AIAnalysisPanel';
+import { PresentationAnalyticsWidget } from '../../components/presentation/PresentationAnalyticsWidget';
+import { FullReportModal } from '../../components/presentation/FullReportModal';
 
 export const SessionRoomPage = () => {
   const { id } = useParams();
@@ -34,17 +37,47 @@ export const SessionRoomPage = () => {
   // Speech text & AI Analysis state
   const [speechText, setSpeechText] = useState('');
   const [analysisResult, setAnalysisResult] = useState(null);
+  const [presentationMetrics, setPresentationMetrics] = useState(null);
+  const [fullReport, setFullReport] = useState(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const runAnalysisMutation = useMutation({
     mutationFn: async () => {
+      const textToAnalyze = speechText || "We must ban autonomous weapon systems because lethal decision making requires human moral accountability. According to research published by the UN Institute for Disarmament, over 74% of international legal scholars argue that algorithms cannot satisfy international humanitarian law. You are naive to believe that algorithms alone can govern warfare.";
+      
+      // Run Argument Analysis
       const res = await apiClient.post(`/analysis/session/${id}/evaluate`, {
-        transcript_text: speechText || "We must adopt this motion because data demonstrates a 40% reduction in long-term systemic risk. Opponent claims are naive, but evidence indicates clear societal welfare benefits.",
+        transcript_text: textToAnalyze,
         motion_context: session?.topic?.title
+      });
+
+      // Run Presentation & Speech Dynamics Analytics
+      const presRes = await apiClient.post('/presentation/analyze', {
+        speech_text: textToAnalyze,
+        speech_duration_sec: 240 - secondsLeft > 5 ? 240 - secondsLeft : 35.0
+      });
+
+      return { analysis: res.data, presentation: presRes.data };
+    },
+    onSuccess: (data) => {
+      setAnalysisResult(data.analysis);
+      setPresentationMetrics(data.presentation);
+    }
+  });
+
+  const generateReportMutation = useMutation({
+    mutationFn: async () => {
+      const textToAnalyze = speechText || "We must ban autonomous weapon systems because lethal decision making requires human moral accountability. According to research published by the UN Institute for Disarmament, over 74% of international legal scholars argue that algorithms cannot satisfy international humanitarian law.";
+      const res = await apiClient.post(`/presentation/session/${id}/report`, {
+        motion: session?.topic?.title || "Chamber Motion",
+        transcript_text: textToAnalyze,
+        speech_duration_sec: 240 - secondsLeft > 5 ? 240 - secondsLeft : 45.0
       });
       return res.data;
     },
     onSuccess: (data) => {
-      setAnalysisResult(data);
+      setFullReport(data);
+      setShowReportModal(true);
     }
   });
 
@@ -332,7 +365,17 @@ export const SessionRoomPage = () => {
               placeholder="Paste or type speech arguments here for immediate Toulmin claim extraction, fallacy detection, and performance scoring..."
               className="w-full bg-arena-bg-elevated border border-white/10 rounded-xl p-3 text-xs text-arena-parchment placeholder-arena-muted/50 focus:outline-none focus:border-arena-amber"
             />
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => generateReportMutation.mutate()}
+                isLoading={generateReportMutation.isPending}
+              >
+                <FileCheck className="w-3.5 h-3.5 mr-1.5" />
+                Generate Full Forensics Certificate
+              </Button>
+
               <Button
                 variant="primary"
                 size="sm"
@@ -340,16 +383,30 @@ export const SessionRoomPage = () => {
                 isLoading={runAnalysisMutation.isPending}
               >
                 <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                Run Forensic AI Analysis
+                Run Forensic & Presentation AI
               </Button>
             </div>
           </Card>
 
-          {/* AI Coach Live Panel (Milestone 2 Operational) */}
+          {/* Presentation & Speech Dynamics Widget (Milestone 4) */}
+          <PresentationAnalyticsWidget
+            metrics={presentationMetrics}
+            isAnalyzing={runAnalysisMutation.isPending}
+          />
+
+          {/* AI Coach Live Panel (Milestone 2) */}
           <AIAnalysisPanel
             analysisData={analysisResult}
             isAnalyzing={runAnalysisMutation.isPending}
           />
+
+          {/* Full Adjudication Certificate Modal (Milestone 4) */}
+          {showReportModal && (
+            <FullReportModal
+              report={fullReport}
+              onClose={() => setShowReportModal(false)}
+            />
+          )}
         </div>
 
         {/* Right Column: Opposition Podium */}
