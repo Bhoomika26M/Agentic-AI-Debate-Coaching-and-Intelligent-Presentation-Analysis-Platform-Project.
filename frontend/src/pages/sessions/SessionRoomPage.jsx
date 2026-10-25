@@ -17,7 +17,9 @@ import {
   ArrowLeft,
   Upload,
   CheckCircle2,
+  Send
 } from 'lucide-react';
+import { AIAnalysisPanel } from '../../components/analysis/AIAnalysisPanel';
 
 export const SessionRoomPage = () => {
   const { id } = useParams();
@@ -28,6 +30,23 @@ export const SessionRoomPage = () => {
   const [secondsLeft, setSecondsLeft] = useState(240); // 4-minute speech round
   const [timerRunning, setTimerRunning] = useState(false);
   const [currentTurn, setCurrentTurn] = useState('PROPOSITION');
+
+  // Speech text & AI Analysis state
+  const [speechText, setSpeechText] = useState('');
+  const [analysisResult, setAnalysisResult] = useState(null);
+
+  const runAnalysisMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post(`/analysis/session/${id}/evaluate`, {
+        transcript_text: speechText || "We must adopt this motion because data demonstrates a 40% reduction in long-term systemic risk. Opponent claims are naive, but evidence indicates clear societal welfare benefits.",
+        motion_context: session?.topic?.title
+      });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      setAnalysisResult(data);
+    }
+  });
 
   // MediaRecorder state
   const [isRecording, setIsRecording] = useState(false);
@@ -291,23 +310,46 @@ export const SessionRoomPage = () => {
             </div>
           </Card>
 
-          {/* AI Coach Placeholder (Milestone 2 Extension Point) */}
-          <Card className="border-arena-amber/30 bg-arena-amber/5 p-6 relative overflow-hidden">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-arena-amber" />
-                <h3 className="font-serif font-bold text-white text-base">
-                  AI Debate Coach & Forensics Observer
-                </h3>
-              </div>
-              <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-arena-amber/15 text-arena-amber border border-arena-amber/30 uppercase font-bold tracking-wider">
-                Coming in Milestone 2
-              </span>
+          {/* Speech Text Input for Analysis */}
+          <Card className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wider text-arena-amber flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                Live Speech Transcript / Speech Notes
+              </label>
+              <button
+                type="button"
+                onClick={() => setSpeechText("We must ban autonomous weapon systems because lethal decision making requires human moral accountability. According to research published by the UN Institute for Disarmament, over 74% of international legal scholars argue that algorithms cannot satisfy international humanitarian law. You are naive to believe that algorithms alone can govern warfare.")}
+                className="text-[10px] text-arena-muted hover:text-arena-amber transition underline"
+              >
+                Insert Sample Speech with Fallacy
+              </button>
             </div>
-            <p className="text-xs text-arena-muted leading-relaxed">
-              In Milestone 2, this chamber panel will extract argumentative claims in real time, identify logical fallacies (Straw Man, Ad Hominem, False Dilemma), evaluate evidence backing, and generate instant counter-arguments.
-            </p>
+            <textarea
+              rows={3}
+              value={speechText}
+              onChange={(e) => setSpeechText(e.target.value)}
+              placeholder="Paste or type speech arguments here for immediate Toulmin claim extraction, fallacy detection, and performance scoring..."
+              className="w-full bg-arena-bg-elevated border border-white/10 rounded-xl p-3 text-xs text-arena-parchment placeholder-arena-muted/50 focus:outline-none focus:border-arena-amber"
+            />
+            <div className="flex justify-end">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => runAnalysisMutation.mutate()}
+                isLoading={runAnalysisMutation.isPending}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                Run Forensic AI Analysis
+              </Button>
+            </div>
           </Card>
+
+          {/* AI Coach Live Panel (Milestone 2 Operational) */}
+          <AIAnalysisPanel
+            analysisData={analysisResult}
+            isAnalyzing={runAnalysisMutation.isPending}
+          />
         </div>
 
         {/* Right Column: Opposition Podium */}
