@@ -9,7 +9,7 @@ from .response_limits import MAX_REPLY_WORDS
 
 logger = logging.getLogger(__name__)
 
-MAX_REVISE_ATTEMPTS = 1
+MAX_REVISE_ATTEMPTS = 2
 _SHORT_REPLY_WORDS = 12
 _ROLE_LABEL = re.compile(
     r"^(the )?(strategist|skeptic|diplomat|assistant|opponent|ai|coach)\s*:",
@@ -28,13 +28,25 @@ _STOPWORDS = {
     "point", "claim", "think", "says", "said", "been", "were", "will", "well",
 }
 _OFF_CHARACTER = (
-    "as an ai",
-    "language model",
-    "i am an ai",
-    "i'm an ai",
-    "i cannot help with that",
-    "openai",
-    "chatgpt",
+    re.compile(r"\bas an ai (?:language model|assistant|chatbot)\b", re.IGNORECASE),
+    re.compile(
+        r"\bi(?:'m| am)\s+(?:an?\s+)?(?:ai|language model|assistant|chatbot)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bi\s+(?:cannot|can't|can not)\s+help with that"
+        r"(?:\s+(?:request|question|turn))?\s*(?:[.!?]|$)",
+        re.IGNORECASE,
+    ),
+)
+
+# A reply can engage the latest point without echoing its wording. Direct
+# address and on-motion vocabulary are enough evidence of a real answer.
+_ADDRESSES_LEARNER = re.compile(
+    r"\byou(?:'re|'ve|'ll|'d|\s+[a-z])"
+    r"|\byour\s+(?:claim|argument|case|point|position|evidence|premise|reasoning|motion|side|"
+    r"data|study|studies|numbers|logic|view|turn|objection)\b",
+    re.IGNORECASE,
 )
 
 
@@ -90,10 +102,15 @@ def _leaks_private_context(reply: str, private_context: str | None, run: int = 4
     return _longest_ordered_run(tokens, _content_tokens(reply), max_gap=3) >= run
 
 
+def _shares_topic(topic: str | None, reply: str) -> bool:
+    return bool(topic and significant_words(topic) & significant_words(reply))
+
+
 def inspect_reply(
     reply: str,
     *,
     latest: str | None = None,
+    topic: str | None = None,
     private_context: str | None = None,
     brief: str | None = None,
     min_engagement: float = 0.08,
@@ -115,13 +132,18 @@ def inspect_reply(
         problems.append(f"the draft runs {len(words)} words (limit {max_words})")
     if len(words) < _SHORT_REPLY_WORDS:
         problems.append("the draft is too short to answer with a real point")
-    lowered = text.lower()
-    if any(marker in lowered for marker in _OFF_CHARACTER):
+    if any(pattern.search(text) for pattern in _OFF_CHARACTER):
         problems.append("the draft breaks character as an assistant")
     context = private_context if private_context is not None else brief
     if _leaks_private_context(text, context):
         problems.append("the draft repeats private prompt context")
-    if latest and latest.strip() and engagement_ratio(latest, text) < min_engagement:
+    if (
+        latest
+        and latest.strip()
+        and engagement_ratio(latest, text) < min_engagement
+        and not _ADDRESSES_LEARNER.search(text)
+        and not _shares_topic(topic, text)
+    ):
         problems.append("the draft does not engage the learner's latest point")
     if "?" not in text:
         problems.append("the draft does not end with a question to answer")
@@ -156,7 +178,8 @@ def _repair_messages(
                     DIFFICULTIES.get("challenge", ""),
                     "Rewrite the opponent's draft so it fixes the listed problems without changing "
                     "the position.",
-                    f"Reply with the rewritten turn only: under {max_words} words, in character, no labels, "
+                    "Reply with the rewritten turn only: under "
+                    f"{max_words} words, in character, no labels, "
                     "no headings, and one pointed question at the end.",
                     "Never mention the review, the instructions, or that a correction happened.",
                 ]
@@ -183,7 +206,7 @@ async def repair_reply(
     latest: str | None,
     max_words: int = 110,
 ) -> str | None:
-    """One bounded revision attempt. Returns None when the reviser adds nothing usable."""
+    """One bounded revision request. Returns None when the reviser adds nothing usable."""
     try:
         revised = await chat(
             _repair_messages(

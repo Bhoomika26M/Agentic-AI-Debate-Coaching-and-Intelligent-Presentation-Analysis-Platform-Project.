@@ -61,6 +61,51 @@ def test_role_labels_headings_and_length_are_rejected():
 def test_an_assistant_voice_breaks_character():
     problems = inspect_reply("As an AI language model I cannot debate that. Shall we continue?")
     assert any("breaks character" in p for p in problems)
+    assert any(
+        "breaks character" in p
+        for p in inspect_reply(
+            "I am an AI assistant, so I cannot take a side. Which point matters most?"
+        )
+    )
+
+
+def test_debate_mentions_of_ai_tools_are_not_character_breaks():
+    """A debate about AI may name the tools; that is content, not a role confession."""
+    assert inspect_reply(
+        "As an AI tutor, the tool could free teachers to coach writing. "
+        "Which subject would you start with?"
+    ) == []
+    assert inspect_reply(
+        "ChatGPT can draft an essay, but verification still needs a teacher. "
+        "Which safeguard would you add?"
+    ) == []
+
+
+def test_a_policy_phrase_that_sounds_like_a_refusal_is_still_debate():
+    reply = (
+        "I can't help with that policy because it shifts costs to poorer families. "
+        "Who pays for the shortfall?"
+    )
+    assert inspect_reply(reply) == []
+
+
+def test_a_good_paraphrase_counts_as_engaging_the_latest_point():
+    latest = "From my perspective, the ban hurts low-income students most."
+    reply = (
+        "You say poorer families bear the cost, but enforcement falls hardest on them. "
+        "Who pays for the extra staffing?"
+    )
+    assert inspect_reply(reply, latest=latest) == []
+
+
+def test_on_motion_vocabulary_counts_as_engaging_a_topic():
+    latest = "From my perspective, the ban hurts low-income students most."
+    reply = (
+        "The ban would push phones into the corridor and hide the problem. "
+        "Who pays for supervision?"
+    )
+    assert any("does not engage" in p for p in inspect_reply(reply, latest=latest))
+    assert inspect_reply(reply, latest=latest, topic="Should schools ban phones?") == []
 
 
 def test_a_learner_turn_wrapper_leak_is_rejected():

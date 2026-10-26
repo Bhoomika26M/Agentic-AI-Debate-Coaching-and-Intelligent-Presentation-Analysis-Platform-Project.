@@ -19,6 +19,9 @@ class DebateState(TypedDict, total=False):
     adaptive_tactics: bool
     reply_length: Literal["concise", "standard"]
     route: Literal["respond", "redirect"]
+    guard_kind: Literal["clean", "hard", "soft"]
+    guard_pattern: str | None
+    redirect_reason: Literal["guard", "review"] | None
     memory: list[dict]
     memory_brief: str | None
     brief: str | None

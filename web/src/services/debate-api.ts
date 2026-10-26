@@ -41,6 +41,11 @@ export type TurnDiagnostics = {
   draft_ms: number;
   review_ms: number;
   model_ms: number;
+  /** Why the guard or the review replaced the drafted text, when either did. */
+  redirect_reason?: "guard" | "review" | null;
+  guard_kind?: "clean" | "hard" | "soft" | null;
+  guard_pattern?: string | null;
+  revision_attempts?: number;
 };
 
 export type ChallengeResult = {

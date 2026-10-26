@@ -12,8 +12,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from httpx import HTTPError
 from starlette.requests import Request
 
-from .agents.debate import check_reply, respond_stream
-from .agents.guard import redirect_reply, route_turn
+from .agents.debate import check_reply, guard_diagnostics, respond_stream
+from .agents.guard import classify_turn, redirect_reply
 from .agents.laya_selector import is_available as laya_available
 from .auth import REQUIRE_AUTH, authenticate_request
 from .ollama_client import OLLAMA_MODEL, is_available, is_loaded, warm_model
@@ -147,9 +147,26 @@ async def health() -> dict[str, str | bool]:
 )
 async def debate_stream(request: DebateRequest) -> StreamingResponse:
     # A declined turn never needs the model or a stream slot.
-    if route_turn(request.learner_argument) == "redirect":
+    guard_history = [
+        {"speaker": turn.speaker, "content": turn.content} for turn in request.history
+    ]
+    decision = classify_turn(
+        request.learner_argument,
+        topic=request.topic,
+        history=guard_history,
+    )
+    if decision.route == "redirect":
+        reply = redirect_reply(request.topic)
+        logger.info(
+            "Guard redirected the turn (%s: %s).", decision.kind, decision.pattern
+        )
+
         async def redirected() -> AsyncIterator[str]:
-            yield sse_event("final_delta", redirect_reply(request.topic))
+            yield sse_event("final_delta", reply)
+            yield sse_event(
+                "diagnostics",
+                guard_diagnostics(decision, reply, history_turns=len(guard_history)),
+            )
             yield STREAM_DONE
 
         return StreamingResponse(

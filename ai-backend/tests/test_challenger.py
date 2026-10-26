@@ -92,6 +92,22 @@ def test_the_api_caps_follow_ups_even_when_depth_stays_zero(monkeypatch):
     assert "two follow-ups" in raised.value.detail
 
 
+def test_a_target_the_learner_did_not_write_is_not_quoted_back(monkeypatch):
+    reply = (
+        '{"target_sentence": "Because traffic hurts people everywhere.", '
+        '"follow_up": "Which study shows that?"}'
+    )
+    monkeypatch.setattr(challenger, "chat", make_chat([reply]))
+    turn = asyncio.run(
+        challenger.challenge_turn(
+            history=[], latest=LATEST, topic="Should cities ban cars?", depth=0
+        )
+    )
+    assert turn is not None
+    assert turn["target_sentence"] is None
+    assert turn["follow_up"] == "Which study shows that?"
+
+
 def test_pressure_stops_once_the_exchange_is_deep_enough(monkeypatch):
     def explode(*_args, **_kwargs):
         raise AssertionError("no question should be asked at max depth")

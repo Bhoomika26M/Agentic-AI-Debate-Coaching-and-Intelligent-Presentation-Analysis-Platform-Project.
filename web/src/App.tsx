@@ -27,6 +27,7 @@ import {
   type DebateMessage,
   type DebateOptions,
   type JudgeVerdict,
+  type TurnDiagnostics,
 } from "./services/debate-api";
 import { createDebateRecord, deleteDebateAnalysis, finishDebateRecord, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn, type DebateRecord, type DebateRecordTurn } from "./services/debate-records";
 import { generateAndSaveLearningPlan, loadSessionDigests } from "./services/plan-records";
@@ -64,6 +65,35 @@ function formatTime(seconds: number) {
   const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
   const remainder = (seconds % 60).toString().padStart(2, "0");
   return `${minutes}:${remainder}`;
+}
+
+function diagnosticsLabel(diagnostics: TurnDiagnostics) {
+  if (diagnostics.redirect_reason === "guard") return "ON MOTION";
+  if (diagnostics.redirect_reason === "review" || (!diagnostics.verified && diagnostics.fallback)) {
+    return "RECOVERED";
+  }
+  return "VERIFIED";
+}
+
+function diagnosticsTitle(diagnostics: TurnDiagnostics) {
+  if (diagnostics.redirect_reason === "guard") {
+    return "This turn asked for something outside the debate, so the opponent stayed in character and returned to the motion.";
+  }
+  if (diagnostics.redirect_reason === "review" || (!diagnostics.verified && diagnostics.fallback)) {
+    return "The drafted reply did not pass review, so the opponent answered with a short question on the motion instead.";
+  }
+  return "Recorded when this turn was drafted and reviewed.";
+}
+
+function diagnosticsTime(milliseconds: number) {
+  return milliseconds < 1000 ? "<1S" : `${Math.round(milliseconds / 1000)}S`;
+}
+
+function turnNumberFor(messages: DebateMessage[], index: number) {
+  const learnerTurns = messages
+    .slice(0, index + 1)
+    .filter((message) => message.speaker === "learner").length;
+  return Math.max(1, learnerTurns);
 }
 
 function Header({
@@ -1286,7 +1316,7 @@ export default function App() {
                             ? `FOLLOW-UP ${message.challengeDepth ?? 1} OF 2`
                             : message.speaker === "learner" ? "YOUR CASE" : activePersona.name.toUpperCase()}
                         </span>
-                        <span>TURN {Math.ceil((index + 1) / 2).toString().padStart(2, "0")}</span>
+                        <span>TURN {turnNumberFor(messages, index).toString().padStart(2, "0")}</span>
                         {continuation && index === 0 && <span className="history-marker">{continuedHistoryCount > 0 ? "SAVED TRANSCRIPT" : "NEW ROUND"}</span>}
                         {continuation && continuedHistoryCount > 0 && index === continuedHistoryCount && <span className="history-marker">NEW ROUND</span>}
                       </div>
@@ -1294,11 +1324,13 @@ export default function App() {
                       <div className="message-body"><MarkdownText text={message.content} />{message.pending && <span className="stream-cursor" />}</div>
                       {message.pending && !message.content && <div className="thinking-label"><LoaderCircle size={14} /> DRAFTING, THEN CHECKING</div>}
                       {message.diagnostics && (
-                        <div className="message-diagnostics" title="Recorded when this turn was drafted and reviewed.">
-                          <span>{message.diagnostics.verified ? "VERIFIED" : "FALLBACK USED"}</span>
+                        <div className="message-diagnostics" title={diagnosticsTitle(message.diagnostics)}>
+                          <span>{diagnosticsLabel(message.diagnostics)}</span>
                           <span>{message.diagnostics.reply_words} WORDS</span>
                           {message.diagnostics.tactic && <span>{message.diagnostics.tactic.replaceAll("_", " ").toUpperCase()}</span>}
-                          <span>{Math.max(1, Math.round(message.diagnostics.model_ms / 1000))}S DRAFT + REVIEW</span>
+                          {message.diagnostics.redirect_reason !== "guard" && (
+                            <span>{diagnosticsTime(message.diagnostics.model_ms)} DRAFT + REVIEW</span>
+                          )}
                           {message.diagnostics.summarized_turns > 0 && <span>{message.diagnostics.summarized_turns} EARLIER TURNS CONDENSED</span>}
                         </div>
                       )}

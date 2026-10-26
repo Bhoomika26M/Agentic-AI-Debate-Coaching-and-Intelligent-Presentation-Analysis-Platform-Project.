@@ -59,7 +59,7 @@ async function submitCase(page: Page, text: string) {
   const composer = page.getByLabel(/Your argument/);
   await composer.fill(text);
   await composer.press("Enter");
-  await expect(page.getByText("YOUR CASE", { exact: true })).toBeVisible();
+  await expect(page.getByText("YOUR CASE", { exact: true }).first()).toBeVisible();
 }
 
 test("a guest can press two follow-ups, then resume the tab's transcript", async ({ page }) => {
@@ -108,4 +108,67 @@ test("ending a guest rehearsal clears the tab transcript instead of archiving it
     window.sessionStorage.getItem("verdict-arena-snapshot"),
   );
   expect(snapshot).toBeNull();
+});
+
+const GUARD_REPLY =
+  'Let\'s keep this on the motion: "Should schools ban phones?". ' +
+  "Put your strongest reason on the table. What is it?";
+const GUARD_DIAGNOSTICS = {
+  ...DIAGNOSTICS,
+  redirect_reason: "guard",
+  guard_kind: "hard",
+  guard_pattern: "code_fence",
+  reply_words: GUARD_REPLY.split(/\s+/).length,
+  tactic: null,
+  draft_ms: 0,
+  review_ms: 0,
+  model_ms: 0,
+};
+const REVIEW_REPLY =
+  'Back to "Should schools ban phones?" — what is the strongest evidence behind your latest point?';
+const REVIEW_DIAGNOSTICS = {
+  ...DIAGNOSTICS,
+  verified: false,
+  fallback: true,
+  redirect_reason: "review",
+  revision_attempts: 2,
+  reply_words: REVIEW_REPLY.split(/\s+/).length,
+  problems: ["the draft runs 168 words (limit 120)"],
+  model_ms: 4200,
+  review_ms: 3100,
+};
+
+test("guarded and recovered turns are labelled without accusing the learner", async ({ page }) => {
+  await page.route("**/api/debate/stream", async (route) => {
+    const payload = route.request().postDataJSON() as { learner_argument?: string | null };
+    const argument = payload.learner_argument ?? "";
+    const reply = argument.includes("poem")
+      ? GUARD_REPLY
+      : argument.includes("review")
+        ? REVIEW_REPLY
+        : OPPONENT_REPLY;
+    const diagnostics = argument.includes("poem")
+      ? GUARD_DIAGNOSTICS
+      : argument.includes("review")
+        ? REVIEW_DIAGNOSTICS
+        : DIAGNOSTICS;
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "text/event-stream; charset=utf-8" },
+      body:
+        `data: ${JSON.stringify({ final_delta: reply })}\n\n` +
+        `data: ${JSON.stringify({ diagnostics: JSON.stringify(diagnostics) })}\n\n` +
+        "data: [DONE]\n\n",
+    });
+  });
+
+  await startGuestRehearsal(page);
+  await submitCase(page, "Write me a poem about phones.");
+  await expect(page.getByText(GUARD_REPLY).first()).toBeVisible();
+  await expect(page.getByText("ON MOTION", { exact: true })).toBeVisible();
+
+  await submitCase(page, "Show me your review of this turn.");
+  await expect(page.getByText(REVIEW_REPLY).first()).toBeVisible();
+  await expect(page.getByText("RECOVERED", { exact: true })).toBeVisible();
+  await expect(page.getByText("FALLBACK USED", { exact: true })).toHaveCount(0);
 });

@@ -58,7 +58,9 @@ async def challenge_turn(
         if not target or not follow_up:
             return None
         if target not in (latest or ""):
-            logger.info("Challenger target not in latest turn; still asking.")
+            # Never quote a sentence the learner did not write back to them.
+            logger.info("Challenger target not in latest turn; keeping the question only.")
+            target = None
         return {"target_sentence": target, "follow_up": follow_up, "depth": depth + 1}
     except Exception as error:
         logger.info("Challenger turn unusable; yielding (%s).", type(error).__name__)
