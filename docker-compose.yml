@@ -42,7 +42,7 @@ services:
       # Point at http://host.docker.internal:11434 to reuse a host Ollama (docker compose up api web).
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
-      ENABLE_LAYA_TACTICS: ${ENABLE_LAYA_TACTICS:-true}
+      ENABLE_LAYA_TACTICS: ${ENABLE_LAYA_TACTICS:-false}
       WEB_ORIGIN: http://localhost:8080
       ALLOWED_HOSTS: localhost,127.0.0.1,api
       REQUIRE_AUTH: ${REQUIRE_AUTH:-false}

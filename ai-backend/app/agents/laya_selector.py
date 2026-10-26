@@ -1,8 +1,8 @@
 """Choose a bounded debate move with clear argument rules and, when ambiguous, Laya.
 
 The rules keep the selector off Laya's generic default and make the common
-argument shapes auditable. Laya is limited to five concrete vulnerabilities, so
-it never picks the follow-up move that the checkpoint over-selects.
+argument shapes auditable. Laya is an opt-in extra, limited to five concrete
+vulnerabilities, so it never picks the follow-up move it over-selects.
 """
 
 import asyncio
@@ -15,7 +15,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-ENABLED = os.getenv("ENABLE_LAYA_TACTICS", "true").strip().lower() in {
+ENABLED = os.getenv("ENABLE_LAYA_TACTICS", "false").strip().lower() in {
     "1",
     "true",
     "yes",
@@ -211,14 +211,14 @@ async def select_move(
     history: list[dict],
     latest: str | None,
 ) -> str | None:
-    if not ENABLED or not latest or not latest.strip():
+    if not latest or not latest.strip():
         return None
 
     rule_move = rule_based_move(history, latest)
     if rule_move:
         logger.info("Argument policy selected debate move %s.", rule_move)
         return rule_move
-    if _PACKAGE_MISSING:
+    if not ENABLED or _PACKAGE_MISSING:
         return None
 
     state = _decision_state(topic, learner_position, persona, difficulty, history, latest)

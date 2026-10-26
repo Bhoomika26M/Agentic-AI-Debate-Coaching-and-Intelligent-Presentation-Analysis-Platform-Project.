@@ -1,4 +1,5 @@
-# Debate coach inference service; build from ai-backend/ (EXTRAS=--extra ser adds the emotion model).
+# Debate coach inference service; build from ai-backend/ (EXTRAS=--extra laya adds the
+# optional Laya checkpoint, EXTRAS=--extra ser adds the optional emotion model).
 FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

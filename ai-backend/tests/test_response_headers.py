@@ -1,5 +1,7 @@
 """The privacy header must win over a streaming handler's own cache header."""
 
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
@@ -48,3 +50,17 @@ def test_a_rate_limited_response_keeps_the_privacy_headers(monkeypatch):
     assert limited.status_code == 429
     assert limited.headers["retry-after"]
     assert limited.headers["cache-control"] == "no-store"
+
+
+def test_health_separates_the_policy_from_optional_laya(monkeypatch):
+    async def ready():
+        return True
+
+    monkeypatch.setattr(main, "is_available", ready)
+    monkeypatch.setattr(main, "is_loaded", ready)
+    monkeypatch.setattr(main, "transcription_available", lambda: True)
+    monkeypatch.setattr(main, "laya_available", lambda: False)
+
+    health = asyncio.run(main.health())
+    assert health["adaptive_tactics_available"] is True
+    assert health["laya_available"] is False

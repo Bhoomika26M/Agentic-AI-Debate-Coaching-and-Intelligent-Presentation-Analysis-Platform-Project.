@@ -1,12 +1,18 @@
 # Local development commands. Run `make api` and `make web` in two terminals.
-.PHONY: sync api web test e2e eval-laya eval-laya-holdout build
+.PHONY: sync sync-laya api api-laya web test e2e eval-laya eval-laya-holdout build
 
 sync:
-	cd ai-backend && uv sync --extra laya
+	cd ai-backend && uv sync
 	cd web && npm install
 
+sync-laya:
+	cd ai-backend && uv sync --extra laya
+
 api:
-	cd ai-backend && uv run --extra laya uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+	cd ai-backend && uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+
+api-laya:
+	cd ai-backend && ENABLE_LAYA_TACTICS=true uv run --extra laya uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 web:
 	cd web && npm run dev
@@ -19,10 +25,10 @@ e2e:
 	cd web && npm run test:e2e
 
 eval-laya:
-	cd ai-backend && uv run python evals/evaluate_laya.py
+	cd ai-backend && ENABLE_LAYA_TACTICS=true uv run --extra laya python evals/evaluate_laya.py
 
 eval-laya-holdout:
-	cd ai-backend && uv run python evals/evaluate_laya.py --data evals/laya_holdout.jsonl
+	cd ai-backend && ENABLE_LAYA_TACTICS=true uv run --extra laya python evals/evaluate_laya.py --data evals/laya_holdout.jsonl
 
 build:
 	cd web && npm run build

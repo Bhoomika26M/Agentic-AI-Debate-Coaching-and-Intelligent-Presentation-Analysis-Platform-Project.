@@ -107,6 +107,7 @@ export type DebateOptions = {
 
 export type AppCapabilities = {
   adaptive_tactics_available: boolean;
+  laya_available: boolean;
 };
 
 export async function loadAppCapabilities(): Promise<AppCapabilities> {
@@ -114,7 +115,10 @@ export async function loadAppCapabilities(): Promise<AppCapabilities> {
   if (!response.ok) throw new Error("App status is unavailable.");
   const result = await response.json() as Partial<AppCapabilities>;
   if (typeof result.adaptive_tactics_available !== "boolean") throw new Error("App status is incomplete.");
-  return { adaptive_tactics_available: result.adaptive_tactics_available };
+  return {
+    adaptive_tactics_available: result.adaptive_tactics_available,
+    laya_available: result.laya_available === true,
+  };
 }
 
 export type AnalysisReport = {

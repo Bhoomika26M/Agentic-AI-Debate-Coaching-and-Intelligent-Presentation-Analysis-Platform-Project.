@@ -5,11 +5,13 @@ Results are reported separately for those paths. This measures agreement with
 human labels on a small hand-labeled set; it does not measure whether a move
 improved practice.
 
-Run the tuning set after installing the `laya` extra and downloading the checkpoint:
-    cd ai-backend && uv run python evals/evaluate_laya.py
+Without Laya the script scores the argument policy only. To include the
+checkpoint, install the extra and enable it, then run the tuning set:
+    cd ai-backend && ENABLE_LAYA_TACTICS=true uv run --extra laya python evals/evaluate_laya.py
 
 Run the separate held-out check:
-    cd ai-backend && uv run python evals/evaluate_laya.py --data evals/laya_holdout.jsonl
+    cd ai-backend && ENABLE_LAYA_TACTICS=true uv run --extra laya \
+        python evals/evaluate_laya.py --data evals/laya_holdout.jsonl
 """
 
 from __future__ import annotations
@@ -114,7 +116,11 @@ async def evaluate(rows: list[dict]) -> tuple[list[dict], int]:
                 "predicted_move": move,
                 "correct": move == row["expected_move"],
                 "acceptable": move in acceptable,
-                "source": "policy" if rule_based_move(history, row["latest"]) else "laya",
+                "source": (
+                    "policy"
+                    if rule_based_move(history, row["latest"])
+                    else "laya" if move else "none"
+                ),
             }
         )
     return results, no_move
@@ -156,11 +162,11 @@ def main() -> int:
         rows = rows[: args.limit]
     if not is_available():
         print(
-            "Laya is not installed or ENABLE_LAYA_TACTICS is false. "
-            "Install the laya extra, then rerun this script.",
+            "Laya is not installed or ENABLE_LAYA_TACTICS is false; "
+            "evaluating the argument policy only. Install the laya extra and set "
+            "ENABLE_LAYA_TACTICS=true to include the ambiguous turns.",
             file=sys.stderr,
         )
-        return 2
 
     results, no_move = asyncio.run(evaluate(rows))
     total = len(results)
@@ -209,10 +215,11 @@ def main() -> int:
         f"95% CI {acceptable_ci[0]:.1%}-{acceptable_ci[1]:.1%})"
     )
     print(f"No move returned: {no_move}")
-    print(
-        f"Policy-routed: {policy_correct}/{len(policy)}; "
-        f"Laya-routed: {laya_correct}/{len(laya)}"
-    )
+    print(f"Policy-routed: {policy_correct}/{len(policy)}")
+    if laya:
+        print(f"Laya-routed: {laya_correct}/{len(laya)}")
+    else:
+        print("Laya-routed: not evaluated (disabled or not installed)")
     print("\nExpected -> predicted:")
     for (expected, predicted), count in sorted(confusion.items()):
         print(f"  {expected} -> {predicted}: {count}")

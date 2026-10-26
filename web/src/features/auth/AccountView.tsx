@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpenText, Bot, Check, Download, History, LoaderCircle, MessageSquareText, Printer, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Bot, Check, ChevronDown, ChevronUp, Download, History, LoaderCircle, MessageSquareText, Printer, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
 import { deleteDebateRecord, listDebateRecords, loadDebateAnalysis, loadDebateRecord, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
@@ -47,7 +47,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "archive", label: "Archive" },
   { key: "progress", label: "Progress" },
   { key: "plan", label: "Plan" },
-  { key: "settings", label: "App settings" },
+  { key: "settings", label: "Settings" },
 ];
 
 function opponentName(key: string) {
@@ -61,10 +61,12 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-export function AccountView({ onStart, onContinue, onSignOut }: {
+export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onFocusConsumed }: {
   onStart: () => void;
   onContinue: (session: DebateRecord, turns: DebateRecordTurn[]) => void;
   onSignOut: () => Promise<void>;
+  focusRecordId?: string | null;
+  onFocusConsumed?: () => void;
 }) {
   const { user, session } = useAuth();
   const [records, setRecords] = useState<DebateRecord[]>([]);
@@ -82,8 +84,14 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
   const [appSettingsNotice, setAppSettingsNotice] = useState("");
   const [layaStatus, setLayaStatus] = useState<"checking" | "available" | "unavailable" | "unknown">("checking");
   const [prefs, setPrefs] = useState<LearnerPrefs>(() => (user ? loadPrefs(user.id) : emptyPrefs()));
-  const [settingsOpen, setSettingsOpen] = useState(() => !hasAnswers(user ? loadPrefs(user.id) : emptyPrefs()));
-  const [tab, setTab] = useState<TabKey>("archive");
+  const [tab, setTab] = useState<TabKey>(() => (
+    user && hasAnswers(loadPrefs(user.id)) ? "archive" : "settings"
+  ));
+  const [showAllRecords, setShowAllRecords] = useState(false);
+  const detailRef = useRef<HTMLElement | null>(null);
+  const tabsRef = useRef<HTMLDivElement | null>(null);
+  const focusHandledRef = useRef<string | null>(null);
+  const tabTouchedRef = useRef(false);
   const [storedPlan, setStoredPlan] = useState<StoredPlan | null>(null);
   const [completedDrills, setCompletedDrills] = useState<Set<number>>(new Set());
   const [drillBusy, setDrillBusy] = useState<number | null>(null);
@@ -108,6 +116,8 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
   const recommendation = useMemo(() => buildRecommendation(profile.experience, prefs), [profile.experience, prefs]);
   const setupComplete = hasAnswers(prefs);
   const recommended = useMemo(() => recommendedTab(prefs), [prefs]);
+  const visibleRecords = showAllRecords ? records : records.slice(0, 5);
+  const shownCount = Math.min(5, records.length);
   const introLine = useMemo(() => {
     if (!setupComplete) return "Two minutes in your room tunes your opponent, your pressure, and the cue waiting on your dashboard.";
     const parts = [
@@ -147,6 +157,41 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
   }, [tab]);
 
   useEffect(() => {
+    if (!focusRecordId || loading) return;
+    if (focusHandledRef.current === focusRecordId) return;
+    const index = records.findIndex((record) => record.id === focusRecordId);
+    if (index < 0) {
+      onFocusConsumed?.();
+      return;
+    }
+    focusHandledRef.current = focusRecordId;
+    if (index >= 5) setShowAllRecords(true);
+    void openRecord(focusRecordId).finally(() => onFocusConsumed?.());
+  }, [focusRecordId, loading, records]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const index = records.findIndex((record) => record.id === selected.session.id);
+    if (index >= 5) setShowAllRecords(true);
+  }, [selected, records]);
+
+  // A learner with saved work should land on the archive, even before they
+  // have filled in the practice defaults. A brand-new learner still lands on
+  // settings to finish their room.
+  useEffect(() => {
+    if (loading || tabTouchedRef.current) return;
+    if (records.length > 0 && !setupComplete) setTab("archive");
+  }, [loading, records, setupComplete]);
+
+  useEffect(() => {
+    if (!selected || !window.matchMedia("(max-width: 900px)").matches) return;
+    const frame = window.requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selected]);
+
+  useEffect(() => {
     if (!dangerConfirm) return;
     const timer = window.setTimeout(() => setDangerConfirm(null), 6000);
     return () => window.clearTimeout(timer);
@@ -172,7 +217,7 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
   }, [storedPlan?.id]);
 
   useEffect(() => {
-    if (tab !== "settings") return;
+    if (tab !== "settings" || loading) return;
     let active = true;
     setLayaStatus("checking");
     void loadAppCapabilities()
@@ -182,6 +227,29 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
       .catch(() => { if (active) setLayaStatus("unknown"); });
     return () => { active = false; };
   }, [tab]);
+
+  function handleTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? TABS.length - 1
+        : event.key === "ArrowLeft"
+          ? (index - 1 + TABS.length) % TABS.length
+          : (index + 1) % TABS.length;
+    selectTab(TABS[next].key);
+    document.getElementById(`account-tab-${TABS[next].key}`)?.focus();
+  }
+
+  function selectTab(next: TabKey) {
+    tabTouchedRef.current = true;
+    setTab(next);
+    if (!window.matchMedia("(max-width: 900px)").matches) return;
+    window.requestAnimationFrame(() => {
+      tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 
   async function openRecord(recordId: string) {
     if (loadingRecord) return;
@@ -325,7 +393,7 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
     setProgressLoading(true);
     setProgressError("");
     try {
-      const sessions = await listDebateRecords(30);
+      const sessions = records.length > 0 ? records : await listDebateRecords(30);
       const withAnalysis = await Promise.all(
         sessions.slice(0, 12).map(async (session) => {
           try {
@@ -338,18 +406,23 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
       );
       const overalls: number[] = [];
       const dimSums: Record<string, { total: number; count: number }> = {};
-      for (const { analysis } of withAnalysis) {
-        if (!analysis?.ratings) continue;
-        try {
-          const verdict = await requestJudge(analysis, null);
-          overalls.push(verdict.overall);
-          for (const dim of verdict.dimensions) {
-            dimSums[dim.key] = dimSums[dim.key] ?? { total: 0, count: 0 };
-            dimSums[dim.key].total += dim.score;
-            dimSums[dim.key].count += 1;
+      const verdicts = await Promise.all(
+        withAnalysis.map(async ({ analysis }) => {
+          if (!analysis?.ratings) return null;
+          try {
+            return await requestJudge(analysis, null, session?.access_token);
+          } catch {
+            return null;
           }
-        } catch {
-          continue;
+        }),
+      );
+      for (const verdict of verdicts) {
+        if (!verdict) continue;
+        overalls.push(verdict.overall);
+        for (const dim of verdict.dimensions) {
+          dimSums[dim.key] = dimSums[dim.key] ?? { total: 0, count: 0 };
+          dimSums[dim.key].total += dim.score;
+          dimSums[dim.key].count += 1;
         }
       }
       let fillers: { first: number | null; last: number | null; deliveries: number } = { first: null, last: null, deliveries: 0 };
@@ -443,6 +516,7 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
     try {
       await deleteDebateRecord(sessionId);
       setRecords((current) => current.filter((record) => record.id !== sessionId));
+      setProgress(null);
       setSelected(null);
       setConfirmDelete(false);
     } catch {
@@ -464,6 +538,7 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
       await deleteAllPracticeData(user.id);
       setRecords([]);
       setSelected(null);
+      setShowAllRecords(false);
       setProgress(null);
       setStoredPlan(null);
       setCompletedDrills(new Set());
@@ -508,30 +583,195 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
 
   return (
     <main className="account-page">
-      <div className="account-topline">
-        <button className="account-back" onClick={onStart}><ArrowLeft size={15} /> Start a rehearsal</button>
-        <button className="account-signout" onClick={() => void signOut()} disabled={signingOut}>{signingOut ? "Signing out…" : "Sign out"}</button>
-      </div>
-
-      <section className="account-intro">
-        <span className="account-seal"><BookOpenText size={21} /></span>
-        <h1>Your practice,<br /><em>kept in reach.</em></h1>
-        <p className={`account-intro-line${setupComplete ? "" : " is-open"}`}>{introLine}</p>
-        <p className="account-intro-mail">{user?.email ?? "Learner account"}</p>
-      </section>
+      <header className="account-head">
+        <div className="account-head-copy">
+          <h1>Your practice, <em>kept in reach.</em></h1>
+          <p className={`account-intro-line${setupComplete ? "" : " is-open"}`}>{introLine}</p>
+          <p className="account-intro-mail">{user?.email ?? "Learner account"}</p>
+        </div>
+        <div className="account-head-actions">
+          <button className="account-signout" onClick={() => void signOut()} disabled={signingOut}>
+            {signingOut ? "Signing out…" : "Sign out"}
+          </button>
+        </div>
+      </header>
 
       <section className="account-overview" aria-label="Recent rehearsal summary">
-        <div><span>RECENT RECORDS</span><b>{loading ? "–" : records.length.toString().padStart(2, "0")}</b><small>Up to 30 saved sessions</small></div>
+        <div><span>SAVED SESSIONS</span><b>{loading ? "–" : records.length.toString().padStart(2, "0")}</b><small>Most recent 30</small></div>
         <div><span>COMPLETED</span><b>{loading ? "–" : records.filter((record) => record.status === "completed").length.toString().padStart(2, "0")}</b><small>In recent records</small></div>
         <div><span>IN PROGRESS</span><b>{loading ? "–" : records.filter((record) => record.status === "in_progress").length.toString().padStart(2, "0")}</b><small>Can be continued</small></div>
         <div><span>LATEST REHEARSAL</span><b className="account-latest">{loading ? "Loading" : records[0] ? formatDate(records[0].started_at) : "Not yet"}</b><small>{records[0]?.topic ?? "Your first session will appear here"}</small></div>
       </section>
 
-      <details className="account-settings" open={settingsOpen} onToggle={(event) => setSettingsOpen(event.currentTarget.open)}>
-        <summary>
-          <span><b>Learner profile and practice defaults</b><small>Update your goals, opponent, and session setup.</small></span>
-          <span className="account-settings-action">{setupComplete ? "Edit settings" : "Set up your room"}</span>
-        </summary>
+      <div ref={tabsRef} className="account-tabs" role="tablist" aria-label="Account sections">
+        {TABS.map((item, index) => (
+          <button
+            key={item.key}
+            type="button"
+            role="tab"
+            id={`account-tab-${item.key}`}
+            aria-selected={tab === item.key}
+            aria-controls={`account-panel-${item.key}`}
+            tabIndex={tab === item.key ? 0 : -1}
+            className={tab === item.key ? "active" : ""}
+            onKeyDown={(event) => handleTabKey(event, index)}
+            onClick={() => selectTab(item.key)}
+          >
+            {item.label}
+            {item.key === recommended && <span className="tab-flag">For you</span>}
+          </button>
+        ))}
+      </div>
+
+      {tab === "plan" && (
+        <section className="account-plan" role="tabpanel" id="account-panel-plan" aria-labelledby="account-tab-plan">
+          <div className="archive-heading">
+            <div><h2 id="plan-heading">Practice plan</h2><p>Diagnosed from your saved sessions, then drafted and checked by the coaching agent.</p></div>
+            <span>{storedPlan ? `${storedPlan.sessions_considered} SESSIONS` : "--"}</span>
+          </div>
+
+          {planLoading && <div className="archive-loading"><LoaderCircle className="spin" size={18} /> Reading your sessions and drafting drills</div>}
+
+          {!planLoading && !storedPlan && !planError && (
+            <div className="archive-empty">
+              <EmptyCueArt label="No plan yet" />
+              <div><b>Turn your archive into drills.</b><p>Your weakest criteria, a drill for each one, and a four-week rhythm — grounded only in reviews you already have. Rebuilding after every few rehearsals keeps it honest.</p></div>
+              <button className="button button-dark" onClick={() => void buildPlan()} disabled={!user}>Build my plan <Sparkles size={15} /></button>
+            </div>
+          )}
+
+          {storedPlan && (
+            <div className="plan-body">
+              <div className="plan-head">
+                <h3>{storedPlan.plan.headline}</h3>
+                <span>NEXT REHEARSAL</span>
+                <b>{storedPlan.plan.next_session}</b>
+                <p>{storedPlan.plan.summary}</p>
+                <small>{formatDate(storedPlan.created_at)} · {storedPlan.sessions_considered} session{storedPlan.sessions_considered === 1 ? "" : "s"} considered</small>
+              </div>
+
+              <div className="plan-block">
+                <span>WHAT YOUR RECORD SHOWS</span>
+                {storedPlan.plan.weak_spots.map((spot) => (
+                  <article className="plan-spot" key={spot.key}>
+                    <b>{spot.label}</b>
+                    <p>{spot.evidence}</p>
+                    <em>{spot.first_step}</em>
+                  </article>
+                ))}
+              </div>
+
+              <div className="plan-block">
+                <span>DRILLS · {completedDrills.size} OF {storedPlan.plan.drills.length} DONE</span>
+                {storedPlan.plan.drills.map((drill, index) => {
+                  const done = completedDrills.has(index);
+                  return (
+                    <article className={`plan-drill${done ? " is-done" : ""}`} key={`${index}-${drill.title}`}>
+                      <div><b>{drill.title}</b><span>{drill.minutes} MIN · {drill.weak_spot.replaceAll("_", " ").toUpperCase()}</span></div>
+                      <ol>{drill.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+                      <p className="plan-check"><Check size={13} /> {drill.success_check}</p>
+                      <button
+                        type="button"
+                        className={`plan-drill-done${done ? " is-done" : ""}`}
+                        onClick={() => void toggleDrill(index)}
+                        disabled={!storedPlan.id || drillBusy !== null}
+                        aria-pressed={done}
+                        title={!storedPlan.id ? "Save this plan to track drill completion" : done ? "Mark this drill as not done" : "Mark this drill done"}
+                      >
+                        {drillBusy === index ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />}
+                        {done ? "Done" : "Mark done"}
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+              {planNotice && <p className="archive-partial" role="status">{planNotice}</p>}
+
+              <div className="plan-block no-print">
+                <span>THE RHYTHM</span>
+                <div className="plan-weeks">
+                  {storedPlan.plan.milestones.map((milestone) => (
+                    <div className="plan-week" key={milestone.week}>
+                      <b>WEEK {milestone.week}</b>
+                      <p>{milestone.practice}</p>
+                      <em>{milestone.win_condition}</em>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {(storedPlan.plan.gaps ?? []).length > 0 && <p className="archive-partial">{storedPlan.plan.gaps.join(" ")}</p>}
+              {records[0] && new Date(records[0].started_at) > new Date(storedPlan.created_at) && (
+                <p className="plan-stale">You have rehearsed since this plan was built — rebuild it to fold in the newest session.</p>
+              )}
+
+              <div className="plan-actions no-print">
+                <button className="button button-light" onClick={() => void buildPlan()} disabled={planLoading}><Sparkles size={15} /> Rebuild plan</button>
+                <button className="button button-light" onClick={() => window.print()}><Printer size={15} /> Print plan</button>
+              </div>
+            </div>
+          )}
+
+          {planError && <div className="archive-error" role="alert">{planError}</div>}
+        </section>
+      )}
+
+      {tab === "progress" && (
+        <section className="account-progress" role="tabpanel" id="account-panel-progress" aria-labelledby="account-tab-progress">
+          <div className="archive-heading">
+            <div><h2 id="progress-heading">Practice trends</h2><p>Computed from your saved sessions. No new models involved.</p></div>
+            <span>{progress?.sessions.toString().padStart(2, "0") ?? "--"}</span>
+          </div>
+          {progressLoading && <div className="archive-loading"><LoaderCircle className="spin" size={18} /> Reading your trends</div>}
+          {progressError && <div className="archive-error" role="alert">{progressError} <button className="button button-light" onClick={() => void loadProgress()}>Retry</button></div>}
+          {!progressLoading && !progress && !progressError && (
+            <div className="archive-empty">
+              <EmptyCueArt label="No trends yet" />
+              <div><b>Debate once to start your trends.</b><p>Scores, streaks, and filler direction appear here.</p></div>
+            </div>
+          )}
+          {progress && <>
+            <div className="progress-stats">
+              <div><span>SESSIONS</span><b>{progress.sessions}</b></div>
+              <div><span>COMPLETED</span><b>{progress.completed}</b></div>
+              <div><span>DAY STREAK</span><b>{progress.streakDays}</b></div>
+              <div><span>AVG OVERALL</span><b>{progress.avgOverall === null ? "–" : `${progress.avgOverall} / 5`}</b></div>
+              <div><span>DELIVERY TAKES</span><b>{progress.deliveries}</b></div>
+              <div><span>FILLERS / 100W</span><b>{progress.fillerFirst === null ? "–" : `${progress.fillerFirst} → ${progress.fillerLast}`}</b></div>
+            </div>
+            {progress.avgDims.length > 0 && (
+              <div className="progress-dims">
+                {progress.avgDims.map((dim) => (
+                  <div key={dim.key} className="progress-dim">
+                    <span>{dim.key.toUpperCase()}</span>
+                    <div className="progress-bar" role="img" aria-label={`${dim.key} averages ${dim.score} of 5`}>
+                      <i style={{ width: `${Math.min(100, dim.score / 5 * 100)}%` }} />
+                    </div>
+                    <b>{dim.score.toFixed(1)}</b>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="progress-weeks" role="img" aria-label="Sessions per week for the last 8 weeks">
+              {progress.weeks.map((week) => (
+                <div key={week.label} className="progress-week">
+                  <i style={{ height: `${Math.min(64, week.count * 16)}px` }} />
+                  <span>{week.label}</span>
+                </div>
+              ))}
+            </div>
+            <div className="progress-actions no-print">
+              <button className="button button-light" onClick={() => void downloadCsv()} disabled={progress.sessions === 0 || exporting}><Download size={15} /> {exporting ? "Building archive CSV" : "Download archive CSV"}</button>
+              <button className="button button-light" onClick={() => window.print()}><Printer size={15} /> Print report</button>
+            </div>
+          </>}
+        </section>
+      )}
+
+      {tab === "settings" && (
+        <div className="account-settings-panel" role="tabpanel" id="account-panel-settings" aria-labelledby="account-tab-settings">
+          <section className="account-settings-block">
+            <p className="account-settings-intro">Update your goals, opponent, and session setup. These answers shape your dashboard, cue, and the motions you are offered first.</p>
       <div className="account-setup-band">
         <section className="account-profile" aria-labelledby="profile-heading">
           <div className="archive-heading">
@@ -666,174 +906,13 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
           {profileNotice && <div className="inline-notice" role="status">{profileNotice}</div>}
         </section>
       </div>
-      </details>
+          </section>
 
-      <div className="account-tabs no-print" role="group" aria-label="Account sections">
-        {TABS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            className={tab === item.key ? "active" : ""}
-            aria-pressed={tab === item.key}
-            onClick={() => setTab(item.key)}
-          >
-            {item.label}
-            {item.key === recommended && <span className="tab-flag">For you</span>}
-          </button>
-        ))}
-      </div>
-
-      {tab === "plan" && (
-        <section className="account-plan" aria-labelledby="plan-heading">
-          <div className="archive-heading">
-            <div><h2 id="plan-heading">Practice plan</h2><p>Diagnosed from your saved sessions, then drafted and checked by the coaching agent.</p></div>
-            <span>{storedPlan ? `${storedPlan.sessions_considered} SESSIONS` : "--"}</span>
-          </div>
-
-          {planLoading && <div className="archive-loading"><LoaderCircle className="spin" size={18} /> Reading your sessions and drafting drills</div>}
-
-          {!planLoading && !storedPlan && !planError && (
-            <div className="archive-empty">
-              <EmptyCueArt label="No plan yet" />
-              <div><b>Turn your archive into drills.</b><p>Your weakest criteria, a drill for each one, and a four-week rhythm — grounded only in reviews you already have. Rebuilding after every few rehearsals keeps it honest.</p></div>
-              <button className="button button-dark" onClick={() => void buildPlan()} disabled={!user}>Build my plan <Sparkles size={15} /></button>
-            </div>
-          )}
-
-          {storedPlan && (
-            <div className="plan-body">
-              <div className="plan-head">
-                <h3>{storedPlan.plan.headline}</h3>
-                <span>NEXT REHEARSAL</span>
-                <b>{storedPlan.plan.next_session}</b>
-                <p>{storedPlan.plan.summary}</p>
-                <small>{formatDate(storedPlan.created_at)} · {storedPlan.sessions_considered} session{storedPlan.sessions_considered === 1 ? "" : "s"} considered</small>
-              </div>
-
-              <div className="plan-block">
-                <span>WHAT YOUR RECORD SHOWS</span>
-                {storedPlan.plan.weak_spots.map((spot) => (
-                  <article className="plan-spot" key={spot.key}>
-                    <b>{spot.label}</b>
-                    <p>{spot.evidence}</p>
-                    <em>{spot.first_step}</em>
-                  </article>
-                ))}
-              </div>
-
-              <div className="plan-block">
-                <span>DRILLS · {completedDrills.size} OF {storedPlan.plan.drills.length} DONE</span>
-                {storedPlan.plan.drills.map((drill, index) => {
-                  const done = completedDrills.has(index);
-                  return (
-                    <article className={`plan-drill${done ? " is-done" : ""}`} key={`${index}-${drill.title}`}>
-                      <div><b>{drill.title}</b><span>{drill.minutes} MIN · {drill.weak_spot.replaceAll("_", " ").toUpperCase()}</span></div>
-                      <ol>{drill.steps.map((step) => <li key={step}>{step}</li>)}</ol>
-                      <p className="plan-check"><Check size={13} /> {drill.success_check}</p>
-                      <button
-                        type="button"
-                        className={`plan-drill-done${done ? " is-done" : ""}`}
-                        onClick={() => void toggleDrill(index)}
-                        disabled={!storedPlan.id || drillBusy !== null}
-                        aria-pressed={done}
-                        title={!storedPlan.id ? "Save this plan to track drill completion" : done ? "Mark this drill as not done" : "Mark this drill done"}
-                      >
-                        {drillBusy === index ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />}
-                        {done ? "Done" : "Mark done"}
-                      </button>
-                    </article>
-                  );
-                })}
-              </div>
-              {planNotice && <p className="archive-partial" role="status">{planNotice}</p>}
-
-              <div className="plan-block no-print">
-                <span>THE RHYTHM</span>
-                <div className="plan-weeks">
-                  {storedPlan.plan.milestones.map((milestone) => (
-                    <div className="plan-week" key={milestone.week}>
-                      <b>WEEK {milestone.week}</b>
-                      <p>{milestone.practice}</p>
-                      <em>{milestone.win_condition}</em>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {(storedPlan.plan.gaps ?? []).length > 0 && <p className="archive-partial">{storedPlan.plan.gaps.join(" ")}</p>}
-              {records[0] && new Date(records[0].started_at) > new Date(storedPlan.created_at) && (
-                <p className="plan-stale">You have rehearsed since this plan was built — rebuild it to fold in the newest session.</p>
-              )}
-
-              <div className="plan-actions no-print">
-                <button className="button button-light" onClick={() => void buildPlan()} disabled={planLoading}><Sparkles size={15} /> Rebuild plan</button>
-                <button className="button button-light" onClick={() => window.print()}><Printer size={15} /> Print plan</button>
-              </div>
-            </div>
-          )}
-
-          {planError && <div className="archive-error" role="alert">{planError}</div>}
-        </section>
-      )}
-
-      {tab === "progress" && (
-        <section className="account-progress" aria-labelledby="progress-heading">
-          <div className="archive-heading">
-            <div><h2 id="progress-heading">Practice trends</h2><p>Computed from your saved sessions. No new models involved.</p></div>
-            <span>{progress?.sessions.toString().padStart(2, "0") ?? "--"}</span>
-          </div>
-          {progressLoading && <div className="archive-loading"><LoaderCircle className="spin" size={18} /> Reading your trends</div>}
-          {progressError && <div className="archive-error" role="alert">{progressError} <button className="button button-light" onClick={() => void loadProgress()}>Retry</button></div>}
-          {!progressLoading && !progress && !progressError && (
-            <div className="archive-empty">
-              <EmptyCueArt label="No trends yet" />
-              <div><b>Debate once to start your trends.</b><p>Scores, streaks, and filler direction appear here.</p></div>
-            </div>
-          )}
-          {progress && <>
-            <div className="progress-stats">
-              <div><span>SESSIONS</span><b>{progress.sessions}</b></div>
-              <div><span>COMPLETED</span><b>{progress.completed}</b></div>
-              <div><span>DAY STREAK</span><b>{progress.streakDays}</b></div>
-              <div><span>AVG OVERALL</span><b>{progress.avgOverall === null ? "–" : `${progress.avgOverall} / 5`}</b></div>
-              <div><span>DELIVERY TAKES</span><b>{progress.deliveries}</b></div>
-              <div><span>FILLERS / 100W</span><b>{progress.fillerFirst === null ? "–" : `${progress.fillerFirst} → ${progress.fillerLast}`}</b></div>
-            </div>
-            {progress.avgDims.length > 0 && (
-              <div className="progress-dims">
-                {progress.avgDims.map((dim) => (
-                  <div key={dim.key} className="progress-dim">
-                    <span>{dim.key.toUpperCase()}</span>
-                    <div className="progress-bar" role="img" aria-label={`${dim.key} averages ${dim.score} of 5`}>
-                      <i style={{ width: `${Math.min(100, dim.score / 5 * 100)}%` }} />
-                    </div>
-                    <b>{dim.score.toFixed(1)}</b>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="progress-weeks" role="img" aria-label="Sessions per week for the last 8 weeks">
-              {progress.weeks.map((week) => (
-                <div key={week.label} className="progress-week">
-                  <i style={{ height: `${Math.min(64, week.count * 16)}px` }} />
-                  <span>{week.label}</span>
-                </div>
-              ))}
-            </div>
-            <div className="progress-actions no-print">
-              <button className="button button-light" onClick={() => void downloadCsv()} disabled={progress.sessions === 0 || exporting}><Download size={15} /> {exporting ? "Building archive CSV" : "Download archive CSV"}</button>
-              <button className="button button-light" onClick={() => window.print()}><Printer size={15} /> Print report</button>
-            </div>
-          </>}
-        </section>
-      )}
-
-      {tab === "settings" && <>
         <section className="account-app-settings" aria-labelledby="app-settings-heading">
           <div className="archive-heading">
             <div>
               <h2 id="app-settings-heading">How your debate coach works</h2>
-              <p>Choose whether the coach can use Laya and your saved practice when shaping replies.</p>
+              <p>Choose whether the coach can use adaptive moves and your saved practice when shaping replies.</p>
             </div>
           </div>
 
@@ -843,12 +922,12 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
                 <span className="app-setting-icon"><Bot size={17} /></span>
                 <div>
                   <h3>Adaptive debate moves</h3>
-                  <p>Let Laya choose a focused move, such as asking for evidence or testing an assumption. The debate coach still writes the reply.</p>
+                  <p>Use the built-in argument policy for clear turns, and Laya when it is installed and enabled for ambiguous ones. The debate coach still writes the reply.</p>
                   <p className={`app-setting-status ${layaStatus}`} role="status">
-                    {layaStatus === "checking" && "Checking availability…"}
-                    {layaStatus === "available" && "Installed. The checkpoint loads on first use, so that turn may take longer; standard replies continue if it cannot load."}
-                    {layaStatus === "unavailable" && "Not available in this app right now. Standard debate replies still work."}
-                    {layaStatus === "unknown" && "Could not check right now. Standard debate replies still work if Laya cannot load."}
+                    {layaStatus === "checking" && "Checking whether Laya is enabled…"}
+                    {layaStatus === "available" && "Laya is installed and enabled. The checkpoint loads on first use; if it cannot load, the built-in policy and standard replies continue."}
+                    {layaStatus === "unavailable" && "Laya is not enabled or installed here. The built-in policy still handles clear turns; ambiguous turns use the planner."}
+                    {layaStatus === "unknown" && "Could not check right now. The built-in policy still works, and Laya is skipped if it is unavailable."}
                   </p>
                 </div>
               </div>
@@ -961,46 +1040,83 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
           </p>
           {dataNotice && <div className="inline-notice" role="status">{dataNotice}</div>}
         </section>
-      </>}
+              </div>
+      )}
 
-      {tab === "archive" && <div className={`account-layout${selected ? " has-selected" : ""}`}>
-        <section className="account-archive" aria-labelledby="archive-heading">
-          <div className="archive-heading">
-            <div><h2 id="archive-heading">Rehearsal archive</h2><p>Open a transcript to review it or continue the conversation in the debate room.</p></div>
-            <span>{records.length.toString().padStart(2, "0")}</span>
-          </div>
-
-          {loading && <div className="archive-loading"><LoaderCircle className="spin" size={18} /> Gathering your rehearsals</div>}
-          {!loading && !error && records.length === 0 && (
-            <div className="archive-empty">
-              <EmptyCueArt label="No saved rehearsals yet" />
-              <div><b>Your record starts with the next debate.</b><p>Sign in before a rehearsal and its transcript will appear here.</p></div>
-              <button className="button button-dark" onClick={onStart}>Open the prompt book <ArrowUpRight size={15} /></button>
+      {tab === "archive" && (
+        <div className={`account-layout${selected ? " has-selected" : ""}`} role="tabpanel" id="account-panel-archive" aria-labelledby="account-tab-archive">
+          <section className="account-archive" aria-labelledby="archive-heading">
+            <div className="archive-heading">
+              <div><h2 id="archive-heading">Rehearsal archive</h2><p>Open a transcript to review it or continue the conversation in the debate room.</p></div>
+              <span>
+                {loading
+                  ? "--"
+                  : showAllRecords || records.length <= 5
+                    ? records.length.toString().padStart(2, "0")
+                    : `${shownCount.toString().padStart(2, "0")} / ${records.length.toString().padStart(2, "0")}`}
+              </span>
             </div>
-          )}
-          {records.map((record) => (
-            <button
-              className={`archive-row ${selected?.session.id === record.id ? "selected" : ""}`}
-              key={record.id}
-              onClick={() => void openRecord(record.id)}
-              disabled={loadingRecord !== ""}
-              aria-current={selected?.session.id === record.id}
-            >
-              <span className="archive-date">{formatDate(record.started_at)}</span>
-              <span className="archive-topic">{record.topic}</span>
-              <span className="archive-meta">{opponentName(record.persona)} · {record.duration_minutes} min · {record.status === "completed" ? "Complete" : "In progress"}</span>
-              <span className="archive-arrow">{loadingRecord === record.id ? <LoaderCircle className="spin" size={15} /> : <ArrowUpRight size={15} />}</span>
-            </button>
-          ))}
 
-          {error && <div className="archive-error" role="alert">{error} <button className="button button-light" onClick={reload}>Retry</button></div>}
-        </section>
+            {loading && (
+              <div className="archive-skeleton" role="status">
+                <span className="visually-hidden">Gathering your rehearsals</span>
+                {[0, 1, 2, 3].map((index) => (
+                  <div className="archive-skeleton-row" key={index} aria-hidden="true">
+                    <span /><span /><span />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!loading && !error && records.length === 0 && (
+              <div className="archive-empty">
+                <EmptyCueArt label="No saved rehearsals yet" />
+                <div><b>Your record starts with the next debate.</b><p>{user ? "Start a rehearsal and its transcript will appear here." : "Sign in before a rehearsal and its transcript will appear here."}</p></div>
+                <button className="button button-dark" onClick={onStart}>Open the prompt book <ArrowUpRight size={15} /></button>
+              </div>
+            )}
+
+            {!loading && visibleRecords.map((record) => (
+              <button
+                className={`archive-row ${selected?.session.id === record.id ? "selected" : ""}`}
+                key={record.id}
+                onClick={() => void openRecord(record.id)}
+                disabled={loadingRecord !== ""}
+                aria-current={selected?.session.id === record.id}
+              >
+                <span className="archive-date">
+                  {formatDate(record.started_at)}
+                  <span className={`archive-status ${record.status}`}>
+                    {record.status === "completed" ? "Complete" : "In progress"}
+                  </span>
+                </span>
+                <span className="archive-topic">{record.topic}</span>
+                <span className="archive-meta">{opponentName(record.persona)} · {record.duration_minutes} min</span>
+                <span className="archive-arrow">{loadingRecord === record.id ? <LoaderCircle className="spin" size={15} /> : <ArrowUpRight size={15} />}</span>
+              </button>
+            ))}
+
+            {!loading && records.length > 5 && (
+              <button
+                className="archive-more"
+                type="button"
+                aria-expanded={showAllRecords}
+                onClick={() => setShowAllRecords((current) => !current)}
+              >
+                {showAllRecords
+                  ? <>Show latest 5 <ChevronUp size={14} aria-hidden="true" /></>
+                  : <>Show all {records.length} sessions <ChevronDown size={14} aria-hidden="true" /></>}
+              </button>
+            )}
+
+            {error && <div className="archive-error" role="alert">{error} <button className="button button-light" onClick={reload}>Retry</button></div>}
+          </section>
 
         {selected && (
-          <section className="record-detail" role="region" aria-label="Saved debate transcript">
+          <section ref={detailRef} className="record-detail" role="region" aria-label="Saved debate transcript">
             <div className="record-detail-head">
               <div><span>THE MOTION</span><h2>{selected.session.topic}</h2></div>
-              <button onClick={() => { setSelected(null); setConfirmDelete(false); }} aria-label="Close transcript"><ArrowLeft size={16} /></button>
+              <button onClick={() => { setSelected(null); setConfirmDelete(false); }} aria-label="Back to archive"><ArrowLeft size={16} /></button>
             </div>
             <div className="record-detail-meta">{opponentName(selected.session.persona)} · {selected.session.learner_position === "for" ? "In favour" : "Against"} · {formatDate(selected.session.started_at)}</div>
             <div className="record-detail-turns">
@@ -1044,7 +1160,27 @@ export function AccountView({ onStart, onContinue, onSignOut }: {
             </div>
           </section>
         )}
-      </div>}
+          {!selected && (
+            <aside className="archive-rail" aria-label="Your next rehearsal">
+              <div className="rail-card">
+                <h2>Your next rehearsal</h2>
+                <p>{recommendation.reason}</p>
+                <div className="rail-facts">
+                  <div><span>OPPONENT</span><b>{personaFor(recommendation.persona).name}</b></div>
+                  <div><span>PRESSURE</span><b>{difficultyFor(recommendation.difficulty).label}</b></div>
+                  <div><span>CLOCK</span><b>{recommendation.duration} min</b></div>
+                </div>
+                <button className="button button-dark" type="button" onClick={onStart}>Start a rehearsal</button>
+                <div className="rail-links">
+                  <button type="button" onClick={() => selectTab("plan")}>Practice plan <ArrowUpRight size={13} aria-hidden="true" /></button>
+                  <button type="button" onClick={() => selectTab("progress")}>Practice trends <ArrowUpRight size={13} aria-hidden="true" /></button>
+                </div>
+                <p className="rail-note">Select a session to read its transcript here.</p>
+              </div>
+            </aside>
+          )}
+        </div>
+      )}
 
       <div className="account-private-note"><RotateCcw size={14} /> Only you can read the sessions saved in this account.</div>
     </main>

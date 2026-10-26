@@ -31,7 +31,10 @@ class FakeAgent:
         return {"answers": {"move": {"choice": self.move}}}
 
 
-def _run(monkeypatch, agent=None, loader=None, *, history=None, latest=None) -> str | None:
+def _run(
+    monkeypatch, agent=None, loader=None, *, history=None, latest=None, enabled=True
+) -> str | None:
+    monkeypatch.setattr(laya_selector, "ENABLED", enabled)
     monkeypatch.setattr(laya_selector, "_AGENT", agent)
     if loader is not None:
         monkeypatch.setattr(laya_selector, "_load_agent", loader)
@@ -163,14 +166,17 @@ def test_no_latest_turn_means_no_move(monkeypatch):
     )
 
 
-def test_disabling_the_tactical_layer_skips_rules_and_the_checkpoint(monkeypatch):
+def test_disabling_laya_skips_the_checkpoint_but_keeps_the_argument_policy(monkeypatch):
     def explode():
-        raise AssertionError("The tactical layer is disabled")
+        raise AssertionError("Laya is disabled")
 
-    monkeypatch.setattr(laya_selector, "ENABLED", False)
     monkeypatch.setattr(laya_selector, "_load_agent", explode)
-    assert _run(monkeypatch) is None
-    assert _run(monkeypatch, latest="82 percent of teachers say attention has fallen.") is None
+    assert _run(monkeypatch, enabled=False) is None
+    assert _run(
+        monkeypatch,
+        enabled=False,
+        latest="82 percent of teachers say attention has fallen.",
+    ) == "probe_evidence"
 
 
 def test_a_missing_package_skips_the_checkpoint(monkeypatch):
@@ -180,6 +186,10 @@ def test_a_missing_package_skips_the_checkpoint(monkeypatch):
     monkeypatch.setattr(laya_selector, "_PACKAGE_MISSING", True)
     monkeypatch.setattr(laya_selector, "_load_agent", explode)
     assert _run(monkeypatch) is None
+    assert _run(
+        monkeypatch,
+        latest="82 percent of teachers say attention has fallen.",
+    ) == "probe_evidence"
 
 
 def test_the_decision_state_sends_only_a_bounded_recent_exchange():

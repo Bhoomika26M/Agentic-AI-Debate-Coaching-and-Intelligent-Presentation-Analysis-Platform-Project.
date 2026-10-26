@@ -137,7 +137,8 @@ async def health() -> dict[str, str | bool]:
         "model_available": available,
         "model_loaded": loaded,
         "transcription": "ready" if transcription_available() else "unavailable",
-        "adaptive_tactics_available": laya_available(),
+        "adaptive_tactics_available": True,
+        "laya_available": laya_available(),
     }
 
 

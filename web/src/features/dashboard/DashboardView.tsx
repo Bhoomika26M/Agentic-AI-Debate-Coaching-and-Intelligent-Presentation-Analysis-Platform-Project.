@@ -375,6 +375,7 @@ export function DashboardView({
   resume,
   onLaunch,
   onNavigate,
+  onOpenRecord,
 }: {
   userId: string;
   accessToken?: string;
@@ -382,6 +383,7 @@ export function DashboardView({
   resume: { turns: number; topic: string; onResume: () => void; onDiscard: () => void } | null;
   onLaunch: (prefill: { topic: string; position: "for" | "against"; persona: PersonaKey; difficulty: DifficultyKey; duration: number }) => void;
   onNavigate: (view: "setup" | "account" | "present") => void;
+  onOpenRecord: (recordId: string) => void;
 }) {
   const prefs = useMemo(() => loadPrefs(userId), [userId]);
   const recommendation = useMemo(() => buildRecommendation(prefs.experience, prefs), [prefs]);
@@ -526,9 +528,6 @@ export function DashboardView({
             {activeGoal ? ` · working on ${goalLine(activeGoal)}` : ""}
           </p>
         </div>
-        <button className="dash-space-link" type="button" onClick={() => onNavigate("account")}>
-          Learner space <ArrowUpRight size={15} aria-hidden="true" />
-        </button>
       </header>
 
       {resume && (
@@ -878,7 +877,7 @@ export function DashboardView({
                   <span className="programme-review">
                     {analysis?.ratings ? "reviewed" : "no review"}
                   </span>
-                  <button className="programme-open" type="button" onClick={() => onNavigate("account")}>
+                  <button className="programme-open" type="button" onClick={() => onOpenRecord(record.id)}>
                     Open <ArrowUpRight size={13} aria-hidden="true" />
                   </button>
                 </li>

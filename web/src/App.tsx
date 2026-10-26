@@ -102,12 +102,14 @@ function Header({
   onAccount,
   accountLabel,
   showNav = true,
+  showCta = true,
 }: {
   onHome: () => void;
   onStart: () => void;
   onAccount: () => void;
   accountLabel: string;
   showNav?: boolean;
+  showCta?: boolean;
 }) {
   return (
     <header className="site-header">
@@ -124,11 +126,13 @@ function Header({
             </nav>
           )}
           <button className="header-account-link" onClick={onAccount}>{accountLabel}</button>
-          <button className="header-cta" onClick={onStart}>
-            <span className="cta-full">Start a rehearsal</span>
-            <span className="cta-short">Start</span>
-            <ArrowUpRight size={15} aria-hidden="true" />
-          </button>
+          {showCta && (
+            <button className="header-cta" onClick={onStart}>
+              <span className="cta-full">Start a rehearsal</span>
+              <span className="cta-short">Start</span>
+              <ArrowUpRight size={15} aria-hidden="true" />
+            </button>
+          )}
         </div>
       </div>
       {showNav && (
@@ -200,6 +204,7 @@ export default function App() {
   const [cueSequence, setCueSequence] = useState(0);
   const [cueVisible, setCueVisible] = useState(false);
   const [recordId, setRecordId] = useState<string | null>(null);
+  const [accountFocusId, setAccountFocusId] = useState<string | null>(null);
   const [continuation, setContinuation] = useState(false);
   const [continuedHistoryCount, setContinuedHistoryCount] = useState(0);
   const [recordNotice, setRecordNotice] = useState("");
@@ -296,6 +301,12 @@ export default function App() {
   useEffect(() => {
     if (user && view === "landing") setView("home");
   }, [user, view]);
+
+  // The archive is owner-scoped; a guest deep link lands on sign-in instead of an error.
+  useEffect(() => {
+    if (authLoading) return;
+    if (view === "account" && !user) setView("auth");
+  }, [authLoading, user, view]);
 
   async function saveMotionToBank() {
     const title = customTopic.trim();
@@ -798,11 +809,13 @@ export default function App() {
 
   function openAccount() {
     if (authLoading) return;
+    setAccountFocusId(null);
     setView(user ? "account" : "auth");
   }
 
   async function handleSignOut() {
     await signOut();
+    setAccountFocusId(null);
     routedForRef.current = null;
     setPrefsReady(false);
     setLearnerName(null);
@@ -911,9 +924,10 @@ export default function App() {
         <Header
           onHome={returnHome}
           onStart={() => setView("setup")}
-          onAccount={openAccount}
-          accountLabel={authLoading ? "…" : user ? (learnerName ? learnerName.split(/\s+/)[0] : "Learner space") : "Sign in"}
+          onAccount={view === "account" ? returnHome : openAccount}
+          accountLabel={view === "account" ? "Dashboard" : authLoading ? "…" : user ? (learnerName ? learnerName.split(/\s+/)[0] : "Learner space") : "Sign in"}
           showNav={view === "landing"}
+          showCta={view !== "setup"}
         />
       )}
 
@@ -959,7 +973,14 @@ export default function App() {
                         onDiscard: clearSnapshot,
                       } : null}
                       onLaunch={(prefill) => void startSession(prefill)}
-                      onNavigate={(next) => setView(next)}
+                      onNavigate={(next) => {
+                        if (next === "account") setAccountFocusId(null);
+                        setView(next);
+                      }}
+                      onOpenRecord={(recordIdToOpen) => {
+                        setAccountFocusId(recordIdToOpen);
+                        setView("account");
+                      }}
                     />
                   )
                   : <AuthView onContinueAsGuest={() => setView("setup")} onAuthenticated={() => setView("onboarding")} />}
@@ -972,7 +993,15 @@ export default function App() {
             <Suspense fallback={<div className="inline-notice" role="status">Loading your archive…</div>}>
               {authLoading
                 ? <div className="inline-notice" role="status">Checking your sign-in…</div>
-                : <AccountView onStart={() => setView("setup")} onContinue={(record, turns) => void continueSavedDebate(record, turns)} onSignOut={handleSignOut} />}
+                : (
+                  <AccountView
+                    onStart={() => setView("setup")}
+                    onContinue={(record, turns) => void continueSavedDebate(record, turns)}
+                    onSignOut={handleSignOut}
+                    focusRecordId={accountFocusId}
+                    onFocusConsumed={() => setAccountFocusId(null)}
+                  />
+                )}
             </Suspense>
           </motion.div>
         )}
