@@ -6,6 +6,8 @@ Verdict is an AI debate coach for students and self-directed learners. Choose a 
 
 No account is required. Open the app, finish a practice round in a few minutes, and leave with clear next steps for your next debate.
 
+> **Status:** a complete local product with real AI orchestration, not a deployed service. It runs on your machine against Ollama, or against any OpenAI-compatible endpoint you configure. There is no public demo URL. Roughly half the modules in the original course spec are done, several are partial, and some are absent; the [spec coverage](#spec-coverage) table below says which is which instead of claiming the whole brief.
+
 ![The Verdict landing page](docs/screenshots/landing.png)
 
 ---
@@ -16,7 +18,7 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 **Review your arguments.** A rehearsal with learner turns can be reviewed for ratings on clarity, relevance, evidence, logic, and persuasion, fallacy flags quoted from your exact words, and five counterpoint styles that test your case from other angles. Any branch the model cannot complete is disclosed as a partial review rather than silently filled in.
 
-**Get a weighted verdict.** Argument, evidence, logic, rebuttal, and communication are combined 30/20/20/15/15 into one deterministic summary of the review and delivery signals, each with a line of coaching behind it. It is not a second, independent model judgment. The logic score names the fallacy quotes it caught, and communication carries timestamps from your delivery review when there is one.
+**Get a weighted verdict.** Argument, evidence, logic, rebuttal, and communication are combined 30/20/20/15/15 into one deterministic summary of the review and the transcript, each with a line of coaching behind it. It is not a second, independent model judgment. Rebuttal is read from what you actually said back: each reply to an opponent challenge is checked for taking up the challenge's own terms, being developed enough to count as an answer, and containing a flagged fallacy itself. The logic score names the fallacy quotes it caught, and communication carries timestamps from your delivery review when there is one. A dimension with no evidence — no closing take, or no replies to the opponent — is left out and the remaining weights are renormalized to 100% and disclosed, rather than filled with a placeholder score.
 
 **Review your delivery.** Record or upload a closing take of up to three minutes. You get transcript-based pace, filler, and pause signals with timestamps you can replay, plus short drills built around what the recording actually shows. The four labels describe observable patterns — fast pace, hesitant patch, long pause, steady pace — not the speaker's emotional state. Audio is discarded after the review unless you choose to keep it.
 
@@ -40,16 +42,16 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 ![A live rehearsal in the arena](docs/screenshots/arena.png)
 
-**Read the verdict.** Five weighted dimensions, each with the reasoning behind the score, followed by the fuller review underneath.
+**Read the verdict.** Weighted dimensions, each with the reasoning behind the score, followed by the fuller review underneath. A dimension with no evidence is listed as not scored rather than filled in.
 
-![The weighted verdict with five scored dimensions](docs/screenshots/verdict.png)
+![The weighted verdict with its scored dimensions](docs/screenshots/verdict.png)
 
 ---
 
 ## How it works
 
 1. You type an argument in the browser and send it to the API.
-2. A narrow deterministic guard routes hard off-motion requests (code, essays, prompt exfiltration) to an in-character redirect with no model call. Ambiguous meta requests (role claims, instruction bait, translate/solve phrasing) only redirect when the turn shows no debate evidence: no motion overlap, no overlap with the recent exchange, and no debate vocabulary. It is a coarse routing signal, not a complete injection defence, so a normal argument that merely mentions a trigger phrase still reaches the model. The opponent prompt also treats role claims and meta banter as debate rather than as a second guard. On a normal learner turn, a small deterministic argument-shape policy handles clear cases: it answers a challenge before probing, presses unsourced evidence, tests a load-bearing premise, challenges an absolute claim, traces a policy's consequences, or clarifies a vague causal claim. Ambiguous turns go to local Laya when the optional checkpoint is installed and enabled; Laya chooses among those five concrete vulnerabilities rather than the generic follow-up move. Ollama writes the in-persona reply. If Laya is disabled or no rule and no supported Laya move are available, the existing planner supplies its private weakest-joint brief. A verifier checks length, role labels, first-person character breaks (naming ChatGPT or an AI tutor inside an argument is allowed), leakage of any private prompt context (planner brief, stored-history summary, Laya tactic, pressure hint), and whether the reply engaged the latest point, accepting a clear paraphrase or on-motion vocabulary. A flagged turn is repaired up to twice; a turn that still fails is replaced with a neutral on-motion question, never an accusation. The room labels the path as verified, recovered, or on-motion.
+2. A narrow deterministic guard routes hard off-motion requests (code, essays, prompt exfiltration) to an in-character redirect with no model call. Ambiguous meta requests (role claims, instruction bait, translate/solve phrasing) only redirect when the turn shows no debate evidence: no motion overlap, no overlap with the recent exchange, and no debate vocabulary. It is a coarse routing signal, not a complete injection defence, so a normal argument that merely mentions a trigger phrase still reaches the model. The opponent prompt also treats role claims and meta banter as debate rather than as a second guard. On a normal learner turn, a small deterministic argument-shape policy handles clear cases: it answers a challenge before probing, presses unsourced evidence, tests a load-bearing premise, challenges an absolute claim, traces a policy's consequences, or clarifies a vague causal claim. Ambiguous turns go to local Laya when the optional checkpoint is installed and enabled; Laya chooses among those five concrete vulnerabilities rather than the generic follow-up move. The configured model writes the in-persona reply. If Laya is disabled or no rule and no supported Laya move are available, the existing planner supplies its private weakest-joint brief. A verifier checks length, role labels, first-person character breaks (naming ChatGPT or an AI tutor inside an argument is allowed — the verifier is a heuristic, not an injection defence), leakage of any private prompt context (planner brief, stored-history summary, Laya tactic, pressure hint), and whether the reply engaged the latest point, accepting a clear paraphrase or on-motion vocabulary. A flagged turn is repaired up to twice; a turn that still fails is replaced with a neutral on-motion question, never an accusation. The room labels the path as verified, recovered, or on-motion.
 3. Coaching fans rubric scoring, fallacy detection, and counterpoints into parallel branches that merge into one review. Every fallacy quote is matched against your own words, and contact details are redacted from saved reports. A transcript longer than 32 turns is reviewed from a condensed older summary plus the latest 32 turns; a transcript over 200 turns is declined with a clear message instead of being truncated silently.
 4. The practice plan diagnoses weak spots from your scores, writes a drill for each, and refuses to invent weaknesses, scores, or session counts that your record does not support.
 5. Delivery review transcribes your audio to timestamped words, counts pace, fillers, pauses, and repeats in pure Python, and uses those signals to draft time-stamped drills.
@@ -64,8 +66,8 @@ The language model only ever receives text through the API. The browser never ta
 | --- | --- | --- |
 | Web app | React 19, TypeScript, Vite | Landing, setup, live arena, verdict, delivery room, learner space |
 | API | Python 3.12/3.13, FastAPI, Pydantic, LangGraph | All model calls, orchestration, and validation live here |
-| Inference | Ollama (`qwen3.5:4b` by default) | Any endpoint reachable at `OLLAMA_BASE_URL` |
-| Debate move selection | Deterministic argument-shape policy, plus Laya as an opt-in local PyTorch checkpoint | Clear turns are routed by policy; Laya chooses an ambiguous five-way vulnerability when enabled. Ollama still writes the reply |
+| Inference | Ollama (`qwen3.5:4b` by default), or any OpenAI-compatible API | One transport in `app/providers.py`; `LLM_PROVIDER` chooses, and a key alone switches to hosted |
+| Debate move selection | Deterministic argument-shape policy, plus Laya as an opt-in local PyTorch checkpoint | Clear turns are routed by policy; Laya chooses an ambiguous five-way vulnerability when enabled. The configured model still writes the reply |
 | Speech | `faster-whisper` | Local transcription for delivery review; `distil-large-v3.5` by default |
 | Accounts and storage | Supabase (free tier) | Auth, Postgres with row level security, private audio bucket |
 
@@ -75,10 +77,10 @@ The language model only ever receives text through the API. The browser never ta
 
 | Milestone | Scope | Status |
 | :--- | :--- | :--- |
-| M1 — Week 1 & 2: Project Initialization, Design Process & Core Setup | Workflows definition, system architecture & database schema, UI wireframes, frontend & backend setup, authentication & role-based access, user profiles & skill tracking, debate session management | Complete |
-| M2 — Week 3 & 4: Argument Analysis & Fallacy Detection | Argument analysis engine, logical fallacy detection workflows, reasoning evaluation models, argument scoring systems, debate feedback reports | Complete |
-| M3 — Week 5 & 6: AI Debate Simulation & Coaching | AI debate simulation engine, counterargument generation workflows, coaching recommendation engine, personalized learning plans, performance dashboards | Complete |
-| M4 — Week 7 & 8: Presentation Analytics, Testing & Deployment | Presentation analysis engine, reports & visualization modules, automated testing & validations, Docker containerization & deployment, final documentation | Complete |
+| M1 — Week 1 & 2: Project Initialization, Design Process & Core Setup | Workflows definition, system architecture & database schema, UI wireframes, frontend & backend setup, authentication & role-based access, user profiles & skill tracking, debate session management | Complete with deviations: learner accounts only, no roles; sessions are saved and resumable but not scheduled |
+| M2 — Week 3 & 4: Argument Analysis & Fallacy Detection | Argument analysis engine, logical fallacy detection workflows, reasoning evaluation models, argument scoring systems, debate feedback reports | Complete with deviations: rubric ratings and eight quote-grounded fallacies, but no claim or evidence extraction, and no measured detector accuracy yet |
+| M3 — Week 5 & 6: AI Debate Simulation & Coaching | AI debate simulation engine, counterargument generation workflows, coaching recommendation engine, personalized learning plans, performance dashboards | Complete with deviations: learner dashboard only, no coach, educator, or admin views |
+| M4 — Week 7 & 8: Presentation Analytics, Testing & Deployment | Presentation analysis engine, reports & visualization modules, automated testing & validations, Docker containerization & deployment, final documentation | Not fully implemented: Docker and CI exist and the API can call a hosted provider, but nothing is deployed publicly, there is no monitoring, and exports are CSV and print only |
 
 ### Detailed Milestone Breakdown
 
@@ -89,27 +91,27 @@ The language model only ever receives text through the API. The browser never ta
   - [x] Design system architecture and database schema.
   - [x] Create UI wireframes and workflow planning.
   - [x] Setup frontend and backend environments.
-  - [x] Implement authentication and role-based access system.
+  - [x] Email and Google sign-in with owner-scoped row level security; **no coach, educator, or admin roles** in v1.
   - [x] Build user profile and skill tracking workflows.
-  - [x] Create debate session management modules.
+  - [x] Create debate session modules: saved transcripts, resume, archive, and a clock. **No scheduling and no named debate formats** (Oxford, Parliamentary, Policy, Public Forum); the exchange is one free-form round.
 - **Outcomes**
   - [x] Understand AI-powered debate coaching workflows.
   - [x] Learn system architecture and database design concepts.
   - [x] Build frontend and backend project initialization.
-  - [x] Working authentication and debate session management system.
+  - [x] Working authentication and a learner-scoped debate session flow.
 
 #### Milestone 2: Week 3 & 4 — Argument Analysis & Fallacy Detection
 
 - **Tasks**
   - [x] Implement argument analysis engine.
   - [x] Build logical fallacy detection workflows.
-  - [x] Develop reasoning evaluation models.
+  - [x] Develop reasoning evaluation: five model rubric ratings plus a deterministic weighted judge. **No claim extraction, evidence grading, or credibility assessment.**
   - [x] Create argument scoring systems.
   - [x] Generate debate feedback reports.
 - **Outcomes**
   - [x] Argument analysis engine operational.
-  - [x] Fallacy detection workflows functional.
-  - [x] Reasoning assessment system completed.
+  - [x] Fallacy detection workflows functional, with exact-quote grounding.
+  - [x] Reasoning assessment system working, with no measured accuracy yet.
 
 #### Milestone 3: Week 5 & 6 — AI Debate Simulation & Coaching
 
@@ -118,7 +120,7 @@ The language model only ever receives text through the API. The browser never ta
   - [x] Build counterargument generation workflows.
   - [x] Develop coaching recommendation engine.
   - [x] Generate personalized learning plans.
-  - [x] Create performance dashboards.
+  - [x] Create a learner performance dashboard. **No coach, educator, or admin dashboards, and no notifications.**
 - **Outcomes**
   - [x] AI debate simulation operational.
   - [x] Coaching engine functional.
@@ -127,21 +129,51 @@ The language model only ever receives text through the API. The browser never ta
 #### Milestone 4: Week 7 & 8 — Presentation Analytics, Testing & Deployment
 
 - **Tasks**
-  - [x] Implement presentation analysis engine.
-  - [x] Add reports and visualization modules.
-  - [x] Implement testing and validations.
-  - [x] Deploy platform using Docker and cloud services.
+  - [x] Implement the presentation analysis engine: transcript-based pace, fillers, pauses, and drills. **No confidence, engagement, or prosody scoring**, and no slides or video.
+  - [x] Add reports and visualization modules. **CSV and browser print only; no native PDF or Excel export.**
+  - [x] Implement testing and validations: 278 backend tests and 11 Playwright tests, plus GitHub Actions running pytest, the typecheck, and a build.
+  - [ ] Deploy the platform to a public host. Dockerfiles, compose, a Render blueprint, and hosted-provider routing exist, but nothing is deployed and there is no monitoring.
   - [x] Prepare final documentation and presentation.
 - **Outcomes**
-  - [x] Fully deployed production-ready platform.
+  - [ ] Fully deployed production-ready platform. **Not delivered.**
   - [x] Debate coaching intelligence systems operational.
-  - [x] Complete end-to-end debate improvement workflow demonstrable.
+  - [x] Complete end-to-end debate improvement workflow demonstrable locally.
+
+---
+
+## Spec coverage
+
+The original brief listed fourteen modules. This table says what exists for each one, using **Done**, **Done with deviations**, **Partial**, and **Not implemented** — no other words.
+
+| # | Spec module | Status | What is actually there |
+| :--- | :--- | :--- | :--- |
+| 1 | Auth: JWT, OAuth2, RBAC, four roles | Partial | Supabase email and Google sign-in, JWT verification, owner-scoped row level security. **One role only** — learner. No coach, educator, or admin roles. |
+| 2 | Profile and skill tracking | Done | Profile with goals, practice history, trends, and a persisted skill diagnosis. |
+| 3 | Session management: scheduling, six formats, positions, recording | Partial | Topic and side selection, three opponents, three difficulties, a clock, saved and resumable transcripts. **No scheduling and no Oxford, Parliamentary, Policy, or Public Forum formats.** |
+| 4 | Argument analysis: claim extraction, evidence evaluation | Partial | Five 1–5 rubric ratings from the model and a deterministic weighted judge. **No claim or evidence extraction.** |
+| 5 | Fallacy detection: eight types, explanation, correction | Done | Eight types grounded in exact quotes with an explanation and a revision. No separate credibility assessment. |
+| 6 | Counterarguments: five types, challenge questions, strategy | Done | Exactly one Logical, Evidence-based, Ethical, Practical, and Policy counterpoint, each with a challenge question. |
+| 7 | Presentation analysis | Partial | Pace, fillers, pauses, and repeats computed from the transcript, with timestamped drills. **No confidence, engagement, or prosody**, and no slides or video. |
+| 8 | AI debate simulation | Done | Guard, memory, planner, drafter, verifier, reviser, fallback, personas, and two-deep Socratic follow-ups. |
+| 9 | Scoring: 30/20/20/15/15 | Done with deviations | The weights are the spec's. Rebuttal is read from the learner's replies to challenges, and an unscorable dimension is omitted with the rest renormalized instead of scored with a placeholder. |
+| 10 | Coaching and learning path | Done | A deterministic diagnosis, drills for the diagnosed weak spots, a four-week rhythm, and a groundedness verifier. |
+| 11 | Dashboards: learner, coach, educator, admin | Partial | **Learner only.** No coach, educator, or admin views. |
+| 12 | Notifications | Not implemented | Nothing. |
+| 13 | Reports: PDF, Excel | Partial | Archive CSV plus the browser's print-to-PDF. No native PDF or Excel generation. |
+| 14 | Docker, deployment, monitoring, CI | Partial | Dockerfiles, compose, a Render blueprint, and a GitHub Actions workflow. **No deployment and no monitoring.** |
+
+### Spec deviations
+
+- **Supabase instead of PostgreSQL plus MongoDB.** Auth, Postgres with row level security, and a private audio bucket in one service; there is no document store, because every record here is relational.
+- **A local model instead of the OpenAI API.** Ollama is the default; the same code can call any OpenAI-compatible endpoint when you deploy it. Nothing in the app requires a particular vendor.
+- **No classic ML stack.** There is no scikit-learn, TensorFlow, PyTorch, spaCy, FAISS, Elasticsearch, or embedding store, because the product does analysis with prompted models and deterministic code. The optional Laya checkpoint is the only PyTorch component, and it is off by default.
+- **Accuracy is not claimed.** The spec's §8 metrics are not measured. The repository ships three small hand-labelled evaluation sets — 24 tuning turns and a separate 30-turn held-out check for tactic selection, plus 50 labelled snippets for fallacy detection — and a script that reports what each produces. None of those numbers is learner improvement.
 
 ---
 
 ## Run it locally
 
-You need Node.js 20.19+ or 22.12+ (Vite 7), Python 3.12 or 3.13, `uv`, and Ollama.
+You need Node.js 20.19+ or 22.12+ (Vite 7), Python 3.12 or 3.13, `uv`, and a model: either Ollama locally or an OpenAI-compatible endpoint with a key (step 4).
 
 **1. Start Ollama and pull the model**
 
@@ -164,7 +196,7 @@ The defaults already point at your local Ollama and allow the local web app. Spe
 
 Laya is an opt-in extra, not part of the default install. Install it with `uv sync --extra laya`, set `ENABLE_LAYA_TACTICS=true` in `ai-backend/.env`, and run the API with `uv run --extra laya ...`. The extra installs Laya and CPU-only PyTorch on Linux x86-64; the English checkpoint downloads from Hugging Face on the first ambiguous debate move (about 808 MB) and is cached locally. If cold loading takes more than 10 seconds, that ambiguous turn uses the existing planner; the worker thread keeps loading for later turns, and `/api/health` reports `laya_available` when Laya is installed and enabled, not that the checkpoint is ready.
 
-The built-in argument policy always runs when adaptive moves are enabled, so Laya is optional and only affects ambiguous turns. Setting `ENABLE_LAYA_TACTICS=false` (the default) skips the checkpoint entirely. `make sync-laya` installs the extra and `make api-laya` runs the API with it enabled; plain `make sync` and `make api` stay on the policy-only path. Laya chooses only a tactic; Ollama remains responsible for the spoken debate reply.
+The built-in argument policy always runs when adaptive moves are enabled, so Laya is optional and only affects ambiguous turns. Setting `ENABLE_LAYA_TACTICS=false` (the default) skips the checkpoint entirely. `make sync-laya` installs the extra and `make api-laya` runs the API with it enabled; plain `make sync` and `make api` stay on the policy-only path. Laya chooses only a tactic; the configured model remains responsible for the spoken debate reply.
 
 This first version does not claim debate-specific accuracy. The policy validates that Laya returns one of the five supported vulnerability moves, and it does not use confidence scores as a gate. A 24-turn tuning baseline lives in `ai-backend/evals/laya_moves.jsonl`; `make eval-laya` reports agreement for policy-routed and Laya-routed turns separately. A separate 30-turn held-out check in `ai-backend/evals/laya_holdout.jsonl` records acceptable alternative moves; `make eval-laya-holdout` reports strict and acceptable agreement. The sets are small, some labels are debatable, and agreement is not coaching accuracy or learner improvement.
 
@@ -180,7 +212,22 @@ npm run dev
 
 Open `http://127.0.0.1:5173`.
 
-**4. Optional: enable accounts**
+**4. Optional: use a hosted model instead of Ollama**
+
+Every model call goes through `app/providers.py`, so one setting switches from the local daemon to any OpenAI-compatible endpoint:
+
+```bash
+cd ai-backend
+LLM_PROVIDER=openai \
+OPENAI_BASE_URL=https://your-gateway.example/v1 \
+OPENAI_MODEL=your-model \
+OPENAI_API_KEY=... \
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+`auto` (the default) picks the hosted path as soon as `OPENAI_API_KEY` is set, and keeps Ollama otherwise. The key stays on the server; it is never sent to the browser. `GET /api/health` reports which provider and model are in use. If your endpoint does not support JSON schemas, set `OPENAI_JSON_MODE=json_object`; the app validates every reply itself and repairs invalid ones either way.
+
+**5. Optional: enable accounts**
 
 Practice works without this. To save sessions to an archive, create a Supabase project, put its project URL and publishable key in `web/.env`, put the project URL in `ai-backend/.env` as `SUPABASE_URL`, and run the SQL files in `supabase/migrations/` in filename order. Keep email confirmation on, set the password rule to 12 or more characters with uppercase, lowercase, and numbers, and add `http://127.0.0.1:5173` to the redirect allowlist. Google sign-in is configured in the Supabase provider settings, where the client secret stays. In-app account deletion is optional: deploy the `supabase/functions/delete-account` Edge Function with `supabase functions deploy delete-account` and set its `APP_ORIGIN` secret to the web origin. Without it, learners can still delete their practice data and are told that account removal needs the operator.
 
@@ -234,14 +281,33 @@ Whisper normalises filler words such as "um" and "uh" out of the transcript, so 
 
 ---
 
+## Evaluation
+
+Three small hand-labelled sets exist. Each scores one narrow thing, and each prints its own caveat, because agreement on a few dozen examples is a baseline, not proof of coaching quality.
+
+| Set | Size | Command | What it measures |
+| --- | --- | --- | --- |
+| Tactic tuning | 24 turns | `make eval-laya` | Agreement between the selected debate move and a hand label |
+| Tactic held-out | 30 turns | `make eval-laya-holdout` | The same, on turns the policy did not shape |
+| Fallacy snippets | 50 snippets | `make eval-fallacies` | Per-flag precision and recall across eight fallacy types plus clean arguments |
+
+The fallacy set (`ai-backend/evals/fallacy_snippets.jsonl`) runs the production fallacy branch and its verbatim-quote filter, then reports true positives, false positives, false negatives, precision and recall with Wilson intervals, per-type recall, quotes dropped for not matching, and every miss. `uv run python evals/evaluate_fallacies.py --check` validates the set without a model. **No measured fallacy numbers are published yet**: they need the model running, and a number produced against one model should be reported with that model's name.
+
+---
+
 ## Configuration
 
 Set these in `ai-backend/.env` (see `.env.example`) unless noted.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Model endpoint the API calls |
-| `OLLAMA_MODEL` | `qwen3.5:4b` | Model name to expect and request |
+| `LLM_PROVIDER` | `auto` | `ollama`, `openai`, or `auto`; auto uses the hosted provider once a key exists |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible endpoint, with or without the trailing `/v1` |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model name sent to the hosted endpoint |
+| `OPENAI_JSON_MODE` | `json_schema` | Set `json_object` when the endpoint does not support JSON schemas |
+| `OPENAI_API_KEY` | empty | Server-side key for the hosted endpoint; never a `VITE_` variable |
+| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Local model endpoint the API calls |
+| `OLLAMA_MODEL` | `qwen3.5:4b` | Local model name to expect and request |
 | `WEB_ORIGIN` | `http://127.0.0.1:5173` | Exact allowed browser origins, comma separated; wildcards are rejected |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1,0.0.0.0` | Hosts the API will answer for |
 | `REQUIRE_AUTH` | `false` | Set to `true` with Supabase configured before any public deployment |
@@ -289,11 +355,29 @@ With `REQUIRE_AUTH=true`, every endpoint except health requires a signed-in toke
 
 The web app builds to static files, so it can be hosted anywhere. A Render blueprint is included as `render.yaml`, and `web/vercel.json` carries the same headers for Vercel, including a content security policy, immutable caching for hashed assets, and `microphone=(self)` for recording.
 
-The API needs a host that can run a container and reach a model endpoint. Point `VITE_API_BASE_URL` at its HTTPS origin, set `WEB_ORIGIN` and `ALLOWED_HOSTS` to the exact origins you serve from, then set `DEPLOYMENT_ENV=public` and `REQUIRE_AUTH=true` with Supabase configured. `DEPLOYMENT_ENV=public` makes the API refuse to start with guest mode, an `http` origin, or a loopback host; it is a startup guard, not a substitute for a proxy-level limiter.
+The API needs a host that can run a container and either reach a model endpoint or call a hosted one. Point `VITE_API_BASE_URL` at its HTTPS origin, set `WEB_ORIGIN` and `ALLOWED_HOSTS` to the exact origins you serve from, then set `DEPLOYMENT_ENV=public` and `REQUIRE_AUTH=true` with Supabase configured. `DEPLOYMENT_ENV=public` makes the API refuse to start with guest mode, an `http` origin, or a loopback host; it is a startup guard, not a substitute for a proxy-level limiter.
+
+With a hosted provider the API holds no model in memory, so a small instance works:
+
+```bash
+docker build -t verdict-api ai-backend
+docker run -p 8000:8000 verdict-api \
+  -e LLM_PROVIDER=openai -e OPENAI_BASE_URL=https://your-gateway.example/v1 \
+  -e OPENAI_MODEL=your-model -e OPENAI_API_KEY=... \
+  -e DEPLOYMENT_ENV=public -e REQUIRE_AUTH=true \
+  -e WEB_ORIGIN=https://your-web-host -e ALLOWED_HOSTS=your-api-host \
+  -e SUPABASE_URL=...
+```
+
+The image also ships local transcription, whose Whisper model downloads on the first delivery review. If the host is small, give it enough memory for that first run or do not use the delivery room there.
 
 Rate limits are held in each API process. If you run more than one instance, add a shared rate limiter at the proxy or a shared store; the in-process counters do not coordinate across workers.
 
-Two things are deliberately not in this release: managed multi-tenant inference, and per-learner provider keys for hosted generation. Until a deployment has its own authenticated API in front of a model, keep it private.
+Hosted generation is supported with one server-side provider key, so a demo does not need a GPU machine. Two things are still deliberately out of scope: managed multi-tenant inference, and per-learner provider keys. Set `REQUIRE_AUTH=true` on anything public; guest mode is for a machine only you can reach.
+
+**No public deployment exists.** The current state is: the images build, the compose stack runs locally, and the API can call a hosted endpoint, but nobody has deployed it. That is also why nothing is monitored.
+
+Behind the bundled nginx proxy, uvicorn is started without proxy-header trust, so the guest rate limiter sees the proxy's address rather than each client's. If you run this behind a trusted proxy, start uvicorn with `--proxy-headers --forwarded-allow-ips` set to that proxy; otherwise keep `REQUIRE_AUTH=true` so limits key on the signed-in learner.
 
 ---
 
@@ -312,7 +396,8 @@ Two things are deliberately not in this release: managed multi-tenant inference,
 ## Project layout
 
 - `web/src/` — views, API clients, session handling, and styles. `features/` holds the arena, verdict, delivery room, learner space, and onboarding; `services/` holds typed API and Supabase clients.
-- `ai-backend/app/` — routes in `main.py`, request schemas, the Ollama client, auth, speech, delivery signals, and the `agents/` graphs that orchestrate a debate turn, a review, a delivery pass, and a practice plan. `ai-backend/evals/` holds the tuning baseline and the separate held-out check for the tactical selector.
+- `ai-backend/app/` — routes in `main.py`, request schemas, `providers.py` (the single model transport), auth, speech, delivery signals, and the `agents/` graphs that orchestrate a debate turn, a review, a delivery pass, and a practice plan. `ai-backend/evals/` holds the labelled tactic sets and the labelled fallacy set, with one scoring script each.
+- `.github/workflows/ci.yml` — pytest, the fallacy-set check, the frontend typecheck, and a production build on every push.
 - `supabase/migrations/` — sessions, turns, analyses, delivery feedback, profiles, topic bank, learning plans, and the private audio bucket, each with owner-scoped access rules.
 - `docker-compose.yml`, `ai-backend/Dockerfile`, `web/Dockerfile` — the whole stack in containers, with an nginx front end that proxies `/api` and streams server-sent events unbuffered.
 - `ai-backend/.env.example`, `web/.env.example`, `.env.docker.example` — the settings each run path needs, with safe defaults.
