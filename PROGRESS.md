@@ -12,7 +12,7 @@ Model access is no longer Ollama-only: every call goes through `app/providers.py
 Auth (email, Google, password recovery, guest fallback), debate sessions with saved transcripts, learner profiles with goals and audio opt-in, curated plus personal topic bank, owner-scoped Supabase schema. Learner accounts only; no coach, admin, or staff roles in version 1.
 
 **Milestone 2, analysis and fallacy detection: complete with deviations.**
-Five-criteria argument analysis, eight fallacy types grounded in exact transcript quotes, five counterpoint styles, and a weighted 30/20/20/15/15 verdict with citations. Rebuttal is read from the learner's replies to the opponent's challenges, and any dimension without evidence is omitted with the remaining weights renormalized and disclosed. CSV download and print reports. Partial results disclose named gaps with retry. There is no claim or evidence extraction, and detector accuracy is not yet measured — a 50-snippet labelled set and scoring script are in `evals/`, but the numbers must be produced by running it.
+Five-criteria argument analysis, eight fallacy types grounded in exact transcript quotes, five counterpoint styles, and a weighted 30/20/20/15/15 verdict with citations. Rebuttal is read from the learner's replies to the opponent's challenges, and any dimension without evidence is omitted with the remaining weights renormalized and disclosed. CSV download and print reports. Partial results disclose named gaps with retry. There is no claim or evidence extraction. Fallacy accuracy is now measured on 50 author-labelled snippets with the default local model: 73.7–77.8% precision but only 35.0–45.0% recall across three runs, so the detector is conservative rather than reliable. The numbers, raw runs and limits are in `ai-backend/evals/fallacy_results_qwen3.5-4b.md`.
 
 **Milestone 3, simulation and coaching: complete.**
 Streaming debate with game-plan briefing, a memory agent that briefs the opponent from stored digests, a verifier plus reviser on every opponent turn, Socratic follow-ups capped at 2 deep, adaptive pressure, performance dashboard with streaks and trends, and a coaching plan agent that diagnoses weak spots from the learner's own scores, drills them, and persists the plan in the learner space.
@@ -45,9 +45,9 @@ Recording and upload, timestamped transcription, pace/filler/pause signals with 
 
 ## What's next, in order
 
-1. Deploy the demo: host the API with a hosted provider key, point the static frontend at it, and record a walkthrough video so the product can be seen without a 3.4 GB Ollama install.
+1. Deploy the demo: host the API with a hosted provider key and point the static frontend at it, so the product can be tried without a 3.4 GB Ollama install. A real local walkthrough is already captured in `docs/demo.webm`.
 2. Apply `20261010120000_create_learning_plans.sql` and exercise the Plan tab end to end with a real signed-in account, alongside auth, archive, profiles, retention, and dashboard checks.
-3. Run the fallacy evaluation against the hosted model and publish precision and recall with the model's name, then grow the set beyond 50 snippets.
+3. Improve fallacy recall (currently 35–45%) without losing precision, grow the labelled set beyond 50 snippets, and re-run the baseline against the hosted model with its name attached.
 4. Make the arena and verdict views hash addressable so a mid-debate refresh resumes where the learner was instead of landing on the home page; narrow `connect-src` in production.
 
 ## Verification
@@ -55,7 +55,8 @@ Recording and upload, timestamped transcription, pace/filler/pause signals with 
 - `cd ai-backend` then `uv run pytest` passes 278 tests with no model or network.
 - `cd ai-backend` then `uv run python evals/evaluate_fallacies.py --check` validates 50 labelled snippets without a model.
 - `cd web` then `npx tsc -b` and `npm run build` finish with no errors.
-- `docker compose up --build` serves the app on `http://localhost:8080`, where `/api/health` reports ready and a real debate turn streams through the nginx proxy.
-- Backend health at `http://127.0.0.1:8000/api/health` shows `"status": "ready"` with Ollama running.
+- `docker compose build web` and `docker compose build api` both build, and `docker compose config -q` validates.
+- `cd ai-backend` then `uv run python evals/evaluate_fallacies.py` ran three times against `qwen3.5:4b`; the results are in `evals/fallacy_results_qwen3.5-4b.md` (73.7–77.8% precision, 35.0–45.0% recall).
+- A full guest round against the same local model ran end to end; `docs/screenshots/verdict.png` and `docs/demo.webm` were captured from it, and the API health check reported `"status": "ready"`.
 
-Not verified in this environment (no Ollama daemon, no hosted key): a live model turn, the fallacy precision/recall run, and the compose stack. Those need `make api` with a model.
+Not verified in this environment: a public deployment, monitoring, and the GitHub Actions workflow on a GitHub runner. `docker compose up` was not repeated after these changes; only the image builds and config were checked.

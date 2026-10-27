@@ -1,0 +1,217 @@
+{
+  "snippets": 50,
+  "hits": 27,
+  "detection_accuracy": 0.54,
+  "true_positives": 18,
+  "false_positives": 6,
+  "false_negatives": 22,
+  "precision": 0.75,
+  "recall": 0.45,
+  "f1": 0.563,
+  "precision_ci95": [
+    0.551,
+    0.88
+  ],
+  "recall_ci95": [
+    0.307,
+    0.602
+  ],
+  "quotes_dropped_as_not_verbatim": 0,
+  "rows_with_model_error": 0,
+  "per_type": {
+    "Ad Hominem": {
+      "rows": 5,
+      "found": 5,
+      "false_positives": 4
+    },
+    "Appeal to Authority": {
+      "rows": 5,
+      "found": 3,
+      "false_positives": 0
+    },
+    "Circular Reasoning": {
+      "rows": 5,
+      "found": 0,
+      "false_positives": 0
+    },
+    "False Dilemma": {
+      "rows": 5,
+      "found": 3,
+      "false_positives": 0
+    },
+    "Hasty Generalization": {
+      "rows": 5,
+      "found": 3,
+      "false_positives": 2
+    },
+    "Red Herring": {
+      "rows": 5,
+      "found": 2,
+      "false_positives": 0
+    },
+    "Slippery Slope": {
+      "rows": 5,
+      "found": 1,
+      "false_positives": 0
+    },
+    "Straw Man": {
+      "rows": 5,
+      "found": 1,
+      "false_positives": 0
+    }
+  },
+  "misses": [
+    {
+      "id": "sm-02",
+      "expected": "Straw Man",
+      "predicted": []
+    },
+    {
+      "id": "sm-03",
+      "expected": "Straw Man",
+      "predicted": [
+        "Ad Hominem"
+      ]
+    },
+    {
+      "id": "sm-04",
+      "expected": "Straw Man",
+      "predicted": []
+    },
+    {
+      "id": "sm-05",
+      "expected": "Straw Man",
+      "predicted": []
+    },
+    {
+      "id": "fd-03",
+      "expected": "False Dilemma",
+      "predicted": []
+    },
+    {
+      "id": "fd-04",
+      "expected": "False Dilemma",
+      "predicted": []
+    },
+    {
+      "id": "ss-01",
+      "expected": "Slippery Slope",
+      "predicted": []
+    },
+    {
+      "id": "ss-02",
+      "expected": "Slippery Slope",
+      "predicted": []
+    },
+    {
+      "id": "ss-03",
+      "expected": "Slippery Slope",
+      "predicted": []
+    },
+    {
+      "id": "ss-04",
+      "expected": "Slippery Slope",
+      "predicted": []
+    },
+    {
+      "id": "aa-01",
+      "expected": "Appeal to Authority",
+      "predicted": [
+        "Hasty Generalization"
+      ]
+    },
+    {
+      "id": "aa-05",
+      "expected": "Appeal to Authority",
+      "predicted": [
+        "Ad Hominem"
+      ]
+    },
+    {
+      "id": "cr-01",
+      "expected": "Circular Reasoning",
+      "predicted": []
+    },
+    {
+      "id": "cr-02",
+      "expected": "Circular Reasoning",
+      "predicted": []
+    },
+    {
+      "id": "cr-03",
+      "expected": "Circular Reasoning",
+      "predicted": []
+    },
+    {
+      "id": "cr-04",
+      "expected": "Circular Reasoning",
+      "predicted": []
+    },
+    {
+      "id": "cr-05",
+      "expected": "Circular Reasoning",
+      "predicted": [
+        "Ad Hominem"
+      ]
+    },
+    {
+      "id": "hg-01",
+      "expected": "Hasty Generalization",
+      "predicted": []
+    },
+    {
+      "id": "hg-05",
+      "expected": "Hasty Generalization",
+      "predicted": []
+    },
+    {
+      "id": "rh-02",
+      "expected": "Red Herring",
+      "predicted": []
+    },
+    {
+      "id": "rh-04",
+      "expected": "Red Herring",
+      "predicted": []
+    },
+    {
+      "id": "rh-05",
+      "expected": "Red Herring",
+      "predicted": [
+        "Ad Hominem"
+      ]
+    }
+  ],
+  "false_positive_flags": [
+    {
+      "id": "sm-03",
+      "predicted": "Ad Hominem",
+      "expected": "Straw Man"
+    },
+    {
+      "id": "aa-01",
+      "predicted": "Hasty Generalization",
+      "expected": "Appeal to Authority"
+    },
+    {
+      "id": "aa-05",
+      "predicted": "Ad Hominem",
+      "expected": "Appeal to Authority"
+    },
+    {
+      "id": "cr-05",
+      "predicted": "Ad Hominem",
+      "expected": "Circular Reasoning"
+    },
+    {
+      "id": "rh-05",
+      "predicted": "Ad Hominem",
+      "expected": "Red Herring"
+    },
+    {
+      "id": "nm-02",
+      "predicted": "Hasty Generalization",
+      "expected": "none"
+    }
+  ]
+}

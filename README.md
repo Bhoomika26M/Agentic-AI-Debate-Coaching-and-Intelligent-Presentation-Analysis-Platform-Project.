@@ -46,6 +46,8 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 ![The weighted verdict with its scored dimensions](docs/screenshots/verdict.png)
 
+The screenshot above is a real guest round against the local model, with no delivery take recorded: communication is left out, the other four weights are renormalized to 100%, and the gap is disclosed. [Watch the 30-second capture of that round](docs/demo.webm) (no audio).
+
 ---
 
 ## How it works
@@ -78,7 +80,7 @@ The language model only ever receives text through the API. The browser never ta
 | Milestone | Scope | Status |
 | :--- | :--- | :--- |
 | M1 — Week 1 & 2: Project Initialization, Design Process & Core Setup | Workflows definition, system architecture & database schema, UI wireframes, frontend & backend setup, authentication & role-based access, user profiles & skill tracking, debate session management | Complete with deviations: learner accounts only, no roles; sessions are saved and resumable but not scheduled |
-| M2 — Week 3 & 4: Argument Analysis & Fallacy Detection | Argument analysis engine, logical fallacy detection workflows, reasoning evaluation models, argument scoring systems, debate feedback reports | Complete with deviations: rubric ratings and eight quote-grounded fallacies, but no claim or evidence extraction, and no measured detector accuracy yet |
+| M2 — Week 3 & 4: Argument Analysis & Fallacy Detection | Argument analysis engine, logical fallacy detection workflows, reasoning evaluation models, argument scoring systems, debate feedback reports | Complete with deviations: rubric ratings and eight quote-grounded fallacies, but no claim or evidence extraction, and measured fallacy recall is only 35–45% |
 | M3 — Week 5 & 6: AI Debate Simulation & Coaching | AI debate simulation engine, counterargument generation workflows, coaching recommendation engine, personalized learning plans, performance dashboards | Complete with deviations: learner dashboard only, no coach, educator, or admin views |
 | M4 — Week 7 & 8: Presentation Analytics, Testing & Deployment | Presentation analysis engine, reports & visualization modules, automated testing & validations, Docker containerization & deployment, final documentation | Not fully implemented: Docker and CI exist and the API can call a hosted provider, but nothing is deployed publicly, there is no monitoring, and exports are CSV and print only |
 
@@ -111,7 +113,7 @@ The language model only ever receives text through the API. The browser never ta
 - **Outcomes**
   - [x] Argument analysis engine operational.
   - [x] Fallacy detection workflows functional, with exact-quote grounding.
-  - [x] Reasoning assessment system working, with no measured accuracy yet.
+  - [x] Reasoning assessment system working; fallacy accuracy is measured and weak on recall (see [Evaluation](#evaluation)).
 
 #### Milestone 3: Week 5 & 6 — AI Debate Simulation & Coaching
 
@@ -151,7 +153,7 @@ The original brief listed fourteen modules. This table says what exists for each
 | 2 | Profile and skill tracking | Done | Profile with goals, practice history, trends, and a persisted skill diagnosis. |
 | 3 | Session management: scheduling, six formats, positions, recording | Partial | Topic and side selection, three opponents, three difficulties, a clock, saved and resumable transcripts. **No scheduling and no Oxford, Parliamentary, Policy, or Public Forum formats.** |
 | 4 | Argument analysis: claim extraction, evidence evaluation | Partial | Five 1–5 rubric ratings from the model and a deterministic weighted judge. **No claim or evidence extraction.** |
-| 5 | Fallacy detection: eight types, explanation, correction | Done | Eight types grounded in exact quotes with an explanation and a revision. No separate credibility assessment. |
+| 5 | Fallacy detection: eight types, explanation, correction | Done, with weak measured recall | Eight types grounded in exact quotes with an explanation and a revision. On 50 author-labelled snippets the detector scored 74–78% precision and 35–45% recall; missing labels is the common failure. No separate credibility assessment. |
 | 6 | Counterarguments: five types, challenge questions, strategy | Done | Exactly one Logical, Evidence-based, Ethical, Practical, and Policy counterpoint, each with a challenge question. |
 | 7 | Presentation analysis | Partial | Pace, fillers, pauses, and repeats computed from the transcript, with timestamped drills. **No confidence, engagement, or prosody**, and no slides or video. |
 | 8 | AI debate simulation | Done | Guard, memory, planner, drafter, verifier, reviser, fallback, personas, and two-deep Socratic follow-ups. |
@@ -167,7 +169,7 @@ The original brief listed fourteen modules. This table says what exists for each
 - **Supabase instead of PostgreSQL plus MongoDB.** Auth, Postgres with row level security, and a private audio bucket in one service; there is no document store, because every record here is relational.
 - **A local model instead of the OpenAI API.** Ollama is the default; the same code can call any OpenAI-compatible endpoint when you deploy it. Nothing in the app requires a particular vendor.
 - **No classic ML stack.** There is no scikit-learn, TensorFlow, PyTorch, spaCy, FAISS, Elasticsearch, or embedding store, because the product does analysis with prompted models and deterministic code. The optional Laya checkpoint is the only PyTorch component, and it is off by default.
-- **Accuracy is not claimed.** The spec's §8 metrics are not measured. The repository ships three small hand-labelled evaluation sets — 24 tuning turns and a separate 30-turn held-out check for tactic selection, plus 50 labelled snippets for fallacy detection — and a script that reports what each produces. None of those numbers is learner improvement.
+- **Accuracy is measured narrowly, not broadly.** The spec's §8 metrics are not implemented as such. The repository ships three small hand-labelled sets — 24 tuning turns and a separate 30-turn held-out check for tactic selection, plus 50 labelled snippets for fallacy detection — and scripts that report what each produces. The fallacy baseline is real and modest (74–78% precision, 35–45% recall). None of it is learner improvement.
 
 ---
 
@@ -291,7 +293,9 @@ Three small hand-labelled sets exist. Each scores one narrow thing, and each pri
 | Tactic held-out | 30 turns | `make eval-laya-holdout` | The same, on turns the policy did not shape |
 | Fallacy snippets | 50 snippets | `make eval-fallacies` | Per-flag precision and recall across eight fallacy types plus clean arguments |
 
-The fallacy set (`ai-backend/evals/fallacy_snippets.jsonl`) runs the production fallacy branch and its verbatim-quote filter, then reports true positives, false positives, false negatives, precision and recall with Wilson intervals, per-type recall, quotes dropped for not matching, and every miss. `uv run python evals/evaluate_fallacies.py --check` validates the set without a model. **No measured fallacy numbers are published yet**: they need the model running, and a number produced against one model should be reported with that model's name.
+The fallacy set (`ai-backend/evals/fallacy_snippets.jsonl`) runs the production fallacy branch and its verbatim-quote filter, then reports true positives, false positives, false negatives, precision and recall with Wilson intervals, per-type recall, quotes dropped for not matching, and every miss. `uv run python evals/evaluate_fallacies.py --check` validates the set without a model.
+
+**Measured baseline (2026-10-27, `qwen3.5:4b` Q4_K_M, three runs):** precision 73.7–77.8%, recall 35.0–45.0%, F1 47.5–56.3%, with 24–27 of 50 snippets detected. Ad hominem is found four or five times out of five; straw man, slippery slope and circular reasoning are each found zero or one time out of five. Zero predicted quotes failed the verbatim check. The detector is conservative — a missed fallacy is better than a false accusation — but this is not reliable detection, and it is the weakest measured part of the analysis. Raw runs and the full limits are in [`ai-backend/evals/fallacy_results_qwen3.5-4b.md`](ai-backend/evals/fallacy_results_qwen3.5-4b.md); the numbers are one model on 50 author-labelled snippets, not learner improvement, and the set has not been tuned against.
 
 ---
 
@@ -375,7 +379,7 @@ Rate limits are held in each API process. If you run more than one instance, add
 
 Hosted generation is supported with one server-side provider key, so a demo does not need a GPU machine. Two things are still deliberately out of scope: managed multi-tenant inference, and per-learner provider keys. Set `REQUIRE_AUTH=true` on anything public; guest mode is for a machine only you can reach.
 
-**No public deployment exists.** The current state is: the images build, the compose stack runs locally, and the API can call a hosted endpoint, but nobody has deployed it. That is also why nothing is monitored.
+**No public deployment exists.** The current state is: both images build, compose is the documented local path, and the API can call a hosted endpoint, but nobody has deployed it. That is also why nothing is monitored.
 
 Behind the bundled nginx proxy, uvicorn is started without proxy-header trust, so the guest rate limiter sees the proxy's address rather than each client's. If you run this behind a trusted proxy, start uvicorn with `--proxy-headers --forwarded-allow-ips` set to that proxy; otherwise keep `REQUIRE_AUTH=true` so limits key on the signed-in learner.
 

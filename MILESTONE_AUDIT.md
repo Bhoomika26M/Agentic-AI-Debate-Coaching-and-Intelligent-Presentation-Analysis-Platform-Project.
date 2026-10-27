@@ -32,7 +32,7 @@ named debate formats; those are recorded as product decisions, not defects.
 | Argument scoring systems | Done with deviations | `app/agents/judge.py`, weighted 30/20/20/15/15; rebuttal is scored from the learner's replies to the opponent's challenges, and a dimension with no evidence is omitted with the remaining weights renormalized and disclosed |
 | Debate feedback reports | Done | Verdict view, CSV export, print report |
 
-**Verdict: complete with deviations.** The analysis is rubric ratings and quote-grounded fallacies; there is no claim extraction or evidence grading. Detector accuracy is still unmeasured: a 50-snippet labelled set and scoring script exist in `evals/`, and the numbers have not been produced yet.
+**Verdict: complete with deviations.** The analysis is rubric ratings and quote-grounded fallacies; there is no claim extraction or evidence grading. Fallacy accuracy is measured on 50 author-labelled snippets with `qwen3.5:4b`: 73.7–77.8% precision but only 35.0–45.0% recall across three runs (see `evals/fallacy_results_qwen3.5-4b.md`). The detector is conservative and misses most straw man, slippery slope and circular reasoning examples, which is the weakest measured part of the analysis.
 
 ## Milestone 3 — AI debate simulation and coaching
 
@@ -103,9 +103,12 @@ window. Those are the next architectural steps, not gaps against the milestones.
    landing page and relies on the resume banner.
 3. No deployment exists. Hosted generation works through `OPENAI_API_KEY` with any
    OpenAI-compatible endpoint, but nobody has hosted it, so there is no URL, no monitoring, and
-   no demo video. Do not expose the guest-mode API publicly.
-4. Fallacy precision and recall are not measured yet. The 50-snippet labelled set and scorer are
-   in `ai-backend/evals/`; a number must be produced by running it against a named model.
+   no public URL. A real local capture is in `docs/demo.webm`, but it was recorded on this machine
+   against Ollama, so it is a walkthrough rather than a demo anyone can try. Do not expose the
+   guest-mode API publicly.
+4. Fallacy recall is weak: 35–45% at 73.7–77.8% precision on 50 author-labelled snippets with one
+   local model. The set is small and author-labelled, only one model was measured, and a correct
+   label does not prove the quote is the best span. Raw runs are in `ai-backend/evals/`.
 5. `ruff check app` still reports 45 long-line findings, concentrated in prompt strings in
    `prompts.py`, `analysis_graph.py` and `presentation.py`. The modules and tests added or
    rewritten here (`providers.py`, `judge.py`, `delivery.py`) pass `ruff check` with no findings.
