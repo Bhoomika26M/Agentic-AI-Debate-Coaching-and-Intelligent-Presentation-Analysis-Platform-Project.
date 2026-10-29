@@ -27,7 +27,7 @@ named debate formats; those are recorded as product decisions, not defects.
 | Task | Status | Evidence |
 |---|---|---|
 | Argument analysis engine | Done | `app/agents/analysis_graph.py` (fan-out branches, bounded schema repair) |
-| Fallacy detection workflows | Done | `fallacy_node`, quote grounding against learner text |
+| Fallacy detection workflows | Done | `fallacy_node`, quote grounding against learner text; quotes that fail grounding are disclosed as review gaps |
 | Reasoning evaluation models | Done | Rubric branch over five named criteria, judge graph |
 | Argument scoring systems | Done with deviations | `app/agents/judge.py`, weighted 30/20/20/15/15; rebuttal is scored from the learner's replies to challenges or later points (not the opening case), and a dimension with no evidence is omitted with the remaining weights renormalized and disclosed |
 | Debate feedback reports | Done | Verdict view, CSV export, print report |
@@ -56,7 +56,7 @@ scores directly, with the gap disclosed to the learner.
 |---|---|---|
 | Presentation analysis engine | Partial | `delivery_graph.py` (transcribe → signals → coach), `speech.py`, `delivery.py`. Pace, fillers, pauses and repeats only; no confidence, engagement, or prosody, and no slides or video |
 | Reports and visualization modules | Partial | Verdict delivery section, signal rows, drills, archive CSV, print. No native PDF or Excel export |
-| Testing and validations | Done | `ai-backend/tests/` (280 tests) covers the deterministic gates, the agent graphs and the request contracts with deterministic model fakes, so no Ollama is needed; 11 Playwright tests cover the browser paths. `.github/workflows/ci.yml` defines pytest, the fallacy-set check, the typecheck and a build; it has not yet run on a GitHub runner |
+| Testing and validations | Done | `ai-backend/tests/` (301 tests) covers the deterministic gates, the agent graphs and the request contracts with deterministic model fakes, so no Ollama is needed; 11 Playwright tests cover the browser paths. `.github/workflows/ci.yml` defines pytest, the fallacy-set check, the typecheck and a build; it has not yet run on a GitHub runner |
 | Deploy with Docker and cloud services | Partial | `ai-backend/Dockerfile` (runtime + test stages), `web/Dockerfile` + `nginx.conf`, `docker-compose.yml`, `.env.docker.example`, and hosted OpenAI-compatible routing in `app/providers.py`. **No public deployment exists.** |
 | Final documentation and presentation | Partial | `README.md`, `PROGRESS.md`, this file, and `docs/demo.webm`; documentation and a recorded walkthrough exist, but there is no slide deck |
 
@@ -120,5 +120,6 @@ window. Those are the next architectural steps, not gaps against the milestones.
    real local runs against `qwen3.5:4b`.
 7. The reply verifier is a heuristic, not a fact-check. A draft that addresses the learner
    directly ("you should…") can pass the engagement check without sharing the latest point's
-   vocabulary. "Verified" in the room means the deterministic form checks passed; it does not
-   mean the argument is sound or the facts are checked.
+   vocabulary. "Checked" in the room means the deterministic form checks passed; it does not
+   mean the argument is sound or the facts are checked. The badge was renamed from "Verified"
+   so it does not imply a fact-check.

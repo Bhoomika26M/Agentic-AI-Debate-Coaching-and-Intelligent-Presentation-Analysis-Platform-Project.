@@ -18,7 +18,7 @@ Five-criteria argument analysis, eight fallacy types grounded in exact transcrip
 Streaming debate with game-plan briefing, a memory agent that briefs the opponent from stored digests, a verifier plus reviser on every opponent turn, Socratic follow-ups capped at 2 deep, adaptive pressure, performance dashboard with streaks and trends, and a coaching plan agent that diagnoses weak spots from the learner's own scores, drills them, and persists the plan in the learner space.
 
 **Milestone 4, presentation analytics, testing, deployment: partial — the deployment half is not done.**
-Recording and upload, timestamped transcription, pace/filler/pause signals with drills, reports and visualizations, an automated suite (280 backend tests and 11 Playwright tests) covering the deterministic gates and the agent graphs, a GitHub Actions workflow that runs pytest, the fallacy-set check, the typecheck and a build (not yet run on a GitHub runner), Dockerfiles for the API and web app with a compose file that starts Ollama, the API and the frontend together. Hosted provider routing now works. Still missing: an actual public deployment, monitoring, and native PDF/Excel exports.
+Recording and upload, timestamped transcription, pace/filler/pause signals with drills, reports and visualizations, an automated suite (301 backend tests and 11 Playwright tests) covering the deterministic gates and the agent graphs, a GitHub Actions workflow that runs pytest, the fallacy-set check, the typecheck and a build (not yet run on a GitHub runner), Dockerfiles for the API and web app with a compose file that starts Ollama, the API and the frontend together. Hosted provider routing now works. Still missing: an actual public deployment, monitoring, and native PDF/Excel exports.
 
 ## Standing decisions
 
@@ -52,7 +52,7 @@ Recording and upload, timestamped transcription, pace/filler/pause signals with 
 
 ## Verification
 
-- `cd ai-backend` then `uv run pytest` passes 280 tests with no model or network.
+- `cd ai-backend` then `uv run pytest` passes 301 tests with no model or network.
 - `cd ai-backend` then `uv run python evals/evaluate_fallacies.py --check` validates 50 labelled snippets without a model.
 - `cd web` then `npx tsc -b` and `npm run build` finish with no errors.
 - `docker compose build web` and `docker compose build api` both build, and `docker compose config -q` validates.

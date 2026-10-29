@@ -40,12 +40,20 @@ _OFF_CHARACTER = (
     ),
 )
 
-# A reply can engage the latest point without echoing its wording. Direct
-# address and on-motion vocabulary are enough evidence of a real answer.
-_ADDRESSES_LEARNER = re.compile(
-    r"\byou(?:'re|'ve|'ll|'d|\s+[a-z])"
-    r"|\byour\s+(?:claim|argument|case|point|position|evidence|premise|reasoning|motion|side|"
-    r"data|study|studies|numbers|logic|view|turn|objection)\b",
+# A reply can engage the latest point without echoing its wording, but a
+# generic second-person sentence is not enough: "You should adopt a cat" must
+# not pass a UBI review. Direct address only counts when it names the learner's
+# argument, claim, evidence, or reasoning.
+_ADDRESSES_ARGUMENT = re.compile(
+    r"\byou(?:'re| are)\s+(?:saying|arguing|claiming|assuming|ignoring|missing|"
+    r"treating|conflating|suggesting|proposing)\b"
+    r"|\byou(?:'ve| have)\s+(?:said|argued|claimed|assumed|ignored|missed|"
+    r"treated|conflated|suggested|proposed)\b"
+    r"|\byou\s+(?:say|said|argue|argued|claim|claimed|assume|assumed|ignore|"
+    r"ignored|miss|missed|treat|treated|conflate|conflated|suggest|suggested|"
+    r"propose|proposed)\b"
+    r"|\byour\s+(?:claim|argument|case|point|position|evidence|premise|reasoning|"
+    r"motion|side|data|study|studies|numbers|logic|view|turn|objection)\b",
     re.IGNORECASE,
 )
 
@@ -102,8 +110,26 @@ def _leaks_private_context(reply: str, private_context: str | None, run: int = 4
     return _longest_ordered_run(tokens, _content_tokens(reply), max_gap=3) >= run
 
 
+def _stem(word: str) -> str:
+    """Match the plural and possessive forms debate actually uses (phone/phones)."""
+    if word.endswith("'s"):
+        word = word[:-2]
+    if word.endswith("ies") and len(word) > 4:
+        return word[:-3] + "y"
+    if word.endswith("es") and len(word) > 4:
+        return word[:-2]
+    if word.endswith("s") and not word.endswith("ss") and len(word) > 4:
+        return word[:-1]
+    return word
+
+
 def _shares_topic(topic: str | None, reply: str) -> bool:
-    return bool(topic and significant_words(topic) & significant_words(reply))
+    if not topic:
+        return False
+    return bool(
+        {_stem(word) for word in significant_words(topic)}
+        & {_stem(word) for word in significant_words(reply)}
+    )
 
 
 def inspect_reply(
@@ -141,7 +167,7 @@ def inspect_reply(
         latest
         and latest.strip()
         and engagement_ratio(latest, text) < min_engagement
-        and not _ADDRESSES_LEARNER.search(text)
+        and not _ADDRESSES_ARGUMENT.search(text)
         and not _shares_topic(topic, text)
     ):
         problems.append("the draft does not engage the learner's latest point")

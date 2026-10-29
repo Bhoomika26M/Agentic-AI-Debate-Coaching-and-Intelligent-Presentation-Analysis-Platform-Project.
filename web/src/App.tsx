@@ -74,7 +74,7 @@ function diagnosticsLabel(diagnostics: TurnDiagnostics) {
   if (diagnostics.redirect_reason === "review" || (!diagnostics.verified && diagnostics.fallback)) {
     return "RECOVERED";
   }
-  return "VERIFIED";
+  return "CHECKED";
 }
 
 function diagnosticsTitle(diagnostics: TurnDiagnostics) {
@@ -84,7 +84,7 @@ function diagnosticsTitle(diagnostics: TurnDiagnostics) {
   if (diagnostics.redirect_reason === "review" || (!diagnostics.verified && diagnostics.fallback)) {
     return "The drafted reply did not pass review, so the opponent answered with a short question on the motion instead.";
   }
-  return "Recorded when this turn was drafted and reviewed.";
+  return "This turn passed the deterministic form checks: length, private-context leakage, engagement with your latest point, and a closing question. It is not a fact-check.";
 }
 
 function diagnosticsTime(milliseconds: number) {

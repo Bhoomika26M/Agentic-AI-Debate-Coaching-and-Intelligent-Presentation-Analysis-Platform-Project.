@@ -98,6 +98,25 @@ def test_a_good_paraphrase_counts_as_engaging_the_latest_point():
     assert inspect_reply(reply, latest=latest) == []
 
 
+def test_a_generic_second_person_reply_is_not_engagement():
+    """"You should..." is not evidence that the reply is about the learner's point."""
+    latest = "A universal basic income should replace existing welfare programs."
+    reply = (
+        "You should adopt a cat. Cats are independent, affectionate, and cheap to keep. "
+        "Don't you think a cat would improve your life?"
+    )
+    assert any("does not engage" in problem for problem in inspect_reply(reply, latest=latest))
+
+
+def test_a_reply_must_refer_to_the_argument_not_just_the_learner():
+    latest = "A universal basic income should replace existing welfare programs."
+    reply = (
+        "Your household would enjoy a cat, and the shelter has several ready today. "
+        "Which one would you choose?"
+    )
+    assert any("does not engage" in problem for problem in inspect_reply(reply, latest=latest))
+
+
 def test_on_motion_vocabulary_counts_as_engaging_a_topic():
     latest = "From my perspective, the ban hurts low-income students most."
     reply = (
@@ -106,6 +125,14 @@ def test_on_motion_vocabulary_counts_as_engaging_a_topic():
     )
     assert any("does not engage" in p for p in inspect_reply(reply, latest=latest))
     assert inspect_reply(reply, latest=latest, topic="Should schools ban phones?") == []
+
+
+def test_topic_matching_handles_plural_forms():
+    reply = (
+        "The phone ban would move the same distraction into the corridor. "
+        "Which evidence shows classroom focus improving?"
+    )
+    assert inspect_reply(reply, latest=None, topic="Should schools ban phones?") == []
 
 
 def test_a_learner_turn_wrapper_leak_is_rejected():

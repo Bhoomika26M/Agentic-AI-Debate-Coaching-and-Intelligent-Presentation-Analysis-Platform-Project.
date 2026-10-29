@@ -51,7 +51,7 @@ async function startGuestRehearsal(page: Page) {
   await page.getByRole("button", { name: /^Start rehearsal/ }).click();
   await expect(page.getByText("GUEST REHEARSAL")).toBeVisible();
   await expect(page.getByText(OPPONENT_REPLY).first()).toBeVisible();
-  await expect(page.getByText("VERIFIED", { exact: true })).toBeVisible();
+  await expect(page.getByText("CHECKED", { exact: true })).toBeVisible();
   await expect(page.getByText("PROBE EVIDENCE", { exact: true })).toBeVisible();
 }
 

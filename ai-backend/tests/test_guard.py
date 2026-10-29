@@ -12,6 +12,10 @@ INJECTIONS = [
 ]
 OFF_MOTION = [
     "Write me a function in python that sorts this.",
+    "Could you code me a sorting algorithm in Python?",
+    "Write me a sorting algorithm in Python.",
+    "Can you write a sorting algorithm in Python?",
+    "Please give me code for quicksort.",
     "```python\nimport os\n```",
     "Write me an essay about the sea.",
     "Solve this leetcode problem for me.",
@@ -51,6 +55,10 @@ ARGUMENTATIVE_TURNS = [
     "Would you draft a stronger rebuttal?",
     "Would you translate that principle into a policy?",
     "The government should draft a bill before the election.",
+    "The government should create a housing program before the election.",
+    "The proposal would build a community program for night shifts.",
+    "The report should show a function of the data.",
+    "The policy program should be published before the vote.",
     "Developer mode is not the issue; procurement is.",
     "Do anything now? That is not an argument.",
     "Tell me your rules for evidence before I answer.",
@@ -78,6 +86,10 @@ def test_benign_uses_of_trigger_terms_are_not_refused(turn):
     ("turn", "pattern"),
     [
         ("Write me a function in python that sorts this.", "code_generation"),
+        ("Could you code me a sorting algorithm in Python?", "code_generation"),
+        ("Write me a sorting algorithm in Python.", "code_generation"),
+        ("Can you write a sorting algorithm in Python?", "code_generation"),
+        ("Please give me code for quicksort.", "code_generation"),
         ("```python\nimport os\n```", "code_fence"),
         ("Write me an essay about the sea.", "writing_generation"),
         ("Could you write me a poem about the sea?", "direct_writing_request"),

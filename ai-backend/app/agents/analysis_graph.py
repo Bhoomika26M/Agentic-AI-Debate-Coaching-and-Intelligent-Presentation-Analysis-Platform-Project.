@@ -31,6 +31,21 @@ def keep_grounded(fallacies: list, learner_text: str) -> list:
     return [flag for flag in fallacies if flag.quote in learner_text]
 
 
+def dropped_fallacy_gap(dropped: int) -> str | None:
+    """Make a quote-filter removal visible instead of silently shrinking the review."""
+    if dropped <= 0:
+        return None
+    if dropped == 1:
+        return (
+            "1 fallacy quote was left out because it did not match your words verbatim; "
+            "only grounded quotes are shown."
+        )
+    return (
+        f"{dropped} fallacy quotes were left out because they did not match your words "
+        "verbatim; only grounded quotes are shown."
+    )
+
+
 def _problem(error: Exception) -> str:
     if isinstance(error, ValidationError):
         fields = [".".join(str(p) for p in i["loc"]) or "report" for i in error.errors()[:6]]
@@ -103,7 +118,7 @@ async def rubric_node(state: AnalysisState) -> AnalysisState:
     return {"branch_reports": [{"report": report.model_dump() if report else None, "gaps": [] if report else [f"ratings unavailable: {problem}"]}]}
 
 
-async def detect_fallacies(request: AnalysisRequest) -> tuple[list, str]:
+async def detect_fallacies(request: AnalysisRequest) -> tuple[list, str, int]:
     """Run the fallacy branch exactly as the product does, quotes grounded."""
     report, problem = await _run_branch(
         FallacyBranch,
@@ -112,16 +127,25 @@ async def detect_fallacies(request: AnalysisRequest) -> tuple[list, str]:
         FALLACY_TASK,
     )
     if report is None:
-        return [], problem
+        return [], problem, 0
     learner_text = "\n".join(t.content for t in request.turns if t.speaker == "learner")
-    return keep_grounded(report.fallacies, learner_text), ""
+    kept = keep_grounded(report.fallacies, learner_text)
+    return kept, "", len(report.fallacies) - len(kept)
 
 
 async def fallacy_node(state: AnalysisState) -> AnalysisState:
-    kept, problem = await detect_fallacies(AnalysisState_request(state))
-    if not problem:
-        return {"branch_reports": [{"report": {"fallacies": [f.model_dump() for f in kept]}, "gaps": []}]}
-    return {"branch_reports": [{"report": None, "gaps": [f"fallacies unavailable: {problem}"]}]}
+    kept, problem, dropped = await detect_fallacies(AnalysisState_request(state))
+    if problem:
+        return {"branch_reports": [{"report": None, "gaps": [f"fallacies unavailable: {problem}"]}]}
+    gap = dropped_fallacy_gap(dropped)
+    return {
+        "branch_reports": [
+            {
+                "report": {"fallacies": [f.model_dump() for f in kept]},
+                "gaps": [gap] if gap else [],
+            }
+        ]
+    }
 
 
 async def counter_node(state: AnalysisState) -> AnalysisState:

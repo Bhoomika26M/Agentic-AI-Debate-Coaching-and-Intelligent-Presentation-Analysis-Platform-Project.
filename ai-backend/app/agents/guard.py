@@ -47,8 +47,14 @@ _HARD = [
     (
         "code_generation",
         re.compile(
-            r"^\s*(?:please\s+)?(?:write|draft|generate|produce)\s+(?:me\s+)?(?:an?\s+)?"
-            r"(?:code|function|program|script)\b",
+            # A request has to start like a request, so ordinary debate prose
+            # such as "the report should show a function of the data" is not
+            # treated as code. "Program" is deliberately absent from the object
+            # list because it is also ordinary policy language ("a housing program").
+            r"^\s*(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?"
+            r"(?:write|draft|generate|produce|create|build|implement|give|show|"
+            r"provide|code)\s+(?:me\s+|us\s+)?(?:an?\s+)?"
+            r"(?:[a-z0-9+#.'-]+\s+){0,3}(?:code|function|script|algorithm|snippet)\b",
             re.IGNORECASE,
         ),
     ),

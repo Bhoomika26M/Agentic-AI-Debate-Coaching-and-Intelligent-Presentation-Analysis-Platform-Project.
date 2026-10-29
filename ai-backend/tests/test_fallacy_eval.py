@@ -1,8 +1,12 @@
-"""Keep the labelled fallacy set and its scorer honest."""
+"""Keep the labelled fallacy set, its scorer, and quote disclosure honest."""
 
+import asyncio
 import importlib.util
 from collections import Counter
 from pathlib import Path
+
+from app.agents import analysis_graph
+from app.schemas import FallacyBranch
 
 EVAL = Path(__file__).resolve().parents[1] / "evals" / "evaluate_fallacies.py"
 
@@ -83,3 +87,45 @@ def test_a_clean_reply_with_no_flags_counts_as_a_hit():
     assert results["hits"] == 1
     assert results["precision"] is None
     assert results["recall"] is None
+
+
+def test_dropped_quote_gap_is_singular_and_plural():
+    assert analysis_graph.dropped_fallacy_gap(0) is None
+    assert "1 fallacy quote" in analysis_graph.dropped_fallacy_gap(1)
+    assert "2 fallacy quotes" in analysis_graph.dropped_fallacy_gap(2)
+
+
+def test_the_product_discloses_a_quote_removed_by_grounding(monkeypatch):
+    grounded = "Phones distract students."
+    ungrounded = "they want chaos"
+
+    async def fake_branch(*_args, **_kwargs):
+        return FallacyBranch.model_validate(
+            {
+                "fallacies": [
+                    {
+                        "label": "Straw Man",
+                        "quote": grounded,
+                        "explanation": "This is the learner's own sentence.",
+                        "revision": "Make the example concrete.",
+                    },
+                    {
+                        "label": "Ad Hominem",
+                        "quote": ungrounded,
+                        "explanation": "This quote was not in the learner's turn.",
+                        "revision": "Leave it out.",
+                    },
+                ]
+            }
+        ), ""
+
+    monkeypatch.setattr(analysis_graph, "_run_branch", fake_branch)
+    state = {
+        "topic": "Should schools ban phones?",
+        "learner_position": "for",
+        "turns": [{"speaker": "learner", "content": grounded}],
+    }
+    branch = asyncio.run(analysis_graph.fallacy_node(state))["branch_reports"][0]
+    assert branch["report"]["fallacies"][0]["quote"] == grounded
+    assert "1 fallacy quote" in branch["gaps"][0]
+    assert "verbatim" in branch["gaps"][0]
