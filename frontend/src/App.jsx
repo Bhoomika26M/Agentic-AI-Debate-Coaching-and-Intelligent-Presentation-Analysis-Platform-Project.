@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
+import ForgotPassword from './pages/ForgotPassword'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
 import DebateSessions from './pages/DebateSessions'
@@ -21,24 +22,25 @@ function App() {
       <BrowserRouter>
         <Routes>
           {/* Public routes */}
-          <Route path="/"       element={<Landing />} />
-          <Route path="/login"  element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
+          <Route path="/"                element={<Landing />} />
+          <Route path="/login"           element={<Login />} />
+          <Route path="/signup"          element={<Signup />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
 
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
             {/* M1 */}
-            <Route path="/dashboard"   element={<Dashboard />} />
-            <Route path="/sessions"    element={<DebateSessions />} />
-            <Route path="/profile"     element={<Profile />} />
+            <Route path="/dashboard"    element={<Dashboard />} />
+            <Route path="/sessions"     element={<DebateSessions />} />
+            <Route path="/profile"      element={<Profile />} />
             {/* M2 */}
-            <Route path="/analysis"    element={<ArgumentAnalysis />} />
+            <Route path="/analysis"     element={<ArgumentAnalysis />} />
             {/* M3 */}
-            <Route path="/simulation"  element={<DebateSimulation />} />
-            <Route path="/coaching"    element={<Coaching />} />
+            <Route path="/simulation"   element={<DebateSimulation />} />
+            <Route path="/coaching"     element={<Coaching />} />
             {/* M4 */}
             <Route path="/presentation" element={<PresentationAnalysis />} />
-            <Route path="/reports"     element={<Reports />} />
+            <Route path="/reports"      element={<Reports />} />
           </Route>
 
           {/* Fallback */}

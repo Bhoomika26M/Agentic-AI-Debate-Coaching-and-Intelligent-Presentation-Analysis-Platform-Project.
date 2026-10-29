@@ -7,52 +7,41 @@ import api from '../api/client'
 const ROLE_CONFIG = {
   learner: {
     greeting: 'Keep practising, keep winning! 🎓',
-    color: 'var(--brand-primary)',
     stats: [
-      { icon: '🎤', label: 'Total Sessions',   key: 'total_sessions',   color: 'rgba(108,99,255,0.15)' },
-      { icon: '⭐', label: 'Avg Score',         key: 'avg_score',        color: 'rgba(16,185,129,0.15)' },
-      { icon: '🔥', label: 'Win Streak',        key: 'win_streak',       color: 'rgba(245,158,11,0.15)' },
-      { icon: '📈', label: 'Improvement Rate',  key: 'improvement_rate', color: 'rgba(167,139,250,0.15)' },
+      { icon: '🎤', label: 'Total Sessions',   key: 'total_sessions' },
+      { icon: '⭐', label: 'Avg Score',        key: 'avg_score' },
+      { icon: '🔥', label: 'Win Streak',       key: 'win_streak' },
+      { icon: '📈', label: 'Improvement Rate', key: 'improvement_rate' },
     ],
   },
   coach: {
     greeting: 'Shape the next generation of debaters! 🏆',
-    color: 'var(--brand-success)',
     stats: [
-      { icon: '👥', label: 'Students',          key: 'total_students',  color: 'rgba(16,185,129,0.15)' },
-      { icon: '📋', label: 'Sessions Today',    key: 'sessions_today',  color: 'rgba(108,99,255,0.15)' },
-      { icon: '⭐', label: 'Avg Student Score', key: 'avg_score',       color: 'rgba(245,158,11,0.15)' },
-      { icon: '📝', label: 'Pending Reviews',   key: 'pending_reviews', color: 'rgba(239,68,68,0.15)'  },
+      { icon: '👥', label: 'Students',          key: 'total_students' },
+      { icon: '📋', label: 'Sessions Today',    key: 'sessions_today' },
+      { icon: '⭐', label: 'Avg Student Score', key: 'avg_score' },
+      { icon: '📝', label: 'Pending Reviews',   key: 'pending_reviews' },
     ],
   },
   educator: {
     greeting: 'Driving academic excellence! 📚',
-    color: 'var(--brand-accent)',
     stats: [
-      { icon: '🏫', label: 'Classes',        key: 'total_classes',   color: 'rgba(245,158,11,0.15)' },
-      { icon: '👥', label: 'Total Students', key: 'total_students',  color: 'rgba(108,99,255,0.15)' },
-      { icon: '📊', label: 'Reports',        key: 'total_reports',   color: 'rgba(16,185,129,0.15)' },
-      { icon: '⭐', label: 'Class Avg Score',key: 'avg_score',       color: 'rgba(167,139,250,0.15)' },
+      { icon: '🏫', label: 'Classes',        key: 'total_classes' },
+      { icon: '👥', label: 'Total Students', key: 'total_students' },
+      { icon: '📊', label: 'Reports',        key: 'total_reports' },
+      { icon: '⭐', label: 'Class Avg Score',key: 'avg_score' },
     ],
   },
   admin: {
     greeting: 'Platform overview at a glance! ⚙️',
-    color: 'var(--brand-danger)',
     stats: [
-      { icon: '👥', label: 'Total Users',    key: 'total_users',    color: 'rgba(239,68,68,0.15)'  },
-      { icon: '🎤', label: 'Total Sessions', key: 'total_sessions', color: 'rgba(108,99,255,0.15)' },
-      { icon: '🤖', label: 'AI Calls Today', key: 'ai_calls',       color: 'rgba(16,185,129,0.15)' },
-      { icon: '📈', label: 'Uptime',         key: 'uptime',         color: 'rgba(245,158,11,0.15)' },
+      { icon: '👥', label: 'Total Users',    key: 'total_users' },
+      { icon: '🎤', label: 'Total Sessions', key: 'total_sessions' },
+      { icon: '🤖', label: 'AI Calls Today', key: 'ai_calls' },
+      { icon: '📈', label: 'Uptime',         key: 'uptime' },
     ],
   },
 }
-
-const QUICK_ACTIONS = [
-  { to: '/analysis',  icon: '⚡', label: 'Argument Lab',    desc: 'AI 8-fallacy & rubric analysis' },
-  { to: '/sessions',  icon: '➕', label: 'New Session',     desc: 'Schedule a debate session' },
-  { to: '/sessions',  icon: '📋', label: 'My Sessions',     desc: 'View all your sessions' },
-  { to: '/profile',   icon: '👤', label: 'Edit Profile',    desc: 'Update skills & goals' },
-]
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -146,12 +135,25 @@ export default function Dashboard() {
     }
   }, [role, user])
 
-  const FORMAT_ICONS = { 'One-on-One Debate':'⚔️','Parliamentary Debate':'🏛️','Oxford Debate':'🎓','Policy Debate':'📜','Public Forum Debate':'🌍','AI Debate Simulation':'🤖' }
-  const STATUS_STYLE = { scheduled:{ bg:'rgba(108,99,255,0.12)', color:'#A78BFA', label:'Scheduled' }, active:{ bg:'rgba(16,185,129,0.12)', color:'#10B981', label:'Active' }, completed:{ bg:'rgba(245,158,11,0.12)', color:'#F59E0B', label:'Completed' }, cancelled:{ bg:'rgba(239,68,68,0.12)', color:'#EF4444', label:'Cancelled' } }
+  const FORMAT_ICONS = {
+    'One-on-One Debate': '⚔️',
+    'Parliamentary Debate': '🏛️',
+    'Oxford Debate': '🎓',
+    'Policy Debate': '📜',
+    'Public Forum Debate': '🌍',
+    'AI Debate Simulation': '🤖'
+  }
+
+  const STATUS_STYLE = {
+    scheduled: { bg: 'rgba(23,107,104,0.1)', color: 'var(--brand-primary)', label: 'Scheduled' },
+    active:    { bg: 'rgba(23,107,104,0.18)', color: 'var(--brand-secondary)', label: 'Active' },
+    completed: { bg: 'rgba(179,107,50,0.12)', color: 'var(--brand-accent)', label: 'Completed' },
+    cancelled: { bg: 'rgba(184,76,76,0.12)', color: 'var(--brand-danger)', label: 'Cancelled' }
+  }
 
   return (
     <div style={{ animation: 'fadeIn 0.4s ease' }}>
-      {/* Greeting */}
+      {/* Greeting Header */}
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontSize: '1.6rem' }}>
           Hello, {user?.full_name?.split(' ')[0] || 'Debater'} 👋
@@ -161,115 +163,83 @@ export default function Dashboard() {
 
       {/* Stats Grid */}
       <div className="grid-4" style={{ marginBottom: 32 }}>
-        {config.stats.map(({ icon, label, key, color }) => (
+        {config.stats.map(({ icon, label, key }) => (
           <div key={key} className="stat-card">
-            <div className="stat-icon" style={{ background: color }}>{icon}</div>
+            <div className="stat-icon" style={{ background: 'var(--bg-overlay)' }}>{icon}</div>
             <div className="stat-value">{stats[key] ?? '—'}</div>
             <div className="stat-label">{label}</div>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24, alignItems: 'start' }}>
-        {/* Recent Sessions */}
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <h3>Recent Sessions</h3>
-            <Link to="/sessions" style={{ color: 'var(--brand-secondary)', fontSize: '0.85rem', fontWeight: 600 }}>
-              View all →
-            </Link>
+      {/* Main Content Area: Recent Sessions (Full Width) */}
+      <div className="card" style={{ padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Recent Debate Sessions</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>
+              Your scheduled, active, and completed debate sessions
+            </p>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {sessions.slice(0, 5).map((s) => {
-              const sStyle = STATUS_STYLE[s.status] || STATUS_STYLE.scheduled
-              return (
-                <div key={s.id} className="session-card">
-                  <div className="session-format-icon">{FORMAT_ICONS[s.format] ?? '🎤'}</div>
-                  <div className="session-info">
-                    <div className="session-title">{s.topic}</div>
-                    <div className="session-meta">{s.format} · {new Date(s.scheduled_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</div>
-                  </div>
-                  <span style={{ padding:'3px 10px', borderRadius:'9999px', fontSize:'0.75rem', fontWeight:600, background: sStyle.bg, color: sStyle.color }}>
-                    {sStyle.label}
-                  </span>
-                </div>
-              )
-            })}
-            {sessions.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
-                No sessions yet. <Link to="/sessions" style={{ color: 'var(--brand-secondary)' }}>Create one →</Link>
-              </div>
-            )}
-          </div>
+          <Link to="/sessions" className="btn btn-secondary btn-sm">
+            View all sessions →
+          </Link>
         </div>
 
-        {/* Quick Actions */}
-        <div>
-          <h3 style={{ marginBottom: 16 }}>Quick Actions</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {QUICK_ACTIONS.map(({ to, icon, label, desc }) => (
-              <Link
-                key={label}
-                to={to}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '14px 16px',
-                  background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-md)',
-                  transition: 'all 0.2s ease',
-                  textDecoration: 'none',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor='var(--border-medium)'; e.currentTarget.style.transform='translateX(4px)' }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border-subtle)'; e.currentTarget.style.transform='none' }}
-              >
-                <span style={{ fontSize: '1.3rem' }}>{icon}</span>
-                <div>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>{label}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{desc}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {sessions.slice(0, 6).map((s) => {
+            const sStyle = STATUS_STYLE[s.status] || STATUS_STYLE.scheduled
+            return (
+              <div key={s.id} className="session-card">
+                <div className="session-format-icon">{FORMAT_ICONS[s.format] ?? '🎤'}</div>
+                <div className="session-info">
+                  <div className="session-title">{s.topic}</div>
+                  <div className="session-meta">
+                    {s.format} · {new Date(s.scheduled_at).toLocaleDateString('en-IN', {
+                      day: 'numeric',
+                      month: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </div>
                 </div>
-              </Link>
-            ))}
-          </div>
+                <span style={{
+                  padding: '4px 12px',
+                  borderRadius: 'var(--radius-full)',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  background: sStyle.bg,
+                  color: sStyle.color
+                }}>
+                  {sStyle.label}
+                </span>
+              </div>
+            )
+          })}
 
-          {/* Score Card */}
-          <div style={{ marginTop: 16, padding: '20px', background: 'linear-gradient(135deg, rgba(108,99,255,0.15), rgba(167,139,250,0.08))', border: '1px solid var(--border-medium)', borderRadius: 'var(--radius-lg)' }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', marginBottom: 12 }}>
-              {role === 'learner' ? 'Your Average Score' : 'Platform Benchmark'}
+          {sessions.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-muted)' }}>
+              <p style={{ fontSize: '0.95rem', marginBottom: 12 }}>No debate sessions recorded yet.</p>
+              <Link to="/sessions" className="btn btn-primary btn-sm">
+                Schedule your first session →
+              </Link>
             </div>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '3rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1 }}>{stats.avg_score}<span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>/100</span></div>
-            <div style={{ marginTop: 12, height: 6, background: 'var(--bg-overlay)', borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${stats.avg_score}%`, background: 'linear-gradient(90deg, var(--brand-primary), var(--brand-secondary))', borderRadius: 3, transition: 'width 1s ease' }} />
-            </div>
-            <div style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--brand-success)' }}>
-              {role === 'learner' ? '↑ 14% improvement trend' : 'Consistent high argumentation quality'}
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Role-Specific Secondary View */}
-      {['coach', 'educator', 'admin'].includes(role) ? (
-        <div style={{ marginTop: 36 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div>
-              <h3>🎓 Registered Students & Debaters</h3>
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                Monitor individual student progression, experience levels, and average debate scores.
-              </p>
-            </div>
+      {/* Role-Specific Secondary View for Coaches, Educators, and Admins */}
+      {['coach', 'educator', 'admin'].includes(role) && (
+        <div style={{ marginTop: 32 }}>
+          <div style={{ marginBottom: 16 }}>
+            <h3 style={{ margin: 0 }}>🎓 Registered Students & Debaters</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 4 }}>
+              Monitor individual student progression, experience levels, and average debate scores.
+            </p>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
             {students.map(s => (
-              <div key={s.id} style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-md)',
-                padding: '16px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-              }}>
+              <div key={s.id} className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
                     <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{s.full_name}</div>
@@ -279,7 +249,7 @@ export default function Dashboard() {
                 </div>
                 <div style={{ display: 'flex', gap: 16, marginTop: 4, fontSize: '0.82rem' }}>
                   <div>Sessions: <strong style={{ color: 'var(--text-primary)' }}>{s.total_sessions}</strong></div>
-                  <div>Avg Score: <strong style={{ color: 'var(--brand-success)' }}>{s.avg_score}</strong></div>
+                  <div>Avg Score: <strong style={{ color: 'var(--brand-primary)' }}>{s.avg_score}</strong></div>
                 </div>
                 {s.debate_topics && s.debate_topics.length > 0 && (
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
@@ -297,38 +267,6 @@ export default function Dashboard() {
                 No students registered yet.
               </div>
             )}
-          </div>
-        </div>
-      ) : (
-        /* Learner Skill Breakdown Widget */
-        <div style={{ marginTop: 36, background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div>
-              <h3>📊 Communication & Debate Skills Tracking</h3>
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                Real-time metrics calculated from your debate performances.
-              </p>
-            </div>
-            <Link to="/profile" className="btn btn-secondary btn-sm">Customize Skills →</Link>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
-            {[
-              { label: 'Clarity', val: user?.communication_skills?.clarity_score ?? 75, color: 'var(--brand-primary)' },
-              { label: 'Evidence Strength', val: user?.communication_skills?.evidence_strength ?? 70, color: 'var(--brand-secondary)' },
-              { label: 'Logical Consistency', val: user?.communication_skills?.logical_consistency ?? 72, color: '#10B981' },
-              { label: 'Persuasiveness', val: user?.communication_skills?.persuasiveness ?? 74, color: '#F59E0B' },
-              { label: 'Confidence', val: user?.communication_skills?.confidence_score ?? 80, color: '#EC4899' },
-            ].map(({ label, val, color }) => (
-              <div key={label} style={{ background: 'var(--bg-overlay)', padding: '14px', borderRadius: 'var(--radius-md)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: 6 }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
-                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{val}/100</span>
-                </div>
-                <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${val}%`, background: color, borderRadius: 3 }} />
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       )}
