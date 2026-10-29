@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from pydantic import BaseModel
 from app.core.database import get_db
 from app.models.debate_session import DebateSession
 from app.models.user import User
@@ -12,8 +13,47 @@ from app.schemas.analysis import (
     FallacyDefinition,
 )
 from app.services.argument_analysis import analysis_engine, SUPPORTED_FALLACIES
+from app.services.ai_agent import ai_agent
 
 router = APIRouter(prefix="/analysis", tags=["Argument Analysis & Fallacy Detection"])
+
+
+class AITestRequest(BaseModel):
+    api_key: str
+    provider: str = "gemini"
+
+
+@router.get("/ai-status")
+async def get_ai_status():
+    """
+    Check active Agentic AI engine status, provider name (Gemini / OpenAI),
+    and whether live LLM reasoning is active or operating in local heuristic mode.
+    """
+    return ai_agent.get_status()
+
+
+@router.post("/ai-test")
+async def test_ai_connection(payload: AITestRequest):
+    """
+    Validate and test an AI API key live with a test prompt.
+    """
+    res = ai_agent.analyze_argument(
+        text="We must transition to renewable energy because solar costs dropped 82% over the last decade.",
+        topic="Renewable Energy Transition",
+        position="Proposition",
+        api_key_override=payload.api_key.strip(),
+    )
+    if res:
+        return {
+            "success": True,
+            "message": f"Successfully connected to {payload.provider.upper()} Agentic AI!",
+            "provider": payload.provider,
+        }
+    return {
+        "success": False,
+        "message": "Failed to connect to AI provider. Please check your API key and network connection.",
+        "provider": payload.provider,
+    }
 
 
 @router.get("/fallacies", response_model=list[FallacyDefinition])

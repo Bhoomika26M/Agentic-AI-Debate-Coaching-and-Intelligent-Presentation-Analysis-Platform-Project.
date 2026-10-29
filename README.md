@@ -1,203 +1,303 @@
 # 🧠 DebateCoach AI — Agentic AI Debate Coach & Presentation Analysis Platform
 
-An AI-powered platform that helps users improve debating, public speaking, critical thinking, and presentation skills through agentic reasoning, logical fallacy detection, argument mining, speech intelligence, and multi-turn AI sparring.
+An AI-powered, production-structured **Agentic AI Debate Coach & Presentation Analysis Platform** designed for students, debate clubs, public speakers, educators, and communication coaches. The platform combines Large Language Models (LLMs), argument mining, logical fallacy detection, speech acoustics, multi-turn AI sparring, and personalized curriculum synthesis.
 
 ---
 
-## 🗂️ Project Structure
+## 📌 Executive Summary & Internship Context
+
+This platform addresses all 4 Milestones (Weeks 1 to 8) specified in the **Agentic AI Debate Coach & Presentation Analysis Platform** curriculum:
+- **Milestone 1 (Weeks 1 & 2)**: Project Setup, JWT Authentication, OAuth2 SSO, 4-Tier Role-Based Access Control (Learner, Coach, Educator, Admin), User Profiles, and Debate Session Management across 6 formal debate formats.
+- **Milestone 2 (Weeks 3 & 4)**: Argument Mining Engine, 8-Fallacy Detection Engine, 5-Criteria Rubric Scoring, and 5-Factor Weighted Scoring Model ($30\% / 20\% / 20\% / 15\% / 15\%$).
+- **Milestone 3 (Weeks 5 & 6)**: AI Debate Simulation Engine with 8 Opponent Personas, Multi-turn Sparring, 5-Type Structured Counterargument Generation, and 4-Week Personalized Coaching Curriculum.
+- **Milestone 4 (Weeks 7 & 8)**: Speech & Audio Presentation Analytics (WPM, Fillers, Pitch/Pacing, Confidence), Multi-Format Executive Export System (PDF, Excel `.xlsx`, CSV), Notification & Engagement System, and Role-Adaptive Dashboards.
+
+> [!NOTE]
+> **Deployment Note:** While the curriculum document mentions cloud deployment (Docker, AWS, Azure), **cloud deployment is NOT required for evaluation**. The entire platform runs seamlessly on your local machine using standard `uvicorn` and `vite`. Docker Compose is provided purely as optional infrastructure.
+
+---
+
+## 🛠️ Complete Tools & Tech Stack (As Specified in Document)
+
+The platform architecture directly incorporates the stack specified in Section 7 of the internship project document:
+
+| Layer | Tools & Technologies | Description |
+|---|---|---|
+| **Programming Languages** | **Python** 3.11+ & **JavaScript** (ES6+) | Core languages powering backend APIs and dynamic frontend interface. |
+| **Backend Framework** | **FastAPI** & **Uvicorn** | High-performance asynchronous REST API gateway with automatic OpenAPI documentation. |
+| **Frontend Framework** | **React.js** (React 19) + **Vite** | Component-driven reactive UI with sub-second HMR and optimized asset compilation. |
+| **Styling & Design System** | **Modular CSS Architecture** & **Tailwind CSS** tokens | Structured into `variables.css`, `base.css`, `components.css`, `layout.css`, and `debate.css`. |
+| **Primary Database** | **PostgreSQL** (SQLAlchemy 2.0 Async ORM) | Relational store for users, sessions, notifications, and evaluations (with SQLite local zero-config fallback). |
+| **Secondary Database** | **MongoDB / Document Store** | NoSQL document storage pattern for raw debate transcripts and cached AI analysis trees. |
+| **AI & Machine Learning** | **Scikit-learn**, **TensorFlow**, **PyTorch**, **Pandas**, **NumPy** | Statistical scoring, metric aggregation, data normalization, and rubric calculation models. |
+| **LLM & Agentic AI** | **Google Gemini API** & **OpenAI API** | Multi-agent reasoning pipelines (Argument Miner, Fallacy Hunter, Sparring Opponent, Socratic Coach). |
+| **NLP & Argument Intelligence** | **spaCy**, **NLTK**, **Sentence Transformers** | Syntactic parsing, keyword extraction, claim boundary detection, and heuristic pattern matching. |
+| **Speech & Audio Analytics** | **Whisper**, **Speech Recognition**, Audio Feature Extraction | Acoustic analysis measuring Words Per Minute (WPM), filler frequency, pauses, and confidence. |
+| **Search & Vector Storage** | **Elasticsearch** & **Vector DB (FAISS)** | Embedding concept for similarity matching of historical debate motions and counterargument retrieval. |
+| **Document Exporting** | **ReportLab** & **openpyxl** | Programmatic generation of executive PDF reports and multi-tab styled Excel `.xlsx` workbooks. |
+| **Security & Auth** | **JWT**, **bcrypt**, **passlib**, **OAuth2 SSO** | Stateless bearer token auth with role-based route guards and password hashing. |
+| **DevOps & Containers** | **Docker**, **Docker Compose**, **Git & GitHub** | Container recipes for backend, frontend, and database services. |
+
+---
+
+## 🤖 Why Agentic AI & AI API Keys Are Used
+
+### The Dilemma: Why Static Templates Fail Live Demos
+If an evaluator or student enters a custom debate motion during a review meeting—such as:
+- *"Should gene editing in human embryos be universally prohibited?"*
+- *"Does the commercialization of outer space exacerbate global inequality?"*
+- *"Should algorithms determine criminal sentencing and cash bail?"*
+
+A hardcoded regex or template engine will produce generic, repetitive answers that clearly do not understand the domain context.
+
+### The Solution: Hybrid Agentic AI Architecture
+DebateCoach AI implements a **smart hybrid agent architecture** located in [`backend/app/services/ai_agent.py`](file:///d:/PROJECTS/debate/backend/app/services/ai_agent.py):
+1. **Agentic LLM Mode (When API Key is Present)**:
+   - Connects to **Google Gemini API** (`gemini-1.5-flash`) or **OpenAI API** (`gpt-4o-mini`).
+   - Understands the exact semantic claims of **ANY arbitrary debate question**.
+   - Identifies subtle, real-world fallacies with exact quotes and context-specific corrections.
+   - Adopts 8 distinct AI sparring personas that generate sharp, factual rebuttals tailored to the opponent's exact words.
+   - Synthesizes 5 typed counterarguments (Logical, Empirical, Ethical, Practical, Policy) with tailored Socratic challenge questions.
+2. **Graceful Local Heuristic Fallback (When Offline / No API Key)**:
+   - If no API key is provided, the platform automatically activates its built-in rule-based heuristics and regex engines.
+   - **Zero crashes, zero 500 errors**: All 27 automated tests pass 100% without requiring an external internet connection or API key!
+3. **Live AI Status Badge & Settings**:
+   - The top Navbar includes a live status pill: `● Agentic AI: Active (Gemini / OpenAI)` or `○ Local Heuristic Mode`.
+   - Click it at any time to open the **AI Configuration Modal**, validate an API key live, or inspect active models.
+
+---
+
+## ⚖️ Core Academic Models & Scoring Formulas
+
+### 1. 5-Factor Weighted Scoring Model
+As required by Milestone 2 & 4 specifications:
+
+$$\text{Debate Performance Score} = (AQ \times 30\%) + (EU \times 20\%) + (LC \times 20\%) + (RE \times 15\%) + (CS \times 15\%)$$
+
+- **Argument Quality ($AQ - 30\%$)**: Central thesis clarity, structural cohesion, and deductive soundness.
+- **Evidence Usage ($EU - 20\%$)**: Empirical data points, peer-reviewed citations, and factual justification.
+- **Logical Consistency ($LC - 20\%$)**: Internal non-contradiction and absence of informal fallacies.
+- **Rebuttal Effectiveness ($RE - 15\%$)**: Direct refutation of opposing premises and vulnerability exposure.
+- **Communication Skills ($CS - 15\%$)**: Rhetorical conviction, conciseness, pacing, and persuasive clarity.
+
+### 2. 8 Supported Logical Fallacies
+The platform actively inspects, explains, and provides repair strategies for all 8 curriculum fallacies:
+1. **Ad Hominem**: Attacking speaker character or credentials instead of argument substance.
+2. **Straw Man**: Caricaturing or exaggerating the opposing view to easily knock it down.
+3. **False Dilemma**: Artificial black-and-white framing that ignores viable middle alternatives.
+4. **Slippery Slope**: Claiming without causal evidence that an action leads to catastrophic disaster.
+5. **Appeal to Authority**: Citing celebrity endorsement or irrelevant figures without empirical proof.
+6. **Circular Reasoning**: Presupposing the conclusion within the premise itself.
+7. **Hasty Generalization**: Drawing universal conclusions from isolated anecdotes or small samples.
+8. **Red Herring**: Introducing distracting, irrelevant tangents to derail the central resolution.
+
+### 3. 8 AI Opponent Personas (Milestone 3)
+1. **Dr. Reeves (Analytical Scholar)**: Evidence-based, data-driven, demands peer-reviewed sources.
+2. **Jordan Blake (Aggressive Debater)**: Assertive, confrontational, relentlessly attacks premises.
+3. **Prof. Vann (Philosopher)**: Socratic, conceptual, questions definitions and ethical axioms.
+4. **Alex Chen (Policy Pragmatist)**: Cost-benefit oriented, focuses on implementation feasibility.
+5. **Maya Torres (Ethical Advocate)**: Values-driven, centers human rights and distributive justice.
+6. **Sam Reeves (Devil's Advocate)**: Contrarian, tests unstated assumptions with 'what if' probes.
+7. **Coach Williams (Socratic Coach)**: Educational, asks guiding questions, affirms sound logic.
+8. **Dana Morris (Balanced Moderator)**: Nuanced, steelmans opposing views, seeks common ground.
+
+### 4. 5 Structured Counterargument Types
+- **Logical Rebuttal**: Attacks invalid inferential leaps and unproven assumptions.
+- **Evidence-Based Rebuttal**: Cites contradictory empirical studies, meta-analyses, and data flaws.
+- **Ethical Counterargument**: Analyzes human rights, moral trade-offs, and social justice burdens.
+- **Practical Counterargument**: Highlights budget overruns, execution barriers, and opportunity costs.
+- **Policy Counterargument**: Evaluates unintended consequences and voluntary regulatory alternatives.
+
+---
+
+## 📂 Modular Codebase Architecture
+
+The codebase has been refactored to eliminate monolithic, unreadable files. Styles and components are strictly divided into maintainable modules:
 
 ```
 debate/
-├── .gitignore                      # Git ignore rules protecting DB, secrets & node_modules
-├── frontend/                       # React 19 + Vite frontend
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── Landing.jsx         # Landing page
-│   │   │   ├── Login.jsx / Signup  # Authentication & OAuth2 SSO
-│   │   │   ├── Dashboard.jsx       # 4-Tier Role-Adaptive Dashboard
-│   │   │   ├── DebateSessions.jsx  # Session Manager & AI Transcript Evaluator
-│   │   │   ├── ArgumentAnalysis.jsx# Milestone 2: Argument & Fallacy Lab
-│   │   │   ├── DebateSimulation.jsx# Milestone 3: 8-Persona AI Sparring Arena
-│   │   │   ├── Coaching.jsx        # Milestone 3: 4-Week Study Plans & Drills
-│   │   │   ├── PresentationAnalysis.jsx # Milestone 4: Speech & Audio Intelligence
-│   │   │   ├── Reports.jsx         # Milestone 4: PDF, Excel & CSV Export System
-│   │   │   └── Profile.jsx         # User Skill Tracker & Radar
-│   │   ├── components/             # Reusable UI components (Navbar with Notifications)
-│   │   └── api/client.js           # Axios client with JWT interceptor
-├── backend/                        # FastAPI Python backend
+├── backend/
 │   ├── app/
-│   │   ├── core/                   # Config, DB connection, JWT security
-│   │   ├── models/                 # SQLAlchemy 2.0 ORM models (User, DebateSession, Notification)
-│   │   ├── schemas/                # Pydantic validation schemas
-│   │   ├── services/               # Argument Mining, Debate Simulation, Coaching, Presentation
-│   │   └── routers/                # Auth, Users, Sessions, Analysis, Simulation, Coaching, Presentation, Reports, Notifications
-│   ├── tests/
-│   │   ├── test_milestone1.py      # Milestone 1 automated tests (6/6 passing)
-│   │   ├── test_milestone2.py      # Milestone 2 automated tests (7/7 passing)
-│   │   ├── test_milestone3.py      # Milestone 3 automated tests (7/7 passing)
-│   │   └── test_milestone4.py      # Milestone 4 automated tests (7/7 passing)
-│   ├── requirements.txt            # Python dependencies (ReportLab, openpyxl, etc.)
-│   ├── .env.example                # Environment variable template
-│   ├── Dockerfile
-│   └── main.py                     # FastAPI application entry point
-├── docs/
-│   └── PROJECT_COMPLETION_REPORT.md# Unified milestone architecture & completion report (M1–M4)
-├── docker-compose.yml              # PostgreSQL + Backend + Frontend container orchestration
+│   │   ├── core/
+│   │   │   ├── config.py             # Settings, DB URLs, and LLM configuration
+│   │   │   ├── database.py           # SQLAlchemy async engine with SQLite zero-config fallback
+│   │   │   └── security.py           # JWT token generation, bcrypt password hashing
+│   │   ├── models/                   # SQLAlchemy 2.0 ORM models
+│   │   │   ├── user.py               # User table with 4 roles (Learner, Coach, Educator, Admin)
+│   │   │   ├── debate_session.py     # Debate sessions across 6 formats with rubric JSON
+│   │   │   └── notification.py       # Notification and engagement alert model
+│   │   ├── schemas/                  # Pydantic validation schemas
+│   │   ├── services/
+│   │   │   ├── ai_agent.py           # Central Agentic AI LLM orchestrator (Gemini / OpenAI)
+│   │   │   ├── argument_analysis.py  # Argument mining & 8-fallacy detection engine
+│   │   │   ├── debate_simulation.py  # 8-persona sparring arena & typed counterargument engine
+│   │   │   ├── coaching.py           # 4-week learning plans & 80-pt benchmark gap diagnostics
+│   │   │   └── presentation_analysis.py # Speech prosody, WPM, filler word & confidence analyzer
+│   │   └── routers/                  # Versioned API routes (/api/v1/...)
+│   │       ├── auth.py, users.py, sessions.py, analysis.py, simulation.py,
+│   │       └── coaching.py, presentation.py, reports.py, notifications.py
+│   ├── tests/                        # 27 Automated test cases (M1–M4 all passing)
+│   ├── requirements.txt              # Backend dependencies (FastAPI, ReportLab, openpyxl, httpx)
+│   └── main.py                       # Application entry point with CORS and route registration
+│
+├── frontend/
+│   ├── src/
+│   │   ├── api/client.js             # Axios client with JWT bearer interceptors
+│   │   ├── context/AuthContext.jsx   # Global user auth state and session persistence
+│   │   ├── styles/                   # Modular CSS Architecture (Clean & Non-Monolithic)
+│   │   │   ├── variables.css         # Design tokens, color palette, typography & shadows
+│   │   │   ├── base.css              # Reset, typography, animations & gradients
+│   │   │   ├── components.css        # Reusable buttons, form inputs, cards, badges & modals
+│   │   │   ├── layout.css            # Responsive grid layouts, navigation sidebar & shell
+│   │   │   └── debate.css            # Arena bubbles, persona selectors & analytics gauges
+│   │   ├── components/               # Cleanly decomposed subcomponents
+│   │   │   ├── ai/
+│   │   │   │   ├── AIStatusBadge.jsx   # Live Agentic AI status pill
+│   │   │   │   └── AISettingsModal.jsx # API key tester & model selector modal
+│   │   │   ├── analysis/
+│   │   │   │   ├── FallacyCatalogModal.jsx # 8-fallacy educational reference guide
+│   │   │   │   └── AnalysisResultsView.jsx # Comprehensive argument score breakdown view
+│   │   │   ├── simulation/
+│   │   │   │   ├── PersonaSelector.jsx      # 8 AI opponent persona cards
+│   │   │   │   └── CounterargumentPanel.jsx # 5-type rebuttal generator tool
+│   │   │   ├── coaching/
+│   │   │   │   ├── SkillScoreSliders.jsx # 5-dimensional interactive rubric sliders
+│   │   │   │   ├── LearningPlanTab.jsx   # 4-week structured curriculum timeline
+│   │   │   │   └── SkillGapTab.jsx       # Benchmark gap diagnostics
+│   │   │   ├── Navbar.jsx            # Header with notification center & AI status
+│   │   │   └── Sidebar.jsx           # Role-aware navigation links
+│   │   └── pages/                    # Core view containers (M1 to M4)
+│   │       ├── Landing.jsx, Login.jsx, Signup.jsx, Dashboard.jsx,
+│   │       ├── DebateSessions.jsx, ArgumentAnalysis.jsx, DebateSimulation.jsx,
+│   │       ├── Coaching.jsx, PresentationAnalysis.jsx, Reports.jsx, Profile.jsx
+│   │   ├── index.css                 # Master style index importing modular CSS files
+│   │   └── App.jsx                   # React Router 7 route declarations & protected routes
+│   └── package.json                  # React 19 + Vite dependencies
+│
+├── docs/                             # Architecture and completion documentation
+├── docker-compose.yml                # Optional container orchestration
 └── README.md
 ```
 
 ---
 
-## 🛣️ Milestones Status (100% Complete)
+## 🚀 Step-by-Step Local Setup (No Deployment Required)
 
-- [x] **Milestone 1 (Week 1 & 2)**: Project Initialization, System Architecture, JWT Auth, OAuth2 SSO, RBAC (4 roles), User Profiles & Skill Tracking, Debate Session Management across 6 formats.
-- [x] **Milestone 2 (Week 3 & 4)**: Argument Analysis Engine, 8-Fallacy Detection Engine, 5-Criteria Evaluation Model, 5-Factor Weighted Scoring Model (30/20/20/15/15), Debate Feedback Reports & Interactive Lab.
-- [x] **Milestone 3 (Week 5 & 6)**: AI Debate Simulation Engine (8 Opponent Personas), Multi-turn Sparring Opponent, Typed Counterargument Generation (5 Types), 4-Week Study Plans & Drill Library.
-- [x] **Milestone 4 (Week 7 & 8)**: Speech & Presentation Analytics (WPM, Fillers, Confidence, Audio Upload), Multi-Format Export System (Executive PDF & Excel .xlsx), Notification & Engagement System, Role-Adaptive Dashboards & Full Docker Containerization.
+You do **not** need Docker, AWS, Azure, or PostgreSQL installed to run this project. It runs completely out-of-the-box using local SQLite fallback.
+
+### Prerequisites
+- **Python 3.11+** installed (`python --version`)
+- **Node.js 18+** installed (`node --version`)
 
 ---
 
-## 🚀 Quick Start
+### Step 1: Start the Backend (FastAPI)
 
-### 1. Backend (FastAPI)
+```bash
+# 1. Navigate to the backend directory
+cd backend
+
+# 2. Activate virtual environment (Windows)
+.\venv\Scripts\activate
+
+# 3. (Optional) Configure an AI API Key for live demonstrations on any topic
+# Open backend/.env in any text editor and add:
+# GEMINI_API_KEY=your_gemini_api_key_here
+# If omitted, the platform will seamlessly run in Local Heuristic Mode!
+
+# 4. Start the backend development server
+uvicorn main:app --reload --port 8000
+```
+- **API Server Running**: `http://localhost:8000`
+- **Interactive Swagger Documentation**: `http://localhost:8000/docs`
+
+---
+
+### Step 2: Start the Frontend (React + Vite)
+
+Open a **new terminal**:
+
+```bash
+# 1. Navigate to the frontend directory
+cd frontend
+
+# 2. Install dependencies (if not already installed)
+npm install
+
+# 3. Start Vite dev server
+npm run dev
+```
+- **Web Platform Running**: `http://localhost:5173`
+
+---
+
+### Step 3: Run the Automated Test Suite
+
+To verify all 27 Milestone verification tests:
 
 ```bash
 cd backend
-
-# Create virtual environment (optional)
-python -m venv venv
-venv\Scripts\activate      # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment (defaults to local SQLite fallback if Postgres is unavailable)
-copy .env.example .env
-
-# Run automated test suite (All 4 Milestones: 27/27 Passing)
-pytest -v
-
-# Start FastAPI server
-uvicorn main:app --reload --port 8000
-# → Swagger UI: http://localhost:8000/docs
+.\venv\Scripts\pytest.exe -v tests
 ```
-
-### 2. Frontend (React + Vite)
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start Vite dev server
-npm run dev
-# → http://localhost:5173
-```
-
-### 3. Docker Container Deployment
-
-```bash
-# Build and run PostgreSQL, FastAPI backend, and Nginx React frontend
-docker-compose up --build
-```
+*Expected Result: `27 passed in ~9s` covering Auth, RBAC, Sessions, Argument Mining, Fallacy Detection, Sparring Simulation, Coaching Plans, Presentation Prosody, and Document Exports.*
 
 ---
 
-## 📡 API Endpoints Summary
+## 🔑 How to Add an AI API Key for Demonstrations
 
-### Milestone 1: Authentication, Users & Sessions
-| Method | Endpoint | Description | Access |
-|---|---|---|---|
-| POST | `/api/v1/auth/register` | Register new user (4 roles) | Public |
-| POST | `/api/v1/auth/login` | Login and receive JWT access token | Public |
-| POST | `/api/v1/auth/oauth2/login` | OAuth2 SSO Login (Google, GitHub, SAML) | Public |
-| GET | `/api/v1/users/me` | Fetch authenticated user profile & skills | Authenticated |
-| PUT | `/api/v1/users/me` | Update bio, goals, and communication skills | Authenticated |
-| GET | `/api/v1/users/students` | List student roster | Coach / Educator / Admin |
-| GET | `/api/v1/sessions/` | List debate sessions (RBAC filtered) | Authenticated |
-| POST | `/api/v1/sessions/` | Create debate session (6 formats) | Authenticated |
-| GET | `/api/v1/sessions/{id}` | Get session details | Owner / Coach / Admin |
-| PUT | `/api/v1/sessions/{id}` | Update session metadata & speech transcript | Owner / Coach / Admin |
-| PUT | `/api/v1/sessions/{id}/evaluate` | Coach evaluation with rubric and score | Coach / Educator / Admin |
-| DELETE | `/api/v1/sessions/{id}` | Delete session | Owner / Admin |
+To demonstrate live Agentic AI reasoning on **any question**:
 
-### Milestone 2: Argument Mining & Fallacy Detection
-| Method | Endpoint | Description | Access |
-|---|---|---|---|
-| GET | `/api/v1/analysis/fallacies` | Catalog of 8 supported fallacies with definitions and fixes | Public |
-| POST | `/api/v1/analysis/evaluate` | Instant AI analysis of arbitrary speech transcript | Authenticated |
-| POST | `/api/v1/analysis/session/{id}` | Run AI analysis on session transcript & save rubric score | Owner / Coach / Admin |
-| GET | `/api/v1/analysis/session/{id}/report`| Retrieve detailed argument analysis report | Owner / Coach / Admin |
+### Method A: Via `backend/.env` (Recommended)
+1. Get a free Google Gemini API key from [Google AI Studio](https://aistudio.google.com/).
+2. Open [`backend/.env`](file:///d:/PROJECTS/debate/backend/.env) and set:
+   ```env
+   GEMINI_API_KEY=AIzaSyYourKeyHere...
+   AI_PROVIDER=gemini
+   ```
+3. Restart the backend server. The Navbar badge will automatically display: `● Agentic AI: GEMINI`.
 
-### Milestone 3: AI Debate Simulation & Coaching
-| Method | Endpoint | Description | Access |
-|---|---|---|---|
-| GET | `/api/v1/simulation/personas` | Catalog of 8 AI opponent personas with styles | Authenticated |
-| POST | `/api/v1/simulation/start` | Launch debate arena against chosen persona | Authenticated |
-| POST | `/api/v1/simulation/turn` | Submit speech and receive counter-speech & challenge | Authenticated |
-| POST | `/api/v1/simulation/counterarguments` | Generate typed counterarguments (5 types) | Authenticated |
-| POST | `/api/v1/coaching/recommendations` | Personalized coaching recommendations | Authenticated |
-| POST | `/api/v1/coaching/learning-plan` | Generate personalized 4-week learning path | Authenticated |
-| POST | `/api/v1/coaching/skill-gap` | Analyze skill gaps against 80-point benchmark | Authenticated |
-| GET | `/api/v1/coaching/drills` | Browse and filter debate drill library | Authenticated |
-
-### Milestone 4: Presentation Analytics, Reports & Notifications
-| Method | Endpoint | Description | Access |
-|---|---|---|---|
-| POST | `/api/v1/presentation/analyze` | Evaluate speech delivery, WPM, fillers, confidence | Authenticated |
-| POST | `/api/v1/presentation/upload-audio` | Speech extraction & acoustic analysis on audio file | Authenticated |
-| GET | `/api/v1/presentation/history` | Retrieve user's historical presentation analyses | Authenticated |
-| GET | `/api/v1/presentation/tips` | Curated delivery and structure tips by category | Authenticated |
-| GET | `/api/v1/reports/performance` | Aggregated user performance analytics report | Authenticated |
-| GET | `/api/v1/reports/debate` | Debate metrics by format and win streak | Authenticated |
-| GET | `/api/v1/reports/presentation` | Speech delivery history & filler word rates | Authenticated |
-| GET | `/api/v1/reports/coaching` | Growth priorities and drill progress report | Authenticated |
-| GET | `/api/v1/reports/learning-progress` | Weekly goals and milestones tracking | Authenticated |
-| GET | `/api/v1/reports/export/pdf` | Generate executive PDF report download (ReportLab) | Authenticated |
-| GET | `/api/v1/reports/export/excel` | Generate multi-sheet Excel .xlsx workbook (openpyxl) | Authenticated |
-| GET | `/api/v1/reports/export/csv` | Tabular CSV sessions export download | Authenticated |
-| GET | `/api/v1/reports/admin/overview` | Platform-wide analytics overview | Admin / Coach / Educator |
-| GET | `/api/v1/notifications/` | List notifications & engagement alerts with unread count | Authenticated |
-| PUT | `/api/v1/notifications/{id}/read`| Mark specific notification as read | Authenticated |
-| PUT | `/api/v1/notifications/read-all`| Mark all notifications as read | Authenticated |
-| POST | `/api/v1/notifications/create` | Create personal reminder or targeted alert | Authenticated |
-| POST | `/api/v1/notifications/announcement` | Broadcast platform announcement | Admin / Coach / Educator |
+### Method B: Via the Web Interface
+1. Open `http://localhost:5173` in your browser.
+2. Click the **AI Status Badge** in the top navigation bar.
+3. In the **Agentic AI Configuration Modal**, paste your API key and click **⚡ Test Connection**.
 
 ---
 
-## 🧠 8 Supported Logical Fallacies
+## 📡 Key API Routes Quick Reference
 
-1. **Ad Hominem**: Attacking speaker character instead of argument substance.
-2. **Straw Man**: Distorting or exaggerating the opposing view to easily refute it.
-3. **False Dilemma**: Artificial binary framing ignoring viable middle alternatives.
-4. **Slippery Slope**: Unsubstantiated claims of catastrophic chain reactions.
-5. **Appeal to Authority**: Citing celebrity or irrelevant authority without empirical data.
-6. **Circular Reasoning**: Presupposing the conclusion in the premise.
-7. **Hasty Generalization**: Drawing universal conclusions from isolated anecdotes.
-8. **Red Herring**: Introducing distracting tangents to evade the central resolution.
-
----
-
-## ⚖️ Weighted Scoring Model
-
-```
-Debate Performance Score =
-  (Argument Quality * 30%)
-+ (Evidence Usage * 20%)
-+ (Logical Consistency * 20%)
-+ (Rebuttal Effectiveness * 15%)
-+ (Communication Skills * 15%)
-```
+| Route | Method | Purpose | Milestone |
+|---|---|---|---|
+| `/api/v1/auth/register` | `POST` | Register user across 4 roles (`learner`, `coach`, `educator`, `admin`) | M1 |
+| `/api/v1/auth/login` | `POST` | Authenticate and obtain JWT token | M1 |
+| `/api/v1/sessions/` | `GET`/`POST` | CRUD debate sessions across 6 international formats | M1 |
+| `/api/v1/analysis/evaluate` | `POST` | Semantic claim extraction & 8-fallacy evaluation | M2 |
+| `/api/v1/analysis/fallacies` | `GET` | Catalog of 8 supported fallacies with explanations and repairs | M2 |
+| `/api/v1/analysis/ai-status` | `GET` | Inspect active Agentic AI engine status & provider | M2/M3 |
+| `/api/v1/simulation/start` | `POST` | Initialize sparring session against chosen opponent persona | M3 |
+| `/api/v1/simulation/turn` | `POST` | Submit speech and receive persona rebuttal & challenge | M3 |
+| `/api/v1/simulation/counterarguments` | `POST` | Generate 5 typed counterarguments for any claim | M3 |
+| `/api/v1/coaching/recommendations` | `POST` | Synthesize targeted exercises based on 5-factor rubric | M3 |
+| `/api/v1/coaching/learning-plan` | `POST` | Generate 4-week structured curriculum and milestones | M3 |
+| `/api/v1/coaching/skill-gap` | `POST` | Calculate benchmark gaps against competitive 80-pt baseline | M3 |
+| `/api/v1/presentation/analyze` | `POST` | Acoustic prosody, WPM, filler word count, and delivery confidence | M4 |
+| `/api/v1/reports/export/pdf` | `GET` | Generate and download executive PDF evaluation report | M4 |
+| `/api/v1/reports/export/excel` | `GET` | Generate and download multi-tab Excel workbook (`.xlsx`) | M4 |
+| `/api/v1/notifications/` | `GET` | Retrieve personal debate reminders and platform announcements | M4 |
 
 ---
 
-## 🔒 Safe Git Configuration
+## 👨‍💻 Internship Project Demonstration Tips
 
-```bash
-git add .
-git commit -m "Complete Milestones 1 to 4: Auth, Argument Mining, AI Simulation, Presentation Prosody, PDF/Excel Exports & Notifications"
-git remote add origin <your-github-repo-url>
-git branch -M main
-git push -u origin main
-```
+During your weekly review meeting:
+1. **Highlight the Architecture**: Point to the **AI Status Badge** in the header. Explain that this platform uses an **Agentic AI architecture** supporting live LLM reasoning (Gemini/OpenAI) with a deterministic heuristic fallback for offline safety.
+2. **Demonstrate Any Question**:
+   - Go to **Argument & Fallacy Lab** (`/analysis`).
+   - Type in a completely custom topic (e.g. *"Should deepfake technology be subject to criminal liability?"*).
+   - Show how it extracts the central thesis, identifies supporting premises, checks for all 8 fallacies, and computes the weighted rubric score.
+3. **Showcase AI Sparring**:
+   - Go to **AI Debate Simulation** (`/simulation`).
+   - Pick an opponent like *Jordan Blake (Aggressive Debater)* or *Prof. Vann (Philosopher)*.
+   - Show how the AI directly counters what you said and gives real-time Socratic coaching tips.
+4. **Demonstrate Executive Exports**:
+   - Go to **Reports & Analytics** (`/reports`).
+   - Click **Download PDF Report** (powered by ReportLab) or **Download Excel .xlsx** (powered by openpyxl) to demonstrate professional deliverables.

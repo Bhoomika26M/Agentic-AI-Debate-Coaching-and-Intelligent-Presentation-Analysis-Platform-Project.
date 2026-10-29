@@ -13,6 +13,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal
 
+from app.services.ai_agent import ai_agent
+
 
 # ── Persona templates ──────────────────────────────────────────────────────────
 
@@ -302,7 +304,57 @@ class DebateSimulationEngine:
         user_position: str,
         history: list[dict] | None = None,
     ) -> dict:
-        """Process user speech and return AI counter + coaching."""
+        """
+        Process user speech and return AI counter + real-time coaching feedback.
+        If Agentic AI (Gemini / OpenAI) is active, generates in-character context-rich
+        rebuttal for ANY debate topic, plus challenge question and critique.
+        Falls back to template builder if offline or no API key.
+        """
+        # Attempt LLM generation first
+        if ai_agent.get_status()["active"]:
+            try:
+                persona_info = PERSONAS.get(persona_key, PERSONAS["balanced"])
+                ai_turn = ai_agent.generate_opponent_turn(
+                    topic=topic,
+                    user_speech=user_speech,
+                    persona=persona_info,
+                    turn_number=turn_number,
+                    user_position=user_position,
+                    history=history,
+                )
+                if ai_turn and ai_turn.get("ai_speech"):
+                    ai_response = ai_turn["ai_speech"]
+                    if turn_number >= 6:
+                        ai_response += (
+                            "\n\nWe have now completed our exchange. I want to commend you for engaging "
+                            "with these arguments. The debate has been instructive. I maintain my position "
+                            "based on the balance of evidence and reasoning presented."
+                        )
+                    challenge_q = ai_turn.get("challenge_question") or random.choice(CHALLENGE_QUESTIONS).replace("{keyword}", topic)
+                    coaching_note = ai_turn.get("coaching_critique") or "Strong presentation of your claim; ensure every factual assertion is linked back to your primary motion."
+                    turn_score = int(ai_turn.get("turn_score", 78))
+                    strategy = random.choice(STRATEGY_SUGGESTIONS)
+
+                    return {
+                        "session_id": session_id,
+                        "turn_number": turn_number,
+                        "ai_response": ai_response,
+                        "ai_speech": ai_response,
+                        "coaching_note": coaching_note,
+                        "coaching_feedback": {
+                            "turn_score": turn_score,
+                            "challenge_question": challenge_q,
+                            "recommended_counter_strategy": strategy,
+                            "notes": coaching_note,
+                        },
+                        "strategy_suggestion": strategy,
+                        "is_final_turn": turn_number >= 6,
+                        "word_count": len(user_speech.split()),
+                    }
+            except Exception:
+                pass
+
+        # Deterministic Heuristic Fallback
         ai_response, coaching_note = _build_counter_response(
             user_text=user_speech,
             persona_key=persona_key,
@@ -349,9 +401,49 @@ class DebateSimulationEngine:
         topic: str | None = None,
         num_counters: int = 3,
     ) -> dict:
-        """Generate multiple typed counterarguments for a given argument."""
+        """
+        Generate multiple typed counterarguments for a given argument.
+        If Agentic AI is active, leverages LLM for deep topic-specific refutation.
+        """
         keywords = _extract_keywords(argument_text)
         keyword = keywords[0] if keywords else (topic or "the issue")
+
+        # Attempt LLM generation first
+        if ai_agent.get_status()["active"]:
+            try:
+                ai_counters = ai_agent.generate_counterarguments(
+                    topic=topic,
+                    argument_text=argument_text,
+                    num_counters=num_counters,
+                )
+                if ai_counters and ai_counters.get("counterarguments"):
+                    formatted_counters = []
+                    for c in ai_counters["counterarguments"]:
+                        raw_type = c.get("type", "logical_rebuttal").replace("_rebuttal", "").replace("_counterargument", "")
+                        formatted_counters.append({
+                            "type": raw_type,
+                            "type_label": c.get("title") or c.get("type", "").replace("_", " ").title(),
+                            "counter": c.get("counterargument", ""),
+                            "rebuttal": c.get("counterargument", ""),
+                            "challenge_question": c.get("challenge_question", "How does your argument address this counter-evidence?"),
+                            "debate_strategy": c.get("debate_strategy", "Focus on the weakest empirical premise."),
+                            "rebuttal_tip": c.get("debate_strategy", "Focus on the weakest empirical premise."),
+                        })
+
+                    challenge_questions = [c["challenge_question"] for c in formatted_counters if "challenge_question" in c]
+                    return {
+                        "original_argument": argument_text[:200] + "..." if len(argument_text) > 200 else argument_text,
+                        "topic": topic,
+                        "key_themes": keywords,
+                        "counterarguments": formatted_counters,
+                        "challenge_questions": challenge_questions or [random.choice(CHALLENGE_QUESTIONS).replace("{keyword}", keyword)],
+                        "debate_strategies": [c.get("debate_strategy") for c in formatted_counters if c.get("debate_strategy")] or random.sample(STRATEGY_SUGGESTIONS, min(3, len(STRATEGY_SUGGESTIONS))),
+                        "recommended_strategy": ai_counters.get("recommended_strategy", "Target the central inferential bridge before refuting secondary premises."),
+                    }
+            except Exception:
+                pass
+
+        # Deterministic Heuristic Fallback
 
         counter_types = random.sample(list(COUNTER_TEMPLATES.keys()), min(num_counters, len(COUNTER_TEMPLATES)))
         counters = []
