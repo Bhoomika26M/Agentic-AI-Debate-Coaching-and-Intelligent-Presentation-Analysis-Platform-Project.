@@ -135,3 +135,35 @@ async def oauth2_login(
     token = create_access_token({"sub": user.id, "role": user.role})
     return TokenOut(access_token=token, user=UserOut.model_validate(user))
 
+
+class ResetPasswordPayload(BaseModel):
+    email: str
+    new_password: str
+
+
+@router.post("/reset-password")
+async def reset_password(
+    payload: ResetPasswordPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Direct Password Reset Endpoint.
+    Validates user email and directly updates the hashed password in SQLite,
+    allowing password reset without requiring external SMTP email dispatch.
+    """
+    user = await get_user_by_email(db, payload.email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account registered with this email address.",
+        )
+    if len(payload.new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters long.",
+        )
+
+    user.hashed_password = get_password_hash(payload.new_password)
+    db.add(user)
+    await db.commit()
+    return {"message": "Password updated successfully. You can now sign in with your new password."}
