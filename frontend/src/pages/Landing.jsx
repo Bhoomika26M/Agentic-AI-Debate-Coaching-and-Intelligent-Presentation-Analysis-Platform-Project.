@@ -10,13 +10,6 @@ const FEATURES = [
   { icon: '📈', title: 'Personalized Coaching',      desc: 'Receive tailored skill development plans and coaching insights based on your performance.' },
 ]
 
-const STATS = [
-  { value: '6+',    label: 'Debate Formats' },
-  { value: '8',     label: 'Fallacy Types Detected' },
-  { value: '4',     label: 'User Roles' },
-  { value: '100%',  label: 'AI Powered' },
-]
-
 export default function Landing() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -62,7 +55,7 @@ export default function Landing() {
 
         <h1 className="hero-title">
           Master the Art of{' '}
-          <span className="gradient-text">Debate & Persuasion</span>
+          <span className="gradient-text">Debate &amp; Persuasion</span>
         </h1>
 
         <p className="hero-subtitle">
@@ -86,19 +79,6 @@ export default function Landing() {
             </>
           )}
         </div>
-
-        {/* Stats */}
-        <div style={{
-          display: 'flex', gap: 40, marginTop: 60, flexWrap: 'wrap', justifyContent: 'center',
-          animation: 'fadeIn 0.7s ease 0.4s both',
-        }}>
-          {STATS.map(({ value, label }) => (
-            <div key={label} style={{ textAlign: 'center' }}>
-              <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{value}</div>
-              <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 2 }}>{label}</div>
-            </div>
-          ))}
-        </div>
       </section>
 
       {/* ── Features ─────────────────────────────────────────── */}
@@ -117,23 +97,6 @@ export default function Landing() {
               <p className="feature-desc">{desc}</p>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* ── CTA ──────────────────────────────────────────────── */}
-      <section style={{ textAlign: 'center', padding: '80px 24px 60px' }}>
-        <div style={{
-          display: 'inline-block', padding: '60px 80px',
-          background: 'linear-gradient(135deg, rgba(108,99,255,0.1), rgba(167,139,250,0.05))',
-          border: '1px solid var(--border-medium)', borderRadius: 'var(--radius-xl)',
-        }}>
-          <h2 style={{ marginBottom: 12 }}>Ready to debate smarter?</h2>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: 28 }}>
-            Join as a Learner, Coach, Educator, or Admin.
-          </p>
-          <Link to="/signup" className="btn btn-primary btn-lg">
-            Create Your Account →
-          </Link>
         </div>
       </section>
 
