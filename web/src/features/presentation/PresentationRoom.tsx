@@ -64,9 +64,9 @@ export function PresentationRoom({ topic, sessionId, compact, onResult }: { topi
     setError(""); setNotice(""); setResult(null);
     onResult?.(null);
     if (next) {
-      const okType = /audio\/(webm|wav|x-wav|mp3|mpeg)/.test(next.type) || /\.(webm|wav|mp3)$/i.test(next.name);
+      const okType = /audio\/(webm|wav|x-wav|mp3|mpeg|mp4|m4a|x-m4a)/.test(next.type) || /\.(webm|wav|mp3|m4a|mp4)$/i.test(next.name);
       if (!okType) {
-        setError("Use webm, wav, or mp3 audio.");
+        setError("Use webm, wav, mp3, or m4a audio.");
         return;
       }
       if (next.size === 0) {
@@ -109,9 +109,12 @@ export function PresentationRoom({ topic, sessionId, compact, onResult }: { topi
       chunksRef.current = [];
       recorder.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        // Safari records MP4 audio; keep the real container instead of calling it webm.
+        const type = (recorder.mimeType || "audio/webm").split(";")[0];
+        const blob = new Blob(chunksRef.current, { type });
         stream.getTracks().forEach((t) => t.stop());
-        pick(new File([blob], "closing.webm", { type: "audio/webm" }));
+        const extension = type.includes("mp4") ? "m4a" : "webm";
+        pick(new File([blob], `closing.${extension}`, { type }));
       };
       recorderRef.current = recorder;
       recorder.start();
@@ -179,13 +182,13 @@ export function PresentationRoom({ topic, sessionId, compact, onResult }: { topi
             : <button className="button button-dark" onClick={() => void startRecording()}><Mic size={15} /> Record</button>}
           <label className="button button-light present-upload">
             <Upload size={15} /> Upload
-            <input type="file" accept="audio/webm,audio/wav,audio/mp3,audio/mpeg" className="visually-hidden" aria-label="Upload audio file" onChange={(e) => { pick(e.target.files?.[0] ?? null); e.target.value = ""; }} />
+            <input type="file" accept="audio/webm,audio/wav,audio/mp3,audio/mpeg,audio/mp4,audio/m4a" className="visually-hidden" aria-label="Upload audio file" onChange={(e) => { pick(e.target.files?.[0] ?? null); e.target.value = ""; }} />
           </label>
           <button className="button button-dark" onClick={() => void analyze()} disabled={!file || loading || recording}>
             {loading ? <><LoaderCircle className="spin" size={15} /> Reviewing delivery</> : <><Sparkles size={15} /> Review delivery</>}
           </button>
         </div>
-        <p className="present-hint">Record up to 3:00 or upload webm/wav/mp3 under 10MB. Audio is discarded by default.</p>
+        <p className="present-hint">Record up to 3:00 or upload webm/wav/mp3/m4a under 10MB. Audio is discarded by default.</p>
         {user && (
           <label className="present-check" htmlFor={`retain-${compact ? "compact" : "full"}`}>
             <input

@@ -196,3 +196,22 @@ def test_decoding_that_runs_over_budget_is_stopped(monkeypatch):
 
     with pytest.raises(speech.TranscriptionTimeoutError, match="longer than"):
         asyncio.run(speech.transcribe_audio(WEBM, "talk.webm", "audio/webm"))
+
+
+MP4 = b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00" + b"\x00" * 24
+RANDOM_BYTES = b"not audio at all, just text" + b"\x00" * 16
+
+
+def test_safari_mp4_audio_is_accepted():
+    """The ftyp box starts at byte 4; checking bytes 0-3 rejected every m4a."""
+    speech.validate_audio("closing.m4a", "audio/mp4", MP4)
+    assert speech._sniff_kind(MP4) == "mp4"
+
+
+def test_mp4_with_a_declared_webm_type_is_still_accepted_by_sniffing():
+    speech.validate_audio("closing.webm", "audio/webm", MP4)
+
+
+def test_random_bytes_are_rejected_with_the_updated_hint():
+    with pytest.raises(speech.AudioValidationError, match="m4a"):
+        speech.validate_audio("closing.m4a", "audio/mp4", RANDOM_BYTES)

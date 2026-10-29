@@ -42,11 +42,21 @@ export async function setPresentationAudio(id: string, audioPath: string) {
   if (error) throw error;
 }
 
+function audioFormat(type: string) {
+  const base = (type || "audio/webm").split(";")[0].toLowerCase();
+  if (base.includes("mp4") || base.includes("m4a")) return { extension: "m4a", contentType: "audio/mp4" };
+  if (base.includes("wav")) return { extension: "wav", contentType: "audio/wav" };
+  if (base.includes("mpeg") || base.includes("mp3")) return { extension: "mp3", contentType: "audio/mpeg" };
+  return { extension: "webm", contentType: "audio/webm" };
+}
+
 export async function uploadPresentationAudio(userId: string, feedbackId: string, file: File | Blob) {
   const client = requireClient();
-  const path = `${userId}/${feedbackId}.webm`;
+  // Safari records MP4 audio, so the stored path and type follow the real container.
+  const { extension, contentType } = audioFormat(file.type);
+  const path = `${userId}/${feedbackId}.${extension}`;
   const { error } = await client.storage.from("presentation-audio").upload(path, file, {
-    contentType: "audio/webm",
+    contentType,
     upsert: true,
   });
   if (error) throw error;

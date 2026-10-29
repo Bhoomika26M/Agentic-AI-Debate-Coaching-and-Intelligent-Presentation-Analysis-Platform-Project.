@@ -48,6 +48,14 @@ export type TurnDiagnostics = {
   revision_attempts?: number;
 };
 
+function detailMessage(payload: unknown, fallback: string) {
+  if (payload && typeof payload === "object" && "detail" in payload) {
+    const detail = (payload as { detail?: unknown }).detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+  }
+  return fallback;
+}
+
 export type ChallengeResult = {
   done: boolean;
   target_sentence: string | null;
@@ -78,7 +86,7 @@ export async function requestChallenge(
   });
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(error?.detail ?? "The coach could not ask a follow-up.");
+    throw new Error(detailMessage(error, "The coach could not ask a follow-up."));
   }
   const result = (await response.json()) as ChallengeResult;
   return {
@@ -109,6 +117,33 @@ export type AppCapabilities = {
   adaptive_tactics_available: boolean;
   laya_available: boolean;
 };
+
+/** Why the practice model may not answer yet, straight from the API health check. */
+export type ModelStatus = {
+  status: "ready" | "warming" | "model_unavailable" | "unknown";
+  provider?: string;
+  model?: string;
+  hint?: string;
+};
+
+export async function loadModelStatus(): Promise<ModelStatus> {
+  try {
+    const response = await fetch(apiUrl("/api/health"), { credentials: "omit" });
+    if (!response.ok) return { status: "unknown" };
+    const payload = (await response.json()) as Partial<ModelStatus>;
+    if (payload.status !== "ready" && payload.status !== "warming" && payload.status !== "model_unavailable") {
+      return { status: "unknown" };
+    }
+    return {
+      status: payload.status,
+      provider: typeof payload.provider === "string" ? payload.provider : undefined,
+      model: typeof payload.model === "string" ? payload.model : undefined,
+      hint: typeof payload.hint === "string" && payload.hint ? payload.hint : undefined,
+    };
+  } catch {
+    return { status: "unknown" };
+  }
+}
 
 export async function loadAppCapabilities(): Promise<AppCapabilities> {
   const response = await fetch(apiUrl("/api/health"), { credentials: "omit" });
@@ -159,7 +194,7 @@ export async function analyzeDebate(
   });
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(error?.detail ?? "The coach could not review this transcript.");
+    throw new Error(detailMessage(error, "The coach could not review this transcript."));
   }
   return (await response.json()) as AnalysisReport;
 }
@@ -181,6 +216,7 @@ export type JudgeVerdict = {
 export async function requestJudge(
   report: AnalysisReport,
   delivery: object | null,
+  turns: DebateMessage[],
   accessToken?: string,
 ) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -189,11 +225,18 @@ export async function requestJudge(
     method: "POST",
     headers,
     credentials: "omit",
-    body: JSON.stringify({ report, delivery }),
+    // Rebuttal is scored from the learner's replies, so the judge needs the turns.
+    body: JSON.stringify({
+      report,
+      delivery,
+      turns: turns
+        .filter((turn) => !turn.pending && turn.content.trim())
+        .map(({ speaker, content, kind }) => ({ speaker, content, ...(kind ? { kind } : {}) })),
+    }),
   });
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(error?.detail ?? "The judge could not score this rehearsal.");
+    throw new Error(detailMessage(error, "The judge could not score this rehearsal."));
   }
   return (await response.json()) as JudgeVerdict;
 }
@@ -226,7 +269,7 @@ export async function streamOpponentReply(
 
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(error?.detail ?? "The opponent could not respond.");
+    throw new Error(detailMessage(error, "The opponent could not respond."));
   }
   if (!response.body) throw new Error("Streaming is not available in this browser.");
 

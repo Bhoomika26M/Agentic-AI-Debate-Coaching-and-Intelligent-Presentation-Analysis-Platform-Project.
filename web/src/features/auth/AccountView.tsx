@@ -410,7 +410,9 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
         withAnalysis.map(async ({ analysis }) => {
           if (!analysis?.ratings) return null;
           try {
-            return await requestJudge(analysis, null, session?.access_token);
+            // Trends score the saved reviews without reloading every transcript;
+            // the judge omits rebuttal and renormalizes the remaining weights.
+            return await requestJudge(analysis, null, [], session?.access_token);
           } catch {
             return null;
           }

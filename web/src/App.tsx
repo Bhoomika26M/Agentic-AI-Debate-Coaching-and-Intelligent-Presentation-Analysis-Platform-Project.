@@ -21,12 +21,14 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent } 
 import {
   streamOpponentReply,
   analyzeDebate,
+  loadModelStatus,
   requestChallenge,
   requestJudge,
   type AnalysisReport,
   type DebateMessage,
   type DebateOptions,
   type JudgeVerdict,
+  type ModelStatus,
   type TurnDiagnostics,
 } from "./services/debate-api";
 import { createDebateRecord, deleteDebateAnalysis, finishDebateRecord, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn, type DebateRecord, type DebateRecordTurn } from "./services/debate-records";
@@ -94,6 +96,19 @@ function turnNumberFor(messages: DebateMessage[], index: number) {
     .slice(0, index + 1)
     .filter((message) => message.speaker === "learner").length;
   return Math.max(1, learnerTurns);
+}
+
+function turnErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message.trim() : "";
+  if (
+    !message ||
+    /failed to fetch|load failed|network|aborted|ended before the final response|returned an empty reply|streaming is not available/i.test(
+      message,
+    )
+  ) {
+    return "That turn didn't come through. Check your connection and try again.";
+  }
+  return message;
 }
 
 function Header({
@@ -201,6 +216,7 @@ export default function App() {
   const [turnError, setTurnError] = useState("");
   const [sessionId, setSessionId] = useState(0);
   const [startedAt, setStartedAt] = useState(0);
+  const [endedAt, setEndedAt] = useState(0);
   const [cueSequence, setCueSequence] = useState(0);
   const [cueVisible, setCueVisible] = useState(false);
   const [recordId, setRecordId] = useState<string | null>(null);
@@ -225,9 +241,18 @@ export default function App() {
   const [judgeError, setJudgeError] = useState("");
   const [challenging, setChallenging] = useState(false);
   const [challengeError, setChallengeError] = useState("");
+  const [challengeDone, setChallengeDone] = useState(false);
+  const [modelStatus, setModelStatus] = useState<ModelStatus>({ status: "unknown" });
+  const [modelChecking, setModelChecking] = useState(false);
+  const clockPausedRef = useRef(false);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const stickToBottomRef = useRef(true);
+  const lastTurnRef = useRef<{ history: DebateMessage[]; latest: string | null } | null>(null);
+  const pendingResumeRef = useRef<string | null>(null);
   const reviewInFlightRef = useRef(false);
   const planUpdateInFlightRef = useRef(false);
   const savedTurnIds = useRef(new Set<string>());
@@ -323,6 +348,26 @@ export default function App() {
     }
   }
 
+  async function checkModel() {
+    if (modelChecking) return;
+    setModelChecking(true);
+    try {
+      setModelStatus(await loadModelStatus());
+    } finally {
+      setModelChecking(false);
+    }
+  }
+
+  // The setup and arena paths tell the learner when the model is simply not running.
+  useEffect(() => {
+    if (view === "setup" || view === "arena") void checkModel();
+  }, [view]);
+
+  // The clock measures the learner's speaking time, so drafting time is not charged.
+  useEffect(() => {
+    clockPausedRef.current = streaming || challenging;
+  }, [streaming, challenging]);
+
   useEffect(() => {
     const hash = view === "landing" ? "#/" : `#/${view}`;
     if (window.location.hash !== hash) window.history.replaceState(null, "", hash);
@@ -358,6 +403,8 @@ export default function App() {
       reply_length: applicationSettings.replyLength,
     };
     const replyId = crypto.randomUUID();
+    lastTurnRef.current = { history, latest: learnerArgument };
+    stickToBottomRef.current = true;
     setCueSequence((current) => current + 1);
     setCueVisible(true);
     const controller = new AbortController();
@@ -394,6 +441,7 @@ export default function App() {
           );
         },
       );
+      lastTurnRef.current = null;
       setMessages((current) =>
         current.map((message) =>
           message.id === replyId ? { ...message, pending: false } : message,
@@ -401,13 +449,20 @@ export default function App() {
       );
       setTurnError("");
     } catch (error) {
-      if (controller.signal.aborted) return;
       setMessages((current) => current.filter((message) => message.id !== replyId));
-      setTurnError("That turn didn't come through. Send it again.");
+      if (controller.signal.aborted) return;
+      setTurnError(turnErrorMessage(error));
     } finally {
       setStreaming(false);
       abortRef.current = null;
     }
+  }
+
+  function retryLastTurn() {
+    const lastTurn = lastTurnRef.current;
+    if (!lastTurn || streaming) return;
+    stickToBottomRef.current = true;
+    void requestOpponentReply(lastTurn.history, lastTurn.latest);
   }
 
   useEffect(() => {
@@ -422,9 +477,25 @@ export default function App() {
     }
   }, [view, sessionId]);
 
+  // A restored transcript can end on the learner's turn when the tab closed
+  // mid-reply. Ask the opponent to finish that turn once, instead of leaving it
+  // hanging or pretending a partial stream was a full answer.
+  useEffect(() => {
+    const latest = pendingResumeRef.current;
+    if (view !== "arena" || !latest || streaming) return;
+    const completed = messages.filter((message) => !message.pending);
+    const last = completed[completed.length - 1];
+    if (!last || last.speaker !== "learner" || last.content !== latest) return;
+    pendingResumeRef.current = null;
+    void requestOpponentReply(completed.slice(0, -1), latest);
+  }, [view, sessionId, streaming, messages]);
+
   useEffect(() => {
     if (view !== "arena" || secondsLeft <= 0) return;
-    const timer = window.setInterval(() => setSecondsLeft((current) => Math.max(0, current - 1)), 1000);
+    const timer = window.setInterval(() => {
+      if (clockPausedRef.current) return;
+      setSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
     return () => window.clearInterval(timer);
   }, [view]);
 
@@ -435,14 +506,31 @@ export default function App() {
     }
   }, [view, secondsLeft, streaming]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages]);
+  function handleTranscriptScroll() {
+    const element = transcriptRef.current;
+    if (!element) return;
+    const nearBottom =
+      element.scrollHeight - element.scrollTop - element.clientHeight < 72;
+    stickToBottomRef.current = nearBottom;
+    if (nearBottom) setShowJumpToLatest(false);
+    else if (messages.length > 0) setShowJumpToLatest(true);
+  }
 
-  useEffect(() => {
-    if (view !== "arena") return;
+  function jumpToLatest() {
+    stickToBottomRef.current = true;
+    setShowJumpToLatest(false);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }
+
+  function persistArenaSnapshot() {
+    if (view !== "arena") return null;
+    // A partial stream must never be restored later as if it were a full turn.
+    const completed = messages.filter(
+      (message) => !message.pending && message.content.trim(),
+    );
+    if (!completed.some((message) => message.speaker === "learner")) return null;
     const snapshot: ArenaSnapshot = {
-      messages, draft, secondsLeft, duration, topicChoice, customTopic,
+      messages: completed, draft, secondsLeft, duration, topicChoice, customTopic,
       position, persona, difficulty, sessionId, startedAt, recordId, continuation, continuedHistoryCount,
       savedAt: Date.now(),
     };
@@ -451,6 +539,19 @@ export default function App() {
     } catch {
       /* Private browsing or quota — the live session is unaffected. */
     }
+    return snapshot;
+  }
+
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    bottomRef.current?.scrollIntoView({
+      behavior: streaming ? "auto" : "smooth",
+      block: "end",
+    });
+  }, [messages, streaming]);
+
+  useEffect(() => {
+    persistArenaSnapshot();
   }, [view, messages, draft, secondsLeft, duration, topicChoice, customTopic, position, persona, difficulty, sessionId, startedAt, recordId, continuation, continuedHistoryCount]);
 
   useEffect(() => {
@@ -458,8 +559,11 @@ export default function App() {
       const raw = window.sessionStorage.getItem(SNAPSHOT_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw) as Partial<ArenaSnapshot>;
-      if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
-        setSavedSnapshot(parsed as ArenaSnapshot);
+      const messages = Array.isArray(parsed.messages)
+        ? parsed.messages.filter((message) => !message.pending && message.content.trim())
+        : [];
+      if (messages.some((message) => message.speaker === "learner")) {
+        setSavedSnapshot({ ...(parsed as ArenaSnapshot), messages });
       }
     } catch {
       /* A corrupt snapshot is the same as no snapshot. */
@@ -511,7 +615,16 @@ export default function App() {
     const chosenTopic = (prefill?.topic ?? activeTopic).trim();
     const chosenDuration = prefill?.duration ?? duration;
     if (!chosenTopic) return;
+    abortRef.current?.abort();
+    clearSnapshot();
+    lastTurnRef.current = null;
+    pendingResumeRef.current = null;
     setStartingSession(true);
+    setTurnError("");
+    setChallengeError("");
+    setChallengeDone(false);
+    setShowJumpToLatest(false);
+    setCueVisible(false);
     setRecordNotice("");
     setAnalysis(null);
     setAnalysisError("");
@@ -540,6 +653,7 @@ export default function App() {
     }
     setSecondsLeft(chosenDuration * 60);
     setStartedAt(Date.now());
+    setEndedAt(0);
     savedTurnIds.current = new Set();
     let nextRecordId: string | null = null;
     memoryRef.current = [];
@@ -651,7 +765,7 @@ export default function App() {
     setJudgeLoading(true);
     setJudgeError("");
     try {
-      const verdict = await requestJudge(report, delivery, session?.access_token);
+      const verdict = await requestJudge(report, delivery, messages, session?.access_token);
       setJudge(verdict);
     } catch (error) {
       setJudgeError(error instanceof Error ? error.message : "The judge could not score this rehearsal. Try again.");
@@ -679,9 +793,14 @@ export default function App() {
   }
 
   function finishSession() {
+    setEndedAt(Date.now());
     abortRef.current?.abort();
     setStreaming(false);
     setConfirmEnd(false);
+    setChallengeDone(false);
+    setShowJumpToLatest(false);
+    lastTurnRef.current = null;
+    pendingResumeRef.current = null;
     clearSnapshot();
     if (recordId) {
       void finishDebateRecord(recordId).catch(() => {
@@ -701,6 +820,9 @@ export default function App() {
       speaker: "learner",
       content: argument,
     };
+    stickToBottomRef.current = true;
+    setShowJumpToLatest(false);
+    setChallengeDone(false);
     setMessages((current) => [...current, learnerMessage]);
     setDraft("");
     setChallengeError("");
@@ -719,7 +841,7 @@ export default function App() {
   async function requestFollowUp() {
     const latestLearner = [...messages].reverse().find((m) => m.speaker === "learner" && !m.pending);
     const depth = challengeDepth();
-    if (challenging || streaming || !latestLearner || depth >= 2 || secondsLeft === 0) return;
+    if (challengeDone || challenging || streaming || !latestLearner || depth >= 2 || secondsLeft === 0) return;
     setChallenging(true);
     setChallengeError("");
     try {
@@ -732,6 +854,7 @@ export default function App() {
       };
       const result = await requestChallenge(options, messages, latestLearner.content, depth, session?.access_token);
       if (result.done || !result.follow_up) {
+        setChallengeDone(true);
         setChallengeError("The coach has no further follow-ups on this turn. Make your next case.");
         return;
       }
@@ -752,7 +875,10 @@ export default function App() {
 
   function resumeSnapshot(snapshot: ArenaSnapshot) {
     const remaining = Math.max(0, snapshot.secondsLeft - Math.floor((Date.now() - snapshot.savedAt) / 1000));
-    if (remaining <= 0 || snapshot.messages.length === 0) {
+    const restored = snapshot.messages.filter(
+      (message) => !message.pending && message.content.trim(),
+    );
+    if (remaining <= 0 || !restored.some((message) => message.speaker === "learner")) {
       clearSnapshot();
       return;
     }
@@ -764,23 +890,31 @@ export default function App() {
     setDuration(snapshot.duration);
     setSecondsLeft(remaining);
     setMessages(
-      snapshot.messages.map((message) => ({
+      restored.map((message) => ({
         ...message,
         content: stripControlMarkers(message.content),
         pending: false,
       })),
     );
-    savedTurnIds.current = new Set(snapshot.messages.map((message) => message.id));
+    const last = restored[restored.length - 1];
+    pendingResumeRef.current = last.speaker === "learner" ? last.content : null;
+    savedTurnIds.current = new Set(restored.map((message) => message.id));
     setDraft(snapshot.draft);
     setSessionId(snapshot.sessionId);
     setStartedAt(snapshot.startedAt);
+    setEndedAt(0);
     setRecordId(snapshot.recordId);
     setContinuation(snapshot.continuation ?? false);
-    setContinuedHistoryCount(Math.min(snapshot.continuedHistoryCount ?? 0, snapshot.messages.length));
+    setContinuedHistoryCount(Math.min(snapshot.continuedHistoryCount ?? 0, restored.length));
     setStreaming(false);
     setCueVisible(false);
+    setTurnError("");
+    setChallengeError("");
+    setChallengeDone(false);
+    setShowJumpToLatest(false);
     setRecordNotice("");
     setSavedSnapshot(null);
+    stickToBottomRef.current = true;
     setView("arena");
   }
 
@@ -795,9 +929,18 @@ export default function App() {
   }
 
   function returnHome() {
+    const snapshot = persistArenaSnapshot();
     abortRef.current?.abort();
     setStreaming(false);
     setConfirmEnd(false);
+    lastTurnRef.current = null;
+    pendingResumeRef.current = null;
+    if (snapshot) setSavedSnapshot(snapshot);
+    setTurnError("");
+    setChallengeError("");
+    setChallengeDone(false);
+    setShowJumpToLatest(false);
+    setAccountFocusId(null);
     setView(user ? "home" : "landing");
     setMessages([]);
     setSessionId(0);
@@ -846,6 +989,16 @@ export default function App() {
     }
     setSecondsLeft((current) => (current > 0 ? current : duration * 60));
     setStartedAt(Date.now());
+    setEndedAt(0);
+    const completed = messages.filter((message) => !message.pending);
+    const last = completed[completed.length - 1];
+    pendingResumeRef.current = last?.speaker === "learner" ? last.content : null;
+    lastTurnRef.current = null;
+    setTurnError("");
+    setChallengeError("");
+    setChallengeDone(false);
+    setShowJumpToLatest(false);
+    stickToBottomRef.current = true;
     setView("arena");
   }
 
@@ -870,6 +1023,7 @@ export default function App() {
     setDuration(record.duration_minutes);
     setSecondsLeft(record.duration_minutes * 60);
     setStartedAt(Date.now());
+    setEndedAt(0);
     setMessages(restoredMessages);
     setDraft("");
     setAnalysis(null);
@@ -885,6 +1039,11 @@ export default function App() {
     setCueVisible(false);
     setTurnError("");
     setChallengeError("");
+    setChallengeDone(false);
+    setShowJumpToLatest(false);
+    lastTurnRef.current = null;
+    pendingResumeRef.current = null;
+    stickToBottomRef.current = true;
     setContinuation(true);
     setContinuedHistoryCount(restoredMessages.length);
     setRecordId(record.id);
@@ -916,7 +1075,11 @@ export default function App() {
     setStartingSession(false);
   }
 
-  const elapsed = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
+  // Freeze the room clock when the rehearsal ends; the review can take a while,
+  // and its wait must not be reported as time the learner spent in the room.
+  const endedOrNow = endedAt || Date.now();
+  const elapsed = startedAt ? Math.max(0, Math.floor((endedOrNow - startedAt) / 1000)) : 0;
+  const modelOffline = modelStatus.status === "model_unavailable";
 
   return (
     <div className={`app-shell ${view === "setup" ? "app-shell-setup" : ""} ${view === "arena" || view === "verdict" || view === "present" ? "app-shell-room" : ""}`}>
@@ -1154,6 +1317,12 @@ export default function App() {
                 <span className="is-set">OPPONENT · {activePersona.name.replace("The ", "").toUpperCase()}</span>
                 <span className="is-set">DIFFICULTY · {difficultyOptions.find((option) => option.value === difficulty)?.label.toUpperCase()} · {duration} MIN</span>
               </div>
+              {modelOffline && (
+                <div className="inline-notice" role="status">
+                  <span>Before you start: {modelStatus.hint ?? "The practice model is not running."} Nothing is wrong with your setup — the room simply cannot open a case yet.</span>
+                  <button type="button" onClick={() => void checkModel()} disabled={modelChecking}>{modelChecking ? "Checking…" : "Check again"}</button>
+                </div>
+              )}
             </div>
 
             <div className="setup-layout">
@@ -1178,7 +1347,7 @@ export default function App() {
                       className={`topic-option ${topicChoice === topic && !customTopic ? "selected" : ""}`}
                       onClick={() => { setTopicChoice(topic); setCustomTopic(""); }}
                     >
-                      <span className="topic-number">0{index + 1}</span><span>{topic}</span>
+                      <span className="topic-number">{(index + 1).toString().padStart(2, "0")}</span><span>{topic}</span>
                       {topicChoice === topic && !customTopic ? <Check size={16} /> : <ArrowUpRight size={14} />}
                     </button>
                   ))}
@@ -1275,14 +1444,17 @@ export default function App() {
             <div className="arena-statusbar" role="status" aria-label="Session status">
               <span className="statusbar-motion">{activeTopic}</span>
               <span className="statusbar-side">{position === "for" ? "FOR" : "AGAINST"}</span>
-              <span className="statusbar-turn">TURN {Math.max(1, learnerTurns.length + 1).toString().padStart(2, "0")}</span>
+              <span className="statusbar-turn">TURN {Math.max(1, learnerTurns.length).toString().padStart(2, "0")}</span>
               <span className={`statusbar-clock ${secondsLeft < 60 ? "clock-urgent" : ""}`}><i aria-hidden="true" />{formatTime(secondsLeft)}</span>
             </div>
 
             {continuation && <div className="continuation-banner" role="status"><b>CONTINUATION</b><span>Earlier turns are loaded below. This round has a fresh clock, and new turns will join the same archive.</span></div>}
 
             <div className="arena-casebar">
-              <div><span className="casebar-label">MOTION</span><h1>{activeTopic}</h1></div>
+              <div>
+                <span className="casebar-label">MOTION</span><h1>{activeTopic}</h1>
+                {(streaming || challenging) && <p className="casebar-pause">Clock paused while your opponent works</p>}
+              </div>
               <div className={`arena-clock ${secondsLeft < 60 ? "clock-urgent" : ""}`}><TimerReset size={17} /><span>{formatTime(secondsLeft)}</span>{secondsLeft < 60 && secondsLeft > 0 && <span className="clock-warning">Final minute</span>}</div>
             </div>
 
@@ -1300,7 +1472,7 @@ export default function App() {
               </aside>
 
               <section className="transcript-panel" role="region" aria-label="Live debate transcript">
-                <div className="transcript-heading"><div><h2>The debate</h2>{continuation && <p>Earlier turns from your archive are part of this conversation.</p>}</div><span className="round-counter"><span>TURN</span> {Math.max(1, learnerTurns.length + 1).toString().padStart(2, "0")}</span></div>
+                <div className="transcript-heading"><div><h2>The debate</h2>{continuation && <p>Earlier turns from your archive are part of this conversation.</p>}</div><span className="round-counter"><span>TURN</span> {Math.max(1, learnerTurns.length).toString().padStart(2, "0")}</span></div>
                 <AnimatePresence initial={false}>
                   {cueVisible && (
                     <motion.div
@@ -1318,13 +1490,32 @@ export default function App() {
                     </motion.div>
                   )}
                 </AnimatePresence>
+                {modelOffline && (
+                  <div className="inline-notice" role="status">
+                    <span>The practice model is not running, so your opponent cannot reply. {modelStatus.hint}</span>
+                    <button type="button" onClick={() => void checkModel()} disabled={modelChecking}>{modelChecking ? "Checking…" : "Check again"}</button>
+                  </div>
+                )}
                 {turnError && (
-                  <div className="inline-notice" role="status">{turnError}</div>
+                  <div className="inline-notice" role="alert">
+                    <span>{turnError}</span>
+                    {lastTurnRef.current && !streaming && (
+                      <button type="button" onClick={retryLastTurn}>Retry turn</button>
+                    )}
+                  </div>
                 )}
                 {recordNotice && <div className="inline-notice" role="status">{recordNotice}</div>}
-                <div className="transcript-scroll" role="log" aria-live="polite" aria-relevant="additions text" aria-busy={streaming}>
+                <div
+                  ref={transcriptRef}
+                  onScroll={handleTranscriptScroll}
+                  className="transcript-scroll"
+                  role="log"
+                  aria-live="polite"
+                  aria-relevant="additions text"
+                  aria-busy={streaming || challenging}
+                >
                   {messages.length === 0 && (
-                    <div className="empty-transcript"><span className="empty-marker"><EmptyCueArt label="Opponent preparing an opening statement" /></span><p>The room is set. Your opponent is preparing an opening statement.</p></div>
+                    <div className="empty-transcript"><span className="empty-marker"><EmptyCueArt label={modelOffline ? "Waiting for the model" : "Opponent preparing an opening statement"} /></span><p>{modelOffline ? "The model is not running, so there is no opening statement yet. Start it using the message above, then retry the turn." : "The room is set. Your opponent is preparing an opening statement."}</p></div>
                   )}
                   {messages.map((message, index) => (
                     <motion.article
@@ -1368,6 +1559,11 @@ export default function App() {
                   {continuation && continuedHistoryCount === messages.length && <div className="history-boundary">NEW ROUND · CONTINUE BELOW</div>}
                   <div ref={bottomRef} />
                 </div>
+                {showJumpToLatest && (
+                  <button type="button" className="jump-to-latest" onClick={jumpToLatest}>
+                    <ArrowDownRight size={14} aria-hidden="true" /> Jump to newest
+                  </button>
+                )}
                 <form className="argument-composer" onSubmit={(event) => void submitArgument(event)}>
                   <div className="composer-topline"><span><CornerDownLeft size={13} /> YOUR TURN</span><span>{draft.length} / 1000 · ENTER TO SEND</span></div>
                   <textarea
@@ -1386,7 +1582,46 @@ export default function App() {
                     disabled={streaming || secondsLeft === 0}
                   />
                   {challengeError && <div className="inline-notice" role="status">{challengeError}</div>}
-                  <div className="composer-bottom"><span>One claim at a time — aim for 1–2 sentences. Enter sends · Shift + Enter adds a line.</span><button className="challenge-button" type="button" onClick={() => void requestFollowUp()} disabled={challenging || streaming || learnerTurns.length === 0 || challengeDepth() >= 2 || secondsLeft === 0} title={learnerTurns.length === 0 ? "Make your case first — follow-ups unlock after your opening turn" : "Ask the coach to press your latest point"}>{challenging ? <LoaderCircle size={15} className="spin" /> : <Sparkles size={14} />} <span>{challengeDepth() >= 2 ? "Follow-ups done" : learnerTurns.length === 0 ? "Make a case first" : "Ask a follow-up"}</span></button><button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">{streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />} <span>{streaming ? "Drafting and reviewing" : "Make your case"}</span></button></div>
+                  <div className="composer-bottom">
+                    <span>One claim at a time — aim for 1–2 sentences. Enter sends · Shift + Enter adds a line.</span>
+                    <button
+                      className="challenge-button"
+                      type="button"
+                      onClick={() => void requestFollowUp()}
+                      disabled={
+                        challenging ||
+                        streaming ||
+                        learnerTurns.length === 0 ||
+                        challengeDepth() >= 2 ||
+                        challengeDone ||
+                        secondsLeft === 0
+                      }
+                      title={
+                        learnerTurns.length === 0
+                          ? "Make your case first — follow-ups unlock after your opening turn"
+                          : challengeDepth() >= 2
+                            ? "Two follow-ups is the limit for this turn"
+                            : challengeDone
+                              ? "The coach has no further question on this turn. Make your next case."
+                              : "Ask the coach to press your latest point"
+                      }
+                    >
+                      {challenging ? <LoaderCircle size={15} className="spin" /> : <Sparkles size={14} />}
+                      <span>
+                        {challengeDepth() >= 2
+                          ? "Follow-ups done"
+                          : challengeDone
+                            ? "No follow-up here"
+                            : learnerTurns.length === 0
+                              ? "Make a case first"
+                              : "Ask a follow-up"}
+                      </span>
+                    </button>
+                    <button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">
+                      {streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />}
+                      <span>{streaming ? "Drafting and reviewing" : "Make your case"}</span>
+                    </button>
+                  </div>
                 </form>
               </section>
 
@@ -1470,7 +1705,7 @@ export default function App() {
                       <div className="score-figure">
                         <span>WEIGHTED SCORE</span>
                         <b>{judge.overall.toFixed(1)}<small> / 5</small></b>
-                        <p>{deliveryResult ? "Includes your closing take." : "Record a closing take under Delivery to score communication."}</p>
+                        <p>{judge.dimensions.some((dim) => dim.key === "communication") ? "Includes your closing take." : "Communication is not scored yet: record a closing take under Delivery. The other dimensions are renormalized to 100%."}</p>
                       </div>
                       <div className="score-bars">
                         {judge.dimensions.map((dim) => (
@@ -1496,7 +1731,7 @@ export default function App() {
                   )}
 
                   {analysis.ratings && (
-                    <details className="disclosure">
+                    <details className="disclosure" open>
                       <summary>
                         Argument scores
                         <span>clarity {analysis.ratings?.clarity?.score ?? "–"} · relevance {analysis.ratings?.relevance?.score ?? "–"} · evidence {analysis.ratings?.evidence_strength?.score ?? "–"} · logic {analysis.ratings?.logical_consistency?.score ?? "–"} · persuasion {analysis.ratings?.persuasiveness?.score ?? "–"}</span>
@@ -1517,7 +1752,7 @@ export default function App() {
                     </details>
                   )}
 
-                  <details className="disclosure">
+                  <details className="disclosure" open>
                     <summary>Logic watch<span>{analysis.fallacies.length === 0 ? "no clear examples" : `${analysis.fallacies.length} to review`}</span></summary>
                     <section className="analysis-fallacies">
                       {analysis.fallacies.length === 0
@@ -1527,7 +1762,7 @@ export default function App() {
                   </details>
 
                   {analysis.counterarguments.length > 0 && (
-                    <details className="disclosure">
+                    <details className="disclosure" open>
                       <summary>Counterpoints to test your case<span>{analysis.counterarguments.length} angles</span></summary>
                       <section className="analysis-counterpoints"><div className="counterpoint-grid">
                         {analysis.counterarguments.map((item) => <article key={item.kind}><span>{item.kind.toUpperCase()}</span><p>{item.response}</p><small>ASK: {item.question}</small></article>)}
@@ -1536,8 +1771,8 @@ export default function App() {
                   )}
 
                   {judge && (
-                    <details className="disclosure">
-                      <summary>How the score is weighted<span>argument 30 · evidence 20 · logic 20 · rebuttal 15 · communication 15</span></summary>
+                    <details className="disclosure" open>
+                      <summary>How the score is weighted<span>{judge.dimensions.map((dim) => `${dim.key} ${dim.weight_pct}%`).join(" · ")}</span></summary>
                       <div className="judge-grid">
                         {judge.dimensions.map((dim) => (
                           <article key={dim.key} className="judge-card">

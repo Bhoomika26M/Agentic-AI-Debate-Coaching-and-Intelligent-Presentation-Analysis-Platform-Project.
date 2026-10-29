@@ -42,8 +42,14 @@ services:
       # Point at http://host.docker.internal:11434 to reuse a host Ollama (docker compose up api web).
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
+      # Optional hosted provider; the API uses it when LLM_PROVIDER=openai or a key is set.
+      LLM_PROVIDER: ${LLM_PROVIDER:-auto}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_JSON_MODE: ${OPENAI_JSON_MODE:-json_schema}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ENABLE_LAYA_TACTICS: ${ENABLE_LAYA_TACTICS:-false}
-      WEB_ORIGIN: http://localhost:8080
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8080}
       ALLOWED_HOSTS: localhost,127.0.0.1,api
       REQUIRE_AUTH: ${REQUIRE_AUTH:-false}
       # "public" refuses to start without REQUIRE_AUTH=true and explicit https origins.

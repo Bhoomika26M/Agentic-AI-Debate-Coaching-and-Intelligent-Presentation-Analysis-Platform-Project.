@@ -18,7 +18,7 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 **Review your arguments.** A rehearsal with learner turns can be reviewed for ratings on clarity, relevance, evidence, logic, and persuasion, fallacy flags quoted from your exact words, and five counterpoint styles that test your case from other angles. Any branch the model cannot complete is disclosed as a partial review rather than silently filled in.
 
-**Get a weighted verdict.** Argument, evidence, logic, rebuttal, and communication are combined 30/20/20/15/15 into one deterministic summary of the review and the transcript, each with a line of coaching behind it. It is not a second, independent model judgment. Rebuttal is read from what you actually said back: each reply to an opponent challenge is checked for taking up the challenge's own terms, being developed enough to count as an answer, and containing a flagged fallacy itself. The logic score names the fallacy quotes it caught, and communication carries timestamps from your delivery review when there is one. A dimension with no evidence — no closing take, or no replies to the opponent — is left out and the remaining weights are renormalized to 100% and disclosed, rather than filled with a placeholder score.
+**Get a weighted verdict.** Argument, evidence, logic, rebuttal, and communication are combined 30/20/20/15/15 into one deterministic summary of the review and the transcript, each with a line of coaching behind it. It is not a second, independent model judgment. Rebuttal is read from what you actually said back. A reply to an opponent challenge is always scored; without one, only turns after your opening case count, because the opening itself is a case, not a rebuttal. Each reply is checked for taking up the point's own terms, being developed enough to count as an answer, and containing a flagged fallacy itself. The logic score names the fallacy quotes it caught, and communication carries timestamps from your delivery review when there is one. A dimension with no evidence — no closing take, or no rebuttal turn — is left out and the remaining weights are renormalized to 100% and disclosed, rather than filled with a placeholder score.
 
 **Review your delivery.** Record or upload a closing take of up to three minutes. You get transcript-based pace, filler, and pause signals with timestamps you can replay, plus short drills built around what the recording actually shows. The four labels describe observable patterns — fast pace, hesitant patch, long pause, steady pace — not the speaker's emotional state. Audio is discarded after the review unless you choose to keep it.
 
@@ -26,7 +26,9 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 **Track your progress.** Your learner space holds your archive, a profile with goals and audio preferences, and trends across sessions, streaks, average scores, and filler direction. The archive shows the latest five of the 30 most recent rehearsals first and expands to the rest, and opening a session from the dashboard jumps straight to it. Download an archive CSV with transcripts, reviews, and delivery takes, or print a report. The archive can delete one rehearsal; Settings can delete all saved practice or the account itself.
 
-![The learner space archive showing the latest five rehearsals, the next-rehearsal card, and the session tabs](docs/screenshots/account.png)
+![The learner space archive with seeded sample sessions, the next-rehearsal card, and the session tabs](docs/screenshots/account.png)
+
+*This view is shown with the seeded sample sessions and test account from the browser test fixture, not a real learner's record. The other screenshots and the demo are unedited captures of the local app.*
 
 **Keep your work.** A free account with email or Google saves transcripts and reviews to your archive; password recovery is built in. A guest rehearsal lives only in the current browser tab and is cleared when the session ends.
 
@@ -46,14 +48,14 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 ![The weighted verdict with its scored dimensions](docs/screenshots/verdict.png)
 
-The screenshot above is a real guest round against the local model, with no delivery take recorded: communication is left out, the other four weights are renormalized to 100%, and the gap is disclosed. [Watch the 30-second capture of that round](docs/demo.webm) (no audio).
+The screenshot above is a real guest round against the local model, with no delivery take recorded: communication is left out, the other four weights are renormalized to 100%, and the gap is disclosed. [Watch the screen recording of that round and its review](docs/demo.webm) (68 seconds, no audio; the review wait is included). The recording and screenshot come from the same Playwright-driven run against the real local model; no score, text, or timing was edited.
 
 ---
 
 ## How it works
 
 1. You type an argument in the browser and send it to the API.
-2. A narrow deterministic guard routes hard off-motion requests (code, essays, prompt exfiltration) to an in-character redirect with no model call. Ambiguous meta requests (role claims, instruction bait, translate/solve phrasing) only redirect when the turn shows no debate evidence: no motion overlap, no overlap with the recent exchange, and no debate vocabulary. It is a coarse routing signal, not a complete injection defence, so a normal argument that merely mentions a trigger phrase still reaches the model. The opponent prompt also treats role claims and meta banter as debate rather than as a second guard. On a normal learner turn, a small deterministic argument-shape policy handles clear cases: it answers a challenge before probing, presses unsourced evidence, tests a load-bearing premise, challenges an absolute claim, traces a policy's consequences, or clarifies a vague causal claim. Ambiguous turns go to local Laya when the optional checkpoint is installed and enabled; Laya chooses among those five concrete vulnerabilities rather than the generic follow-up move. The configured model writes the in-persona reply. If Laya is disabled or no rule and no supported Laya move are available, the existing planner supplies its private weakest-joint brief. A verifier checks length, role labels, first-person character breaks (naming ChatGPT or an AI tutor inside an argument is allowed — the verifier is a heuristic, not an injection defence), leakage of any private prompt context (planner brief, stored-history summary, Laya tactic, pressure hint), and whether the reply engaged the latest point, accepting a clear paraphrase or on-motion vocabulary. A flagged turn is repaired up to twice; a turn that still fails is replaced with a neutral on-motion question, never an accusation. The room labels the path as verified, recovered, or on-motion.
+2. A narrow deterministic guard routes hard off-motion requests (code, essays, prompt exfiltration) to an in-character redirect with no model call. Ambiguous meta requests (role claims, instruction bait, translate/solve phrasing) only redirect when the turn shows no debate evidence: no motion overlap, no overlap with the recent exchange, and no debate vocabulary. It is a coarse routing signal, not a complete injection defence, so a normal argument that merely mentions a trigger phrase still reaches the model. The opponent prompt also treats role claims and meta banter as debate rather than as a second guard. On a normal learner turn, a small deterministic argument-shape policy handles clear cases: it answers a challenge before probing, presses unsourced evidence, tests a load-bearing premise, challenges an absolute claim, traces a policy's consequences, or clarifies a vague causal claim. Ambiguous turns go to local Laya when the optional checkpoint is installed and enabled; Laya chooses among those five concrete vulnerabilities rather than the generic follow-up move. The configured model writes the in-persona reply. If Laya is disabled or no rule and no supported Laya move are available, the existing planner supplies its private weakest-joint brief. A verifier checks length, role labels, first-person character breaks (naming ChatGPT or an AI tutor inside an argument is allowed — the verifier is a heuristic, not an injection defence), leakage of any private prompt context (planner brief, stored-history summary, Laya tactic, pressure hint), and whether the reply engaged the latest point, accepting a clear paraphrase or on-motion vocabulary. A flagged turn is repaired up to twice; a turn that still fails is replaced with a neutral on-motion question, never an accusation. The room labels the path as verified, recovered, or on-motion. That verifier is a routing check, not a fact-check: a reply that addresses you directly can pass even when it shares little of the point's wording.
 3. Coaching fans rubric scoring, fallacy detection, and counterpoints into parallel branches that merge into one review. Every fallacy quote is matched against your own words, and contact details are redacted from saved reports. A transcript longer than 32 turns is reviewed from a condensed older summary plus the latest 32 turns; a transcript over 200 turns is declined with a clear message instead of being truncated silently.
 4. The practice plan diagnoses weak spots from your scores, writes a drill for each, and refuses to invent weaknesses, scores, or session counts that your record does not support.
 5. Delivery review transcribes your audio to timestamped words, counts pace, fillers, pauses, and repeats in pure Python, and uses those signals to draft time-stamped drills.
@@ -91,7 +93,7 @@ The language model only ever receives text through the API. The browser never ta
 - **Tasks**
   - [x] Define project objectives and debate coaching workflows.
   - [x] Design system architecture and database schema.
-  - [x] Create UI wireframes and workflow planning.
+  - [x] Create UI wireframes and workflow planning. The workflow is in `PRODUCT.md`; per-screen design notes are local-only and not tracked in this repository.
   - [x] Setup frontend and backend environments.
   - [x] Email and Google sign-in with owner-scoped row level security; **no coach, educator, or admin roles** in v1.
   - [x] Build user profile and skill tracking workflows.
@@ -133,9 +135,9 @@ The language model only ever receives text through the API. The browser never ta
 - **Tasks**
   - [x] Implement the presentation analysis engine: transcript-based pace, fillers, pauses, and drills. **No confidence, engagement, or prosody scoring**, and no slides or video.
   - [x] Add reports and visualization modules. **CSV and browser print only; no native PDF or Excel export.**
-  - [x] Implement testing and validations: 278 backend tests and 11 Playwright tests, plus GitHub Actions running pytest, the typecheck, and a build.
+  - [x] Implement testing and validations: 280 backend tests and 11 Playwright tests, plus a GitHub Actions workflow for pytest, the fallacy-set check, the typecheck, and a build. The workflow has not yet run on a GitHub runner.
   - [ ] Deploy the platform to a public host. Dockerfiles, compose, a Render blueprint, and hosted-provider routing exist, but nothing is deployed and there is no monitoring.
-  - [x] Prepare final documentation and presentation.
+  - [x] Prepare final documentation and presentation. Documentation, the milestone audit, and a recorded walkthrough are in the repository; **no slide deck is included**.
 - **Outcomes**
   - [ ] Fully deployed production-ready platform. **Not delivered.**
   - [x] Debate coaching intelligence systems operational.
@@ -157,7 +159,7 @@ The original brief listed fourteen modules. This table says what exists for each
 | 6 | Counterarguments: five types, challenge questions, strategy | Done | Exactly one Logical, Evidence-based, Ethical, Practical, and Policy counterpoint, each with a challenge question. |
 | 7 | Presentation analysis | Partial | Pace, fillers, pauses, and repeats computed from the transcript, with timestamped drills. **No confidence, engagement, or prosody**, and no slides or video. |
 | 8 | AI debate simulation | Done | Guard, memory, planner, drafter, verifier, reviser, fallback, personas, and two-deep Socratic follow-ups. |
-| 9 | Scoring: 30/20/20/15/15 | Done with deviations | The weights are the spec's. Rebuttal is read from the learner's replies to challenges, and an unscorable dimension is omitted with the rest renormalized instead of scored with a placeholder. |
+| 9 | Scoring: 30/20/20/15/15 | Done with deviations | The weights are the spec's. Rebuttal is read from the learner's replies to challenges or later points (never the opening case), and an unscorable dimension is omitted with the rest renormalized instead of scored with a placeholder. |
 | 10 | Coaching and learning path | Done | A deterministic diagnosis, drills for the diagnosed weak spots, a four-week rhythm, and a groundedness verifier. |
 | 11 | Dashboards: learner, coach, educator, admin | Partial | **Learner only.** No coach, educator, or admin views. |
 | 12 | Notifications | Not implemented | Nothing. |
@@ -168,7 +170,7 @@ The original brief listed fourteen modules. This table says what exists for each
 
 - **Supabase instead of PostgreSQL plus MongoDB.** Auth, Postgres with row level security, and a private audio bucket in one service; there is no document store, because every record here is relational.
 - **A local model instead of the OpenAI API.** Ollama is the default; the same code can call any OpenAI-compatible endpoint when you deploy it. Nothing in the app requires a particular vendor.
-- **No classic ML stack.** There is no scikit-learn, TensorFlow, PyTorch, spaCy, FAISS, Elasticsearch, or embedding store, because the product does analysis with prompted models and deterministic code. The optional Laya checkpoint is the only PyTorch component, and it is off by default.
+- **No classic ML stack.** There is no mandatory scikit-learn, TensorFlow, PyTorch, spaCy, FAISS, Elasticsearch, or embedding store; the product does analysis with prompted models and deterministic code. The only optional PyTorch dependencies are the Laya checkpoint and the SER (`speechbrain`) extra, and both are off by default.
 - **Accuracy is measured narrowly, not broadly.** The spec's §8 metrics are not implemented as such. The repository ships three small hand-labelled sets — 24 tuning turns and a separate 30-turn held-out check for tactic selection, plus 50 labelled snippets for fallacy detection — and scripts that report what each produces. The fallacy baseline is real and modest (74–78% precision, 35–45% recall). None of it is learner improvement.
 
 ---
@@ -365,12 +367,13 @@ With a hosted provider the API holds no model in memory, so a small instance wor
 
 ```bash
 docker build -t verdict-api ai-backend
-docker run -p 8000:8000 verdict-api \
+docker run -p 8000:8000 \
   -e LLM_PROVIDER=openai -e OPENAI_BASE_URL=https://your-gateway.example/v1 \
   -e OPENAI_MODEL=your-model -e OPENAI_API_KEY=... \
   -e DEPLOYMENT_ENV=public -e REQUIRE_AUTH=true \
   -e WEB_ORIGIN=https://your-web-host -e ALLOWED_HOSTS=your-api-host \
-  -e SUPABASE_URL=...
+  -e SUPABASE_URL=... \
+  verdict-api
 ```
 
 The image also ships local transcription, whose Whisper model downloads on the first delivery review. If the host is small, give it enough memory for that first run or do not use the delivery room there.
@@ -401,7 +404,7 @@ Behind the bundled nginx proxy, uvicorn is started without proxy-header trust, s
 
 - `web/src/` — views, API clients, session handling, and styles. `features/` holds the arena, verdict, delivery room, learner space, and onboarding; `services/` holds typed API and Supabase clients.
 - `ai-backend/app/` — routes in `main.py`, request schemas, `providers.py` (the single model transport), auth, speech, delivery signals, and the `agents/` graphs that orchestrate a debate turn, a review, a delivery pass, and a practice plan. `ai-backend/evals/` holds the labelled tactic sets and the labelled fallacy set, with one scoring script each.
-- `.github/workflows/ci.yml` — pytest, the fallacy-set check, the frontend typecheck, and a production build on every push.
+- `.github/workflows/ci.yml` — pytest, the fallacy-set check, the frontend typecheck, and a production build on every push. It has not been run on a GitHub runner yet.
 - `supabase/migrations/` — sessions, turns, analyses, delivery feedback, profiles, topic bank, learning plans, and the private audio bucket, each with owner-scoped access rules.
 - `docker-compose.yml`, `ai-backend/Dockerfile`, `web/Dockerfile` — the whole stack in containers, with an nginx front end that proxies `/api` and streams server-sent events unbuffered.
 - `ai-backend/.env.example`, `web/.env.example`, `.env.docker.example` — the settings each run path needs, with safe defaults.

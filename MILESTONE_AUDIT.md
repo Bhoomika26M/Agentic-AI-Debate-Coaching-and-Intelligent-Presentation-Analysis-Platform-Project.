@@ -29,7 +29,7 @@ named debate formats; those are recorded as product decisions, not defects.
 | Argument analysis engine | Done | `app/agents/analysis_graph.py` (fan-out branches, bounded schema repair) |
 | Fallacy detection workflows | Done | `fallacy_node`, quote grounding against learner text |
 | Reasoning evaluation models | Done | Rubric branch over five named criteria, judge graph |
-| Argument scoring systems | Done with deviations | `app/agents/judge.py`, weighted 30/20/20/15/15; rebuttal is scored from the learner's replies to the opponent's challenges, and a dimension with no evidence is omitted with the remaining weights renormalized and disclosed |
+| Argument scoring systems | Done with deviations | `app/agents/judge.py`, weighted 30/20/20/15/15; rebuttal is scored from the learner's replies to challenges or later points (not the opening case), and a dimension with no evidence is omitted with the remaining weights renormalized and disclosed |
 | Debate feedback reports | Done | Verdict view, CSV export, print report |
 
 **Verdict: complete with deviations.** The analysis is rubric ratings and quote-grounded fallacies; there is no claim extraction or evidence grading. Fallacy accuracy is measured on 50 author-labelled snippets with `qwen3.5:4b`: 73.7–77.8% precision but only 35.0–45.0% recall across three runs (see `evals/fallacy_results_qwen3.5-4b.md`). The detector is conservative and misses most straw man, slippery slope and circular reasoning examples, which is the weakest measured part of the analysis.
@@ -56,9 +56,9 @@ scores directly, with the gap disclosed to the learner.
 |---|---|---|
 | Presentation analysis engine | Partial | `delivery_graph.py` (transcribe → signals → coach), `speech.py`, `delivery.py`. Pace, fillers, pauses and repeats only; no confidence, engagement, or prosody, and no slides or video |
 | Reports and visualization modules | Partial | Verdict delivery section, signal rows, drills, archive CSV, print. No native PDF or Excel export |
-| Testing and validations | Done | `ai-backend/tests/` (278 tests) covers the deterministic gates, the agent graphs and the request contracts with deterministic model fakes, so no Ollama is needed; 11 Playwright tests cover the browser paths. `.github/workflows/ci.yml` runs pytest, the fallacy-set check, the typecheck and a build |
+| Testing and validations | Done | `ai-backend/tests/` (280 tests) covers the deterministic gates, the agent graphs and the request contracts with deterministic model fakes, so no Ollama is needed; 11 Playwright tests cover the browser paths. `.github/workflows/ci.yml` defines pytest, the fallacy-set check, the typecheck and a build; it has not yet run on a GitHub runner |
 | Deploy with Docker and cloud services | Partial | `ai-backend/Dockerfile` (runtime + test stages), `web/Dockerfile` + `nginx.conf`, `docker-compose.yml`, `.env.docker.example`, and hosted OpenAI-compatible routing in `app/providers.py`. **No public deployment exists.** |
-| Final documentation and presentation | Done | `README.md`, `PROGRESS.md`, this file |
+| Final documentation and presentation | Partial | `README.md`, `PROGRESS.md`, this file, and `docs/demo.webm`; documentation and a recorded walkthrough exist, but there is no slide deck |
 
 **Verdict: not fully implemented.** The testing and packaging half is done; the deployment half is
 not. Earlier runs of this audit verified the compose stack on :8080 with a real model turn over
@@ -72,8 +72,11 @@ monitoring, and native PDF/Excel reports.
 
 ## Is the system agentic?
 
-Yes, in the sense the milestone asks for. Seven LangGraph graphs and one deterministic reducer
-coordinate, and the coordination is enforced in code rather than implied by a prompt:
+Yes, in the sense the milestone asks for. Five LangGraph graphs and one deterministic reducer
+coordinate the work, and the coordination is enforced in code rather than implied by a prompt.
+The production opponent turn is `respond_stream` in `agents/debate.py`, which runs the
+guard → memory → planner → drafter → verifier → reviser sequence by hand; the compiled debate
+graph is a tested reference path, not what the endpoint executes.
 
 | Agent | Module | Runs when | Job |
 |---|---|---|---|
@@ -81,7 +84,7 @@ coordinate, and the coordination is enforced in code rather than implied by a pr
 | Memory | `agents/memory.py` | every turn | reduces stored digests into a private brief for the opponent and the coach |
 | Planner | `agents/planner.py` | every other learner turn | names the weakest joint in the transcript |
 | Drafter | `agents/debate.py` | every turn | streams one in-persona reply, briefed by memory and planner |
-| Verifier | `agents/verifier.py` | after every draft | length, role labels, first-person character breaks, brief leakage, engagement with the latest point (paraphrases allowed); later, plan groundedness |
+| Verifier | `agents/verifier.py` | after every draft | length, role labels, first-person character breaks, brief leakage, engagement with the latest point (paraphrases allowed); heuristic, so direct address can pass without shared vocabulary; later, plan groundedness |
 | Reviser | `agents/verifier.py` | only when the verifier objects | up to two bounded repairs, never an unbounded rewrite loop |
 | Fallback | `agents/debate.py` | when repair also fails | neutral on-motion question instead of a refusal or a bad turn |
 | Analysis branches | `agents/analysis_graph.py` | on review | rubric, fallacy and counterpoint branches with targeted retries, then a disclosing merge |
@@ -112,3 +115,10 @@ window. Those are the next architectural steps, not gaps against the milestones.
 5. `ruff check app` still reports 45 long-line findings, concentrated in prompt strings in
    `prompts.py`, `analysis_graph.py` and `presentation.py`. The modules and tests added or
    rewritten here (`providers.py`, `judge.py`, `delivery.py`) pass `ruff check` with no findings.
+6. The learner-space screenshot in the README is the seeded browser-test fixture, not a real
+   learner's account; its caption says so. The setup, arena, verdict, and demo artifacts come from
+   real local runs against `qwen3.5:4b`.
+7. The reply verifier is a heuristic, not a fact-check. A draft that addresses the learner
+   directly ("you should…") can pass the engagement check without sharing the latest point's
+   vocabulary. "Verified" in the room means the deterministic form checks passed; it does not
+   mean the argument is sound or the facts are checked.

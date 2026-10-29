@@ -23,6 +23,10 @@ ALLOWED_AUDIO_TYPES = {
     "audio/x-wav",
     "audio/mp3",
     "audio/mpeg",
+    # Safari and older iOS record MP4 audio, which reaches us as m4a.
+    "audio/mp4",
+    "audio/m4a",
+    "audio/x-m4a",
 }
 _model = None
 _transcribe_lock = Lock()
@@ -47,7 +51,8 @@ def _sniff_kind(data: bytes) -> str | None:
         return "wav"
     if data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
         return "mp3"
-    if data[:4] == b"ftyp":
+    # The ISO base media file type box starts at byte 4, after its 32-bit size.
+    if data[4:8] == b"ftyp":
         return "mp4"
     return None
 
@@ -56,9 +61,11 @@ def validate_audio(filename: str, content_type: str, data: bytes) -> None:
     if not data:
         raise AudioValidationError("No audio was received.")
     if content_type not in ALLOWED_AUDIO_TYPES:
-        raise AudioValidationError("Use webm, wav, or mp3 audio.")
+        raise AudioValidationError("Use webm, wav, mp3, or m4a audio.")
     if _sniff_kind(data) not in ("webm", "wav", "mp3", "mp4"):
-        raise AudioValidationError("That file does not look like audio. Upload webm, wav, or mp3.")
+        raise AudioValidationError(
+            "That file does not look like audio. Upload webm, wav, mp3, or m4a."
+        )
     limit = MAX_AUDIO_MB * 1024 * 1024
     if len(data) > limit:
         raise AudioValidationError(f"Audio is over {MAX_AUDIO_MB}MB. Trim under 3 minutes.")

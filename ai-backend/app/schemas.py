@@ -182,7 +182,9 @@ class JudgeDimension(BaseModel):
 
 class JudgeVerdict(BaseModel):
     overall: float = Field(ge=1, le=5)
-    dimensions: list[JudgeDimension] = Field(min_length=5, max_length=5)
+    # A dimension can be omitted when its evidence does not exist (no delivery
+    # take, no learner replies to the opponent); weights are then renormalized.
+    dimensions: list[JudgeDimension] = Field(min_length=3, max_length=5)
     gaps: list[str] = Field(default_factory=list, max_length=3)
 
 
@@ -272,6 +274,8 @@ class PresentationResponse(BaseModel):
 class JudgeRequest(BaseModel):
     report: AnalysisReport
     delivery: PresentationResponse | None = None
+    # The debate itself, so rebuttal is scored from the learner's own replies.
+    turns: list[DebateTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
 
 
 class PlanWeakSpot(BaseModel):

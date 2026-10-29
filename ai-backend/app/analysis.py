@@ -1,9 +1,8 @@
 import json
 
-import httpx
 from pydantic import ValidationError
 
-from .ollama_client import OLLAMA_BASE_URL, OLLAMA_MODEL
+from .providers import chat
 from .schemas import AnalysisReport, AnalysisRequest
 
 COUNTERARGUMENT_KINDS = {"Logical", "Evidence-based", "Ethical", "Practical", "Policy"}
@@ -77,20 +76,12 @@ def _build_messages(request: AnalysisRequest) -> list[dict[str, str]]:
 
 
 async def _complete(messages: list[dict[str, str]]) -> str:
-    payload = {
-        "model": OLLAMA_MODEL,
-        "messages": messages,
-        "format": AnalysisReport.model_json_schema(),
-        "stream": False,
-        "think": False,
-        "keep_alive": "10m",
-        "options": {"temperature": 0.2, "num_predict": 2200, "num_ctx": 8192},
-    }
-    timeout = httpx.Timeout(connect=5, read=300, write=10, pool=10)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
-        response.raise_for_status()
-    return response.json().get("message", {}).get("content", "")
+    return await chat(
+        messages,
+        temperature=0.2,
+        num_predict=2200,
+        json_schema=AnalysisReport.model_json_schema(),
+    )
 
 
 def _review(content: str, learner_text: str) -> tuple[AnalysisReport | None, str]:

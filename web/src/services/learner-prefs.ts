@@ -246,5 +246,9 @@ export function orderedStarterTopics(topics: string[], prefs: LearnerPrefs): str
     competition: [0, 2, 3, 1],
   };
   const order = prefs.purpose ? byPurpose[prefs.purpose] : [0, 1, 2, 3];
-  return order.map((index) => topics[index]).filter((title): title is string => Boolean(title));
+  // The first four follow the learner's purpose; the rest keep the bank order.
+  const rest = topics.map((_, index) => index).filter((index) => !order.includes(index));
+  return [...order, ...rest]
+    .map((index) => topics[index])
+    .filter((title): title is string => Boolean(title));
 }

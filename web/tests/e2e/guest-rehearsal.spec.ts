@@ -74,19 +74,37 @@ test("a guest can press two follow-ups, then resume the tab's transcript", async
 
   await page.getByRole("button", { name: /Ask a follow-up/ }).click();
   await expect(page.getByText("FOLLOW-UP 1 OF 2")).toBeVisible();
+  await expect(
+    page.locator(".message-challenge").first().getByText("TURN 01", { exact: true }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: /Ask a follow-up/ }).click();
   await expect(page.getByText("FOLLOW-UP 2 OF 2")).toBeVisible();
   await expect(page.getByRole("button", { name: /Follow-ups done/ })).toBeDisabled();
 
-  // The active room lives in sessionStorage, so the same tab can resume it.
+  // The active room lives in sessionStorage, and returning home should surface
+  // the same resumable session without needing a reload.
   await page.getByRole("button", { name: "Return home" }).click();
+  await expect(page.getByText(/REHEARSAL IN PROGRESS/)).toBeVisible();
   await page.reload();
   await expect(page.getByText(/REHEARSAL IN PROGRESS/)).toBeVisible();
   await page.getByRole("button", { name: "Resume rehearsal" }).click();
   await expect(page.getByText("FOLLOW-UP 2 OF 2")).toBeVisible();
   await expect(page.getByText("YOUR CASE", { exact: true })).toBeVisible();
   await expect(page.getByText(`${FOLLOW_UP} (2)`)).toBeVisible();
+});
+
+test("a follow-up that the coach cannot extend is disabled after the attempt", async ({ page }) => {
+  await mockDebateApi(page);
+  await page.route("**/api/debate/challenge", (route) =>
+    route.fulfill({ json: { done: true, depth: 0 } }),
+  );
+  await startGuestRehearsal(page);
+  await submitCase(page, "Schools should ban phones because attention improves in class.");
+
+  await page.getByRole("button", { name: /Ask a follow-up/ }).click();
+  await expect(page.getByText(/no further follow-ups on this turn/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: /No follow-up here/ })).toBeDisabled();
 });
 
 test("ending a guest rehearsal clears the tab transcript instead of archiving it", async ({
@@ -108,6 +126,39 @@ test("ending a guest rehearsal clears the tab transcript instead of archiving it
     window.sessionStorage.getItem("verdict-arena-snapshot"),
   );
   expect(snapshot).toBeNull();
+});
+
+test("a failed turn can be retried without retyping the argument", async ({ page }) => {
+  let learnerAttempts = 0;
+  await page.route("**/api/debate/stream", async (route) => {
+    const payload = route.request().postDataJSON() as { learner_argument?: string | null };
+    if (payload.learner_argument) {
+      learnerAttempts += 1;
+      if (learnerAttempts === 1) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: "The local opponent is busy. Please retry in a moment." },
+        });
+        return;
+      }
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "text/event-stream; charset=utf-8" },
+      body:
+        `data: ${JSON.stringify({ final_delta: OPPONENT_REPLY })}\n\n` +
+        `data: ${JSON.stringify({ diagnostics: JSON.stringify(DIAGNOSTICS) })}\n\n` +
+        "data: [DONE]\n\n",
+    });
+  });
+
+  await startGuestRehearsal(page);
+  await submitCase(page, "Schools should ban phones because attention improves in class.");
+  await expect(
+    page.getByText("The local opponent is busy. Please retry in a moment."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Retry turn" }).click();
+  await expect(page.getByText(OPPONENT_REPLY).first()).toBeVisible();
 });
 
 const GUARD_REPLY =
@@ -171,4 +222,35 @@ test("guarded and recovered turns are labelled without accusing the learner", as
   await expect(page.getByText(REVIEW_REPLY).first()).toBeVisible();
   await expect(page.getByText("RECOVERED", { exact: true })).toBeVisible();
   await expect(page.getByText("FALLBACK USED", { exact: true })).toHaveCount(0);
+});
+
+test("a missing model is explained instead of leaving the room silent", async ({ page }) => {
+  const UNAVAILABLE = "Ollama or model qwen3.5:4b is unavailable. Start Ollama and pull the model.";
+  await page.route("**/api/health", (route) =>
+    route.fulfill({
+      json: {
+        status: "model_unavailable",
+        provider: "ollama",
+        model: "qwen3.5:4b",
+        hint: UNAVAILABLE,
+        model_available: false,
+        model_loaded: false,
+        transcription: "ready",
+        adaptive_tactics_available: true,
+        laya_available: false,
+      },
+    }),
+  );
+  await page.route("**/api/debate/stream", (route) =>
+    route.fulfill({ status: 503, json: { detail: UNAVAILABLE } }),
+  );
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Start a rehearsal/i }).first().click();
+  await expect(page.getByText(/Before you start:/)).toBeVisible();
+  await expect(page.getByText(UNAVAILABLE)).toBeVisible();
+
+  await page.getByRole("button", { name: /^Start rehearsal/ }).click();
+  await expect(page.getByText(/The model is not running, so there is no opening statement yet/i)).toBeVisible();
+  await expect(page.getByText(/preparing an opening statement/i)).toHaveCount(0);
 });

@@ -18,6 +18,17 @@ from .state import AnalysisState
 
 logger = logging.getLogger(__name__)
 BRANCH_ATTEMPTS = 2
+FALLACY_INSTRUCTIONS = (
+    "Detect only clear examples of these fallacies: Ad Hominem, Straw Man, False Dilemma, "
+    "Slippery Slope, Appeal to Authority, Circular Reasoning, Hasty Generalization, Red Herring. "
+    "Do not force a fallacy label. Every fallacy quote must match a learner turn exactly."
+)
+FALLACY_TASK = "List fallacies with exact quotes, or an empty list. Every schema field is required."
+
+
+def keep_grounded(fallacies: list, learner_text: str) -> list:
+    """Only keep flags whose quote appears verbatim in what the learner wrote."""
+    return [flag for flag in fallacies if flag.quote in learner_text]
 
 
 def _problem(error: Exception) -> str:
@@ -92,19 +103,23 @@ async def rubric_node(state: AnalysisState) -> AnalysisState:
     return {"branch_reports": [{"report": report.model_dump() if report else None, "gaps": [] if report else [f"ratings unavailable: {problem}"]}]}
 
 
-async def fallacy_node(state: AnalysisState) -> AnalysisState:
-    request = AnalysisState_request(state)
+async def detect_fallacies(request: AnalysisRequest) -> tuple[list, str]:
+    """Run the fallacy branch exactly as the product does, quotes grounded."""
     report, problem = await _run_branch(
         FallacyBranch,
         request,
-        "Detect only clear examples of these fallacies: Ad Hominem, Straw Man, False Dilemma, Slippery Slope, "
-        "Appeal to Authority, Circular Reasoning, Hasty Generalization, Red Herring. Do not force a fallacy label. "
-        "Every fallacy quote must match a learner turn exactly.",
-        "List fallacies with exact quotes, or an empty list. Every schema field is required.",
+        FALLACY_INSTRUCTIONS,
+        FALLACY_TASK,
     )
-    if report is not None:
-        learner_text = "\n".join(t["content"] for t in state.get("turns", []) if t["speaker"] == "learner")
-        kept = [f for f in report.fallacies if f.quote in learner_text]
+    if report is None:
+        return [], problem
+    learner_text = "\n".join(t.content for t in request.turns if t.speaker == "learner")
+    return keep_grounded(report.fallacies, learner_text), ""
+
+
+async def fallacy_node(state: AnalysisState) -> AnalysisState:
+    kept, problem = await detect_fallacies(AnalysisState_request(state))
+    if not problem:
         return {"branch_reports": [{"report": {"fallacies": [f.model_dump() for f in kept]}, "gaps": []}]}
     return {"branch_reports": [{"report": None, "gaps": [f"fallacies unavailable: {problem}"]}]}
 

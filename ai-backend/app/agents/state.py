@@ -48,6 +48,7 @@ class AnalysisState(TypedDict, total=False):
 class JudgeState(TypedDict, total=False):
     report: dict
     delivery: dict
+    turns: list[DebateTurnState]
     dimensions: NotRequired[Annotated[list[dict], operator.add]]
     verdict: dict | None
     gaps: list[str]

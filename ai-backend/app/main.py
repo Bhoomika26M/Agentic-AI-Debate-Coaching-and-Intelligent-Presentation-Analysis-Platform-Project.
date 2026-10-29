@@ -16,7 +16,14 @@ from .agents.debate import check_reply, guard_diagnostics, respond_stream
 from .agents.guard import classify_turn, redirect_reply
 from .agents.laya_selector import is_available as laya_available
 from .auth import REQUIRE_AUTH, authenticate_request
-from .ollama_client import OLLAMA_MODEL, is_available, is_loaded, warm_model
+from .providers import (
+    is_available,
+    is_loaded,
+    model_name,
+    provider as llm_provider,
+    unavailable_hint,
+    warm as warm_model,
+)
 from .rate_limit import client_key, enforce_model_rate_limit, request_limiter
 from .runtime_config import validate_deployment
 from .schemas import (
@@ -133,7 +140,9 @@ async def health() -> dict[str, str | bool]:
     loaded = await is_loaded() if available else False
     return {
         "status": "ready" if loaded else "warming" if available else "model_unavailable",
-        "model": OLLAMA_MODEL,
+        "provider": llm_provider(),
+        "model": model_name(),
+        "hint": "" if available else unavailable_hint(),
         "model_available": available,
         "model_loaded": loaded,
         "transcription": "ready" if transcription_available() else "unavailable",
@@ -176,13 +185,7 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
             headers={"X-Accel-Buffering": "no"},
         )
     if not await is_available():
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"Ollama or model {OLLAMA_MODEL} is unavailable. "
-                "Start Ollama and pull the model."
-            ),
-        )
+        raise HTTPException(status_code=503, detail=unavailable_hint())
     if stream_slots.locked():
         raise HTTPException(
             status_code=429,
@@ -229,7 +232,7 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
             yield STREAM_DONE
         except (HTTPError, ValueError) as error:
             yield sse_event("error", BUSY_MESSAGE)
-            logger.exception("Ollama streaming failed: %s", error)
+            logger.exception("Model streaming failed: %s", error)
         finally:
             stream_slots.release()
 
@@ -249,12 +252,12 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
     if not await is_available():
         raise HTTPException(
             status_code=503,
-            detail="The local model is unavailable. Start Ollama and retry.",
+            detail=unavailable_hint(),
         )
     if stream_slots.locked():
         raise HTTPException(
             status_code=429,
-            detail="The local model is busy. Please retry in a moment.",
+            detail="The model is busy. Please retry in a moment.",
         )
     await stream_slots.acquire()
     try:
@@ -262,7 +265,7 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
 
         report, gaps = await analyze_with_graph(request)
         if report is None:
-            detail = "The local model returned an incomplete coaching review. Try the review again."
+            detail = "The model returned an incomplete coaching review. Try the review again."
             if gaps:
                 detail = (
                 f"Incomplete coaching review ({'; '.join(gaps[:3])}). Try the review again."
@@ -270,18 +273,18 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
             raise HTTPException(status_code=502, detail=detail)
         return AnalysisEnvelope.model_validate({**report, "gaps": gaps})
     except HTTPError as error:
-        logger.exception("Ollama transcript analysis failed: %s", error)
+        logger.exception("Model transcript analysis failed: %s", error)
         raise HTTPException(
             status_code=503,
-            detail="The local model could not finish analysis.",
+            detail="The model could not finish analysis.",
         ) from error
     except HTTPException:
         raise
     except (ValueError, json.JSONDecodeError) as error:
-        logger.exception("Ollama returned an invalid analysis: %s", error)
+        logger.exception("Model returned an invalid analysis: %s", error)
         raise HTTPException(
             status_code=502,
-            detail="The local model returned an incomplete coaching review. Try the review again.",
+            detail="The model returned an incomplete coaching review. Try the review again.",
         ) from error
     finally:
         stream_slots.release()
@@ -302,12 +305,12 @@ async def debate_challenge(
     if not await is_available():
         raise HTTPException(
             status_code=503,
-            detail="The local model is unavailable. Start Ollama and retry.",
+            detail=unavailable_hint(),
         )
     if stream_slots.locked():
         raise HTTPException(
             status_code=429,
-            detail="The local model is busy. Please retry in a moment.",
+            detail="The model is busy. Please retry in a moment.",
         )
     identity = subject or (http_request.client.host if http_request.client else "anonymous")
     # The client's depth is a display hint; the follow-up cap is enforced here.
@@ -340,10 +343,10 @@ async def debate_challenge(
         )
     except HTTPError as error:
         follow_up_limiter.release(identity, request.latest)
-        logger.exception("Ollama challenger failed: %s", error)
+        logger.exception("Model challenger failed: %s", error)
         raise HTTPException(
             status_code=503,
-            detail="The local model could not ask a follow-up.",
+            detail="The model could not ask a follow-up.",
         ) from error
     finally:
         stream_slots.release()
@@ -363,7 +366,7 @@ async def coach_plan_endpoint(request: PlanRequest) -> PlanResponse:
     if use_model and stream_slots.locked():
         raise HTTPException(
             status_code=429,
-            detail="The local model is busy. Please retry in a moment.",
+            detail="The model is busy. Please retry in a moment.",
         )
     if use_model:
         await stream_slots.acquire()
@@ -377,9 +380,9 @@ async def coach_plan_endpoint(request: PlanRequest) -> PlanResponse:
             )
         return PlanResponse(plan=plan, gaps=gaps)
     except HTTPError as error:
-        logger.exception("Ollama plan drafting failed: %s", error)
+        logger.exception("Model plan drafting failed: %s", error)
         raise HTTPException(
-            status_code=503, detail="The local model could not finish your plan."
+            status_code=503, detail="The model could not finish your plan."
         ) from error
     except HTTPException:
         raise
@@ -399,7 +402,9 @@ async def debate_judge(request: JudgeRequest) -> JudgeVerdict:
 
     report_dict = request.report.model_dump()
     delivery_dict = request.delivery.model_dump() if request.delivery else {}
-    verdict_dict, gaps = await judge_with_graph(report_dict, delivery_dict)
+    verdict_dict, gaps = await judge_with_graph(
+        report_dict, delivery_dict, [turn.model_dump() for turn in request.turns]
+    )
     if verdict_dict is None:
         detail = "; ".join(gaps[:3]) if gaps else "Scoring failed."
         raise HTTPException(status_code=502, detail=f"{detail} Try again.")
@@ -435,7 +440,7 @@ async def presentation_analysis(
     if stream_slots.locked():
         raise HTTPException(
             status_code=429,
-            detail="The local model is busy. Please retry in a moment.",
+            detail="The model is busy. Please retry in a moment.",
         )
     await stream_slots.acquire()
     try:
@@ -452,9 +457,9 @@ async def presentation_analysis(
             raise HTTPException(status_code=502, detail=f"{detail} Try again.")
         raise HTTPException(status_code=status, detail=detail)
     except HTTPError as error:
-        logger.exception("Ollama delivery coaching failed: %s", error)
+        logger.exception("Model delivery coaching failed: %s", error)
         raise HTTPException(
-            status_code=503, detail="The local model could not finish delivery review."
+            status_code=503, detail="The model could not finish delivery review."
         ) from error
     except HTTPException:
         raise
