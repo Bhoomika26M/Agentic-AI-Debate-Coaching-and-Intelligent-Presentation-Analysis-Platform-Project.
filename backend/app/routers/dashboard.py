@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.timezone import format_ist, format_ist_date, to_utc_iso
 from app.models.debate import DebateArgument, DebateParticipant, DebateSession
 from app.models.debate_coaching import DebateCoachingRecord
 from app.models.presentation import PresentationAnalysis
@@ -104,18 +105,18 @@ def get_dashboard_overview(
             skill = database.query(Skill).filter(Skill.user_id == current_user.id).first()
 
         skills_dict = {
-            "communication": skill.communication_score if skill else 0,
-            "critical_thinking": skill.critical_thinking_score if skill else 0,
-            "argumentation": skill.argumentation_score if skill else 0,
-            "confidence": skill.confidence_score if skill else 0,
-            "presentation": skill.presentation_score if skill else 0,
+            "communication": skill.communication_score if skill else None,
+            "critical_thinking": skill.critical_thinking_score if skill else None,
+            "argumentation": skill.argumentation_score if skill else None,
+            "confidence": skill.confidence_score if skill else None,
+            "presentation": skill.presentation_score if skill else None,
         }
 
         # Improvement trends over time
         trends = []
         for rec in reversed(coaching_records[:10]):
             trends.append({
-                "date": rec.created_at.strftime("%b %d"),
+                "date": format_ist(rec.created_at, "%b %d"),
                 "type": "Debate",
                 "score": rec.overall_score,
                 "detail": f"{rec.source_argument_count} arguments",
@@ -125,7 +126,7 @@ def get_dashboard_overview(
                 score = pres.analysis_result.get("overall_score")
                 if score is not None:
                     trends.append({
-                        "date": pres.created_at.strftime("%b %d"),
+                        "date": format_ist(pres.created_at, "%b %d"),
                         "type": "Presentation",
                         "score": score,
                         "detail": pres.display_filename,
@@ -137,7 +138,7 @@ def get_dashboard_overview(
                 "topic": d.topic,
                 "format": d.format,
                 "status": d.status,
-                "created_at": d.created_at.isoformat() if d.created_at else "",
+                "created_at": to_utc_iso(d.created_at) or "",
             }
             for d in user_debates[:5]
         ]
@@ -148,7 +149,7 @@ def get_dashboard_overview(
                 "filename": p.display_filename,
                 "status": p.status,
                 "score": p.analysis_result.get("overall_score") if isinstance(p.analysis_result, dict) else None,
-                "created_at": p.created_at.isoformat() if p.created_at else "",
+                "created_at": to_utc_iso(p.created_at) or "",
             }
             for p in presentations[:5]
         ]
@@ -216,7 +217,7 @@ def get_dashboard_overview(
                 "debate_topic": debate.topic if debate else "Debate",
                 "overall_score": eval_rec.overall_score,
                 "arguments_evaluated": eval_rec.source_argument_count,
-                "created_at": eval_rec.created_at.strftime("%b %d, %Y %H:%M"),
+                "created_at": format_ist(eval_rec.created_at, "%b %d, %Y %I:%M %p"),
             })
 
         skill_gaps = [
@@ -277,7 +278,7 @@ def get_dashboard_overview(
                 "status": d.status,
                 "arguments_count": database.query(DebateArgument).filter(DebateArgument.debate_id == d.id).count(),
                 "participants_count": database.query(DebateParticipant).filter(DebateParticipant.debate_id == d.id).count(),
-                "created_at": d.created_at.strftime("%b %d, %Y"),
+                "created_at": format_ist_date(d.created_at, "%b %d, %Y"),
             }
             for d in recent_debates
         ]
@@ -290,7 +291,7 @@ def get_dashboard_overview(
                 "user_id": p.user_id,
                 "status": p.status,
                 "overall_score": p.analysis_result.get("overall_score") if isinstance(p.analysis_result, dict) else None,
-                "created_at": p.created_at.strftime("%b %d, %Y"),
+                "created_at": format_ist_date(p.created_at, "%b %d, %Y"),
             }
             for p in pres_submissions
         ]
@@ -340,6 +341,7 @@ def get_dashboard_overview(
             "email_backend": settings.email_backend,
             "upload_max_bytes": settings.presentation_max_upload_bytes,
             "server_time_utc": datetime.now(timezone.utc).isoformat(),
+            "server_time_ist": format_ist(datetime.now(timezone.utc)),
         }
 
         recent_users_list = [
@@ -348,7 +350,7 @@ def get_dashboard_overview(
                 "name": u.name,
                 "email": u.email,
                 "role": u.role,
-                "created_at": u.created_at.strftime("%b %d, %Y"),
+                "created_at": format_ist_date(u.created_at, "%b %d, %Y"),
             }
             for u in sorted(users, key=lambda x: x.created_at or datetime.min, reverse=True)[:15]
         ]

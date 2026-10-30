@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from app.core.timezone import UTCDateTime
 
 
 class ArgumentAnalysisScore(BaseModel):
@@ -85,5 +86,5 @@ class ArgumentAnalysisResponse(BaseModel):
     scores: list[ArgumentAnalysisScore] = Field(default_factory=list)
     improvement_suggestions: list[str] = Field(default_factory=list)
     feedback_report: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime

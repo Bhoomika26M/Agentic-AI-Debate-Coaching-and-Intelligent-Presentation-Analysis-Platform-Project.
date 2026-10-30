@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
+from app.core.timezone import OptUTCDateTime, UTCDateTime
 
 
 class DebateCreate(BaseModel):
@@ -41,7 +42,7 @@ class DebateArgumentResponse(BaseModel):
     content: str
     is_ai: bool
     author_name: str
-    created_at: datetime
+    created_at: UTCDateTime
 
 
 class ParticipantResponse(BaseModel):
@@ -53,7 +54,7 @@ class ParticipantResponse(BaseModel):
     position: str
     is_ai: bool
     display_name: str
-    joined_at: datetime
+    joined_at: UTCDateTime
 
 
 class DebateScore(BaseModel):
@@ -93,8 +94,8 @@ class DebateCoachingResponse(BaseModel):
     improvement_suggestions: list[str] = Field(default_factory=list)
     improvement_plan: ImprovementPlan
     source_argument_count: int = 0
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
 
 
 class DebateResponse(BaseModel):
@@ -104,9 +105,9 @@ class DebateResponse(BaseModel):
     topic: str
     description: str | None
     format: str
-    scheduled_at: datetime | None
+    scheduled_at: OptUTCDateTime = None
     created_by: int
     status: str
     ai_opponent: bool
-    created_at: datetime
+    created_at: UTCDateTime
     participants: list[ParticipantResponse] = []

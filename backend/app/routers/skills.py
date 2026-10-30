@@ -26,13 +26,8 @@ def get_or_create_skill(database: Session, user_id: int) -> Skill:
 
 @router.get("/me", response_model=SkillResponse)
 def get_skill(current_user: User = Depends(get_current_user), database: Session = Depends(get_db)):
-    skill = get_or_create_skill(database, current_user.id)
+    skill = sync_user_skills(database, current_user.id)
     calc = calculate_user_skills(database, current_user.id)
-
-    # Auto-synchronize on fetch if user has active history
-    if calc["has_activity"] and (skill.communication_score == 0 and skill.argumentation_score == 0):
-        skill = sync_user_skills(database, current_user.id)
-        calc = calculate_user_skills(database, current_user.id)
 
     return SkillResponse(
         id=skill.id,
@@ -96,17 +91,11 @@ def list_skills(current_user: User = Depends(get_current_user), database: Sessio
 
 @router.put("/me", response_model=SkillResponse)
 def update_skill(payload: SkillUpdate, current_user: User = Depends(get_current_user), database: Session = Depends(get_db)):
-    skill = get_or_create_skill(database, current_user.id)
-    for field, value in payload.model_dump().items():
-        old_val = getattr(skill, field, 0)
-        setattr(skill, field, value)
-        if value >= 70 and old_val < 70:
-            try:
-                notify_skill_milestone(database, current_user.id, field, value)
-            except Exception:
-                pass
-    database.commit()
-    database.refresh(skill)
+    """
+    Manual baseline overrides are removed to maintain performance-based competency integrity.
+    Always synchronizes from verified assessment performance records.
+    """
+    skill = sync_user_skills(database, current_user.id)
     calc = calculate_user_skills(database, current_user.id)
     return SkillResponse(
         id=skill.id,

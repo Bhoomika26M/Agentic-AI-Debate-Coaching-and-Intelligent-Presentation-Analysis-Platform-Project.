@@ -42,7 +42,7 @@ export default function CreateDebate() {
         '/debates',
         {
           ...form,
-          scheduled_at: form.scheduled_at || null,
+          scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
           idempotency_key: idempotencyKey,
         },
         { headers: { 'Idempotency-Key': idempotencyKey } }

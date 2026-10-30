@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.timezone import ensure_utc
 from app.core.security import (
     create_access_token,
     hash_password,
@@ -48,7 +49,14 @@ def register(payload: RegisterRequest, database: Session = Depends(get_db)):
     if not validate_password_strength(payload.password):
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters and include uppercase, lowercase, and a number.")
 
-    user = User(name=payload.name.strip(), email=normalized_email, password_hash=hash_password(payload.password), role=payload.role or "learner")
+    # All new users are registered with the default 'learner' role.
+    # Self-assignment of privileged roles (administrator, educator, debate_coach) during registration is strictly ignored and prevented.
+    user = User(
+        name=payload.name.strip(),
+        email=normalized_email,
+        password_hash=hash_password(payload.password),
+        role="learner",
+    )
     database.add(user)
     database.flush()
 
@@ -111,7 +119,7 @@ def reset_password(payload: ResetPasswordRequest, database: Session = Depends(ge
     record = database.query(PasswordResetToken).filter(PasswordResetToken.token_hash == hashed_token).first()
     if record is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This reset link is invalid or has already been used.")
-    if record.used_at is not None or record.expires_at < datetime.now(timezone.utc):
+    if record.used_at is not None or ensure_utc(record.expires_at) < datetime.now(timezone.utc):
         record.used_at = record.used_at or datetime.now(timezone.utc)
         database.commit()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This reset link is invalid or has expired.")

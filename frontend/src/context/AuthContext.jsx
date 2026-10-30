@@ -34,9 +34,9 @@ export function AuthProvider({ children }) {
 
   async function register(details) {
     const payload = {
-      ...details,
+      name: details.name?.trim(),
       email: details.email.trim().toLowerCase(),
-      role: details.role || 'learner',
+      password: details.password,
     }
     await api.post('/auth/register', payload)
     return login(payload.email, payload.password)

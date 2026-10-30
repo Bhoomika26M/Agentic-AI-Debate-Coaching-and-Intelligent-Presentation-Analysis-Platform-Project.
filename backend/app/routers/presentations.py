@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.timezone import format_ist
 from app.models.presentation import PresentationAnalysis
 from app.models.user import User
 from app.schemas.presentation import PresentationAnalysisResponse, PresentationDashboardResponse
@@ -120,7 +121,7 @@ def export_csv_report(current_user: User = Depends(get_current_user), database: 
             record.id,
             record.display_filename,
             record.status,
-            record.created_at.isoformat() if record.created_at else "",
+            format_ist(record.created_at, "%Y-%m-%d %I:%M:%S %p") if record.created_at else "",
             record.word_count,
             record.filler_word_count,
             record.duration_seconds,

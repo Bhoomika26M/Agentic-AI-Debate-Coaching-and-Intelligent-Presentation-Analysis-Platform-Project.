@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import api from '../services/api'
+import { formatDateTimeIST } from '../utils/date'
 
 function errorText(error) {
   const detail = error.response?.data?.detail
@@ -256,7 +257,7 @@ function PresentationRecord({ record, onRetry, isRetrying, onError }) {
       <div className="presentation-record-heading">
         <div>
           <p className="eyebrow">
-            {record.submission_type?.toUpperCase()} · {new Date(record.created_at).toLocaleString()}
+            {record.submission_type?.toUpperCase()} · {formatDateTimeIST(record.created_at)}
           </p>
           <h2>{record.display_filename}</h2>
         </div>

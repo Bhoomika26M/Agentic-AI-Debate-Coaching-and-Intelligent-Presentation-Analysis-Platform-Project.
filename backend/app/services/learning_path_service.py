@@ -16,35 +16,40 @@ def generate_user_learning_path(database: Session, user_id: int) -> LearningPath
     presentation_count = database.query(PresentationAnalysis).filter(PresentationAnalysis.user_id == user_id, PresentationAnalysis.status == "completed").count()
 
     scores = {
-        "communication": skill.communication_score if skill else 0,
-        "critical_thinking": skill.critical_thinking_score if skill else 0,
-        "argumentation": skill.argumentation_score if skill else 0,
-        "confidence": skill.confidence_score if skill else 0,
-        "presentation": skill.presentation_score if skill else 0,
+        "communication": skill.communication_score if skill else None,
+        "critical_thinking": skill.critical_thinking_score if skill else None,
+        "argumentation": skill.argumentation_score if skill else None,
+        "confidence": skill.confidence_score if skill else None,
+        "presentation": skill.presentation_score if skill else None,
     }
 
-    avg_score = sum(scores.values()) / max(len(scores), 1)
+    assessed_values = [v for v in scores.values() if v is not None]
+    avg_score = (sum(assessed_values) / len(assessed_values)) if assessed_values else 0
 
     skill_gaps = []
     target = 75
     for skill_name, val in scores.items():
-        gap = target - val
-        status = "proficient" if val >= target else ("moderate_gap" if val >= 50 else "priority_gap")
+        if val is None:
+            status = "not_assessed"
+            gap = target
+        else:
+            gap = max(0, target - val)
+            status = "proficient" if val >= target else ("moderate_gap" if val >= 50 else "priority_gap")
         skill_gaps.append({
             "skill": skill_name,
-            "current_score": val,
+            "current_score": val if val is not None else 0,
             "target_score": target,
-            "gap": max(0, gap),
+            "gap": gap,
             "status": status,
         })
 
     experience = (profile.experience_level if profile and profile.experience_level else "beginner").lower()
 
     # Determine progression
-    phase1_done = arg_count >= 2 or scores["argumentation"] >= 60
-    phase2_done = phase1_done and (arg_count >= 5 or scores["critical_thinking"] >= 65)
-    phase3_done = phase2_done and (debate_count >= 3 or scores["communication"] >= 70)
-    phase4_done = phase3_done and (presentation_count >= 2 or scores["presentation"] >= 75)
+    phase1_done = arg_count >= 2 or ((scores["argumentation"] or 0) >= 60)
+    phase2_done = phase1_done and (arg_count >= 5 or ((scores["critical_thinking"] or 0) >= 65))
+    phase3_done = phase2_done and (debate_count >= 3 or ((scores["communication"] or 0) >= 70))
+    phase4_done = phase3_done and (presentation_count >= 2 or ((scores["presentation"] or 0) >= 75))
 
     phases = [
         LearningPathPhase(
@@ -98,9 +103,15 @@ def generate_user_learning_path(database: Session, user_id: int) -> LearningPath
 
     insights = [
         f"You have submitted {arg_count} debate arguments and completed {presentation_count} presentation reviews.",
-        f"Your highest baseline skill is {max(scores, key=scores.get).replace('_', ' ').capitalize()} ({max(scores.values())}/100).",
-        f"Recommended focus: {min(scores, key=scores.get).replace('_', ' ').capitalize()} is currently your largest growth opportunity.",
     ]
+    assessed_dict = {k: v for k, v in scores.items() if v is not None}
+    if assessed_dict:
+        best_skill = max(assessed_dict, key=assessed_dict.get)
+        worst_skill = min(assessed_dict, key=assessed_dict.get)
+        insights.append(f"Your highest assessed skill is {best_skill.replace('_', ' ').capitalize()} ({assessed_dict[best_skill]}/100).")
+        insights.append(f"Recommended focus: {worst_skill.replace('_', ' ').capitalize()} is currently your largest growth opportunity.")
+    else:
+        insights.append("Complete your first debate session or presentation evaluation to generate competency benchmarks.")
 
     return LearningPathResponse(
         user_id=user_id,

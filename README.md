@@ -81,6 +81,35 @@ During the platform's development, several critical architectural, algorithmic, 
 - **Debate Workspace Redesign**: Distinct user vs. AI conversation cards, assigned position badges, live turn trackers, typing pulse indicators, and instant report history switcher.
 - **Presentation Workspace Redesign**: Drag-and-drop file dropzone, live multi-stage processing indicators, delivery KPI grid, and collapsable verbatim transcript viewer.
 
+### 2.6. Frictionless Onboarding & Secure Default Learner Role Assignment
+- **Streamlined Workflow**: Completely eliminated confusing role selection dropdowns from the registration UI. Users register straightforwardly using only **Name**, **Email**, and **Password**.
+- **Privilege Escalation Prevention**: The backend strictly and unconditionally assigns `role="learner"` for all registrations. Any client attempts to self-assign elevated privileges (`administrator`, `educator`, `debate_coach`) are disregarded and neutralized.
+- **Internal RBAC Continuity**: The full 4-role access control structure (`learner`, `debate_coach`, `educator`, `administrator`) is preserved throughout the database, models, and authorization middleware. Privileged role upgrades remain safely restricted to the administrator endpoint (`PATCH /users/{id}/role`).
+
+### 2.7. Performance-Based Competency Architecture & Nullable Scoring
+- **Root Cause of Score Fabrication**:
+  - Legacy implementations computed fallback scores when speech recordings were absent: `final_conf = final_comm * 0.9` and `final_pres = final_comm * 0.9`. If a user had completed debate arguments, their communication score (~78) automatically synthesized an artificial `70/100` for *Speaking Confidence* and *Presentation Delivery* despite zero audio submissions.
+  - An arbitrary active participation heuristic (`60.0 + active_bonus`) inflated baseline scores for communication and logic without verifiable rubric data.
+  - SQLite columns were initially defined with `INTEGER NOT NULL DEFAULT 0`, forcing synthetic numeric baselines.
+- **Engineering Fix & Data Integrity**:
+  - **Zero Fabrication Guarantee**: Competency scores are derived exclusively from verified, completed performance records.
+  - **Modality Isolation**: *Speaking Confidence* and *Presentation Delivery* are calculated SOLELY from processed audio speech evaluations (delivery confidence, articulation clarity, audience engagement, and speaking rate cadence within 125–165 WPM). They are never inferred from written debate text or argument analyses.
+  - **Evidence & Fallacy Deductions**: *Critical Thinking & Logic* incorporates rigorous deductions of 10 points per detected logical fallacy (capped at 25–30 points total deduction).
+  - **Explicit Nullability (`None` / `Not assessed`)**: Unassessed competencies return `None` (`null` in JSON). The frontend renders a clean `"Not assessed"` status badge, subtle dashed baseline track, and actionable empty-state prompts without displaying false progress bars or fabricated numbers.
+  - **Elimination of Baseline Tampering**: Replaced manual baseline adjustment with a deterministic "Sync with Recent Practice" mechanism. `PUT /api/skills/me` recalculates verified metrics from recorded assessments and rejects arbitrary client-supplied score overwrites.
+  - **Non-Destructive Database Migration**: Implemented a startup schema migration (`_ensure_skills_nullable`) in `database.py` that converts existing `NOT NULL DEFAULT 0` columns to `DEFAULT NULL` in SQLite without data loss.
+
+### 2.8. SaaS Authentication Suite Redesign
+- **Visual Balance & Layout**: Replaced legacy top-left unstyled login forms with a centered, high-conversion SaaS authentication card layout matching the DebateAI design tokens (`#0F172A`, `#4F46E5`, `#F8FAFC`).
+- **Interactive Security Enhancements**: Integrated accessible SVG eye-toggle controls on password and confirmation fields across all authentication screens.
+- **Unified Design System**: Synchronized styling, error alert banners, and focus states across Login (`/login`), Registration (`/register`), Forgot Password (`/forgot-password`), and Reset Password (`/reset-password`).
+- **Client-Side Validation**: Enhanced registration with real-time password-matching verification while maintaining automatic `learner` role assignment.
+
+### 2.9. Indian Standard Time (IST, UTC+05:30) Timezone Standardization
+- **System-Wide Temporal Alignment**: Standardized all website date/time displays to `Asia/Kolkata` (IST, UTC+05:30) across all user-facing views.
+- **Centralized Internationalization**: Replaced fragmented date conversions with centralized `Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", ... })` utilities, resolving historical 5-hour-30-minute display offsets.
+- **Comprehensive Coverage**: Applied consistently to Dashboard recent activity, debate session schedules, round timestamps, Argument Studio submission logs, presentation audio uploads, coaching feedback histories, and notification logs.
+
 ---
 
 ## 3. System Architecture Diagram
@@ -143,15 +172,22 @@ The platform is organized into 14 distinct functional modules mapped across the 
 ### Milestone 1: Core Setup, Architecture & Identity Management (Weeks 1 & 2)
 
 - **Module 1 — User Authentication & RBAC**:
+  - Centered SaaS authentication experience across Login, Register, Forgot Password, and Reset Password screens with interactive password visibility toggles and real-time validation.
+  - Simplified, frictionless registration requiring only Name, Email, and Password; all new accounts automatically and securely default to the `learner` role.
+  - Defense against privilege escalation: backend strictly ignores/prohibits client-requested roles during registration.
   - Secure registration, login, and password management using PBKDF2/bcrypt hashing.
   - Stateless JSON Web Token (JWT) bearer authentication with HS256 encryption.
   - Role-based authorization guarding endpoints for all four roles (`learner`, `debate_coach`, `educator`, `administrator`).
   - Administrative role assignment endpoint (`PATCH /users/{id}/role`).
 
-- **Module 2 — User Profile & Skill Tracking**:
+- **Module 2 — User Profile & Skill Competency Tracking**:
   - User profiles tracking debate experience level (Beginner, Intermediate, Advanced, Elite), topic interests, and presentation domains.
   - Customizable coaching strictness (constructive, rigorous, tournament prep) and target areas.
-  - Longitudinal baseline competency tracking across 5 core dimensions: *Communication & Diction, Critical Thinking & Logic, Argumentation & Rebuttal, Speaking Confidence, and Presentation Delivery*.
+  - Strictly performance-based 5-competency evaluation (*Communication & Diction, Critical Thinking & Logic, Argumentation & Rebuttal, Speaking Confidence, Presentation Delivery*).
+  - Explicit nullability: unassessed competencies default to `None` and display `"Not assessed"` without fabricated fallback numbers (e.g., legacy `70/100`).
+  - Strict modality isolation: speech and delivery metrics require completed audio presentations; argument logic applies 10-point penalties per detected fallacy.
+  - 5-stat metric counter displaying verified counts of completed Debates, User Arguments, Argument Analyses, Speech Recordings, and Coaching Reviews.
+  - Deterministic "Sync with Recent Practice" calculating true verified metrics while rejecting manual baseline tampering.
 
 - **Module 3 — Debate Session Management**:
   - Topic creation, format specification, scheduling, and position assignment (`for`, `against`, `neutral`).
@@ -206,7 +242,7 @@ The platform is organized into 14 distinct functional modules mapped across the 
 - **Module 10 — Recommendation & Personalized Coaching Engine**:
   - Tri-part coaching breakdown: *Key Strengths, Areas for Improvement, and Actionable Practice Suggestions*.
   - Targeted Improvement Plans featuring measurable next-debate goals, skill focus areas, and milestone progress indicators.
-  - Personalized 4-Phase Learning Pathways (`/skills/learning-path`) tailoring exercises to user competency levels.
+  - Personalized 4-Phase Learning Pathways (`/skills/learning-path`) tailoring exercises to user competency levels while dynamically handling unassessed competencies (`None`) without crashing or defaulting to zero.
 
 ---
 
@@ -236,7 +272,7 @@ The platform is organized into 14 distinct functional modules mapped across the 
 - **Module 13 — Reports & Export System**:
   - Pure-Python binary PDF-1.4 generation (no external wkhtmltopdf or heavy binaries required) with header banners, anti-orphan heading logic, and clean pagination.
   - Native Microsoft Excel SpreadsheetML XML exports with explicit column widths, wrapped text cells, and formatted score cards.
-  - Dedicated export endpoints for Debates, Presentations, and Learner Progress summaries.
+  - Dedicated export endpoints for Debates, Presentations, and Learner Progress summaries, formatting unassessed competencies safely as `"Not assessed"`.
 
 - **Module 14 — Quality Assurance, Testing & Deployment**:
   - Comprehensive automated test suite (Pytest) validating authentication, schemas, debate sparring, speech analysis, and exports.
@@ -462,7 +498,7 @@ Infosys_Internship/
 All endpoints are prefixed with `/api` and return standardized JSON envelopes:
 
 ### Authentication & Users
-- `POST /api/auth/register` — Register a new account (default role: `learner`).
+- `POST /api/auth/register` — Register a new account (Name, Email, Password required; automatically and securely assigned the default `learner` role).
 - `POST /api/auth/login` — Authenticate and receive a JWT Bearer token.
 - `GET /api/auth/me` — Retrieve the current authenticated user identity.
 - `GET /api/users/profile` — Get the current user's profile, interests, and coaching preferences.
@@ -495,7 +531,8 @@ All endpoints are prefixed with `/api` and return standardized JSON envelopes:
 
 ### Dashboards, Skills & Notifications
 - `GET /api/dashboard/overview?view={role}` — Get aggregate analytics for Learner, Coach, Educator, or Admin.
-- `GET /api/skills/me` — Retrieve 5-competency baseline scores.
+- `GET /api/skills/me` — Retrieve verified 5-competency baseline scores (`None`/`null` for unassessed competencies).
+- `PUT /api/skills/me` — Deterministically recalculate and synchronize verified competencies from completed assessments (rejects client-supplied score overrides).
 - `GET /api/skills/learning-path` — Retrieve personalized 4-phase learning roadmap.
 - `GET /api/notifications` — Retrieve user notifications.
 - `POST /api/notifications/{id}/read` — Mark a notification as read.
@@ -513,13 +550,14 @@ All endpoints are prefixed with `/api` and return standardized JSON envelopes:
 The platform maintains rigorous automated testing and build validation to ensure enterprise-level reliability:
 
 ### Backend Test Suite (Pytest)
-The test suite covers database schemas, authentication, token expiration, debate turns, 5-weight rubric mathematics, fallacy detection, counterarguments, presentation metrics, and export services:
+The test suite covers database schemas, authentication, token expiration, role default enforcement, privilege escalation protection, debate turns, 5-weight rubric mathematics, fallacy detection, counterarguments, presentation metrics, competency performance scoring (null defaults, modality isolation, zero score fabrication, manual override prevention), and export services:
 
 ```powershell
 cd debate-coach-platform/backend
 $env:PYTHONPATH="."
 pytest tests -v
 ```
+*Result: 49 passed, 0 failed across all unit and integration test modules.*
 
 ### Frontend Production Build
 To verify component compilation, module bundling, and CSS asset generation:
@@ -528,7 +566,7 @@ To verify component compilation, module bundling, and CSS asset generation:
 cd debate-coach-platform/frontend
 npm run build
 ```
-*Result: 112 modules compiled cleanly in ~3.6s with zero linting or JSX compilation errors.*
+*Result: 112 modules compiled cleanly in ~2.9s with zero linting or JSX compilation errors.*
 
 ---
 

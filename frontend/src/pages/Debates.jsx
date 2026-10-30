@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
+import { formatDateIST, formatDateTimeIST } from '../utils/date'
 
 export default function Debates() {
   const { user } = useAuth()
@@ -181,8 +182,8 @@ export default function Debates() {
                   </Link>
 
                   <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                    Created: {new Date(debate.created_at).toLocaleDateString()}
-                    {debate.scheduled_at && ` · Scheduled for ${new Date(debate.scheduled_at).toLocaleString()}`}
+                    Created: {formatDateIST(debate.created_at)}
+                    {debate.scheduled_at && ` · Scheduled for ${formatDateTimeIST(debate.scheduled_at)}`}
                   </div>
                 </div>
 

@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from app.core.timezone import UTCDateTime
 
 
 class PresentationEvaluation(BaseModel):
@@ -38,8 +39,8 @@ class PresentationAnalysisResponse(BaseModel):
     filler_word_count: int | None
     speaking_rate_wpm: float | None
     analysis_result: dict | None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
 
     @computed_field
     def confidence_score(self) -> float | None:

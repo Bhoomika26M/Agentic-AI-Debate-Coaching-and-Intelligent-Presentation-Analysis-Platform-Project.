@@ -6,7 +6,7 @@ FastAPI backend powered by Python 3.11+, SQLAlchemy 2.0, Alembic migrations, JWT
 
 ## Key Features & Services
 
-- **Authentication & RBAC**: JWT bearer tokens (HS256) guarding endpoints across 4 distinct roles: `learner`, `debate_coach`, `educator`, and `administrator`.
+- **Authentication & RBAC**: Streamlined registration defaulting securely to `learner`; client privilege escalation prevented; JWT bearer tokens (HS256) guarding endpoints across 4 distinct roles: `learner`, `debate_coach`, `educator`, and `administrator`.
 - **Debate Sparring Service**: Turn-ordered multi-turn debate simulation with automated AI opponent generation and idempotency protection.
 - **Argument & Fallacy Engine**: Detection of 8 formal/informal fallacies and 5-dimensional counterargument generation (*Logical, Empirical, Ethical, Practical, Policy*).
 - **Speech & Presentation Analytics**: Direct audio processing via `gemini-3.5-transcribe` with auto-calculated Words Per Minute (WPM), filler disfluency counters, acoustic duration, and an in-place retry engine (`POST /presentations/{id}/retry`).
@@ -63,7 +63,9 @@ $env:PYTHONPATH="."
 pytest tests -v
 ```
 
-The test suite covers:
+The test suite (41 tests) covers:
+- Registration without role defaults and privilege escalation prevention
+- User authentication, JWT expiration, and password strength
 - Argument analysis and claim extraction
 - 8-type logical fallacy detection
 - 5-type counterargument generation engine

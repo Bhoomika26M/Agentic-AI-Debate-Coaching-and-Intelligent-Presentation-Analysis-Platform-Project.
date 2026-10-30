@@ -224,21 +224,34 @@ export default function Dashboard() {
               </Link>
             </div>
             <div className="skills-bar-grid">
-              {Object.entries(overview.learner_data.skills || {}).map(([key, score]) => (
-                <div key={key} className="skill-bar-item">
-                  <div className="skill-bar-header">
-                    <span className="skill-name">{key.replace('_', ' ').toUpperCase()}</span>
-                    <span className="skill-score-pill">{score}/100</span>
+              {Object.entries(overview.learner_data.skills || {}).map(([key, score]) => {
+                const isAssessed = score !== null && score !== undefined
+                return (
+                  <div key={key} className="skill-bar-item">
+                    <div className="skill-bar-header">
+                      <span className="skill-name">{key.replace('_', ' ').toUpperCase()}</span>
+                      <span className={`skill-score-pill ${!isAssessed ? 'unassessed' : ''}`}>
+                        {isAssessed ? `${score}/100` : 'Not assessed'}
+                      </span>
+                    </div>
+                    <div className="progress-track">
+                      <div
+                        className="progress-fill"
+                        style={{
+                          width: isAssessed ? `${Math.min(100, Math.max(0, score))}%` : '0%',
+                          background: isAssessed && score >= 70 ? 'linear-gradient(90deg, #10b981, #06b6d4)' : undefined,
+                        }}
+                      />
+                    </div>
+                    <div className="skill-level-indicator">
+                      <span>
+                        Status: {isAssessed ? (score >= 80 ? 'Advanced' : score >= 60 ? 'Proficient' : 'Developing') : 'Awaiting practice assessment'}
+                      </span>
+                      <span>Target: 85+</span>
+                    </div>
                   </div>
-                  <div className="progress-track">
-                    <div className="progress-fill" style={{ width: `${Math.min(100, score)}%` }} />
-                  </div>
-                  <div className="skill-level-indicator">
-                    <span>Baseline: {score > 0 ? (score >= 80 ? 'Advanced' : score >= 60 ? 'Proficient' : 'Developing') : 'Unassessed'}</span>
-                    <span>Target: 90+</span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </article>
 

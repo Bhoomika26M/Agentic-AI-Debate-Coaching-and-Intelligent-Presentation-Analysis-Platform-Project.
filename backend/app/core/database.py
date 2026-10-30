@@ -137,6 +137,38 @@ def _ensure_debate_argument_turn_order(connection: Connection) -> None:
     )
 
 
+def _ensure_skills_nullable(connection: Connection) -> None:
+    table_info = connection.execute(text('PRAGMA table_info("skills")')).fetchall()
+    has_notnull = any(row[1].endswith("_score") and row[3] == 1 for row in table_info)
+    if has_notnull:
+        connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS skills_migrated (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL UNIQUE,
+                communication_score INTEGER DEFAULT NULL,
+                critical_thinking_score INTEGER DEFAULT NULL,
+                argumentation_score INTEGER DEFAULT NULL,
+                confidence_score INTEGER DEFAULT NULL,
+                presentation_score INTEGER DEFAULT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """))
+        connection.execute(text("""
+            INSERT INTO skills_migrated (id, user_id, communication_score, critical_thinking_score, argumentation_score, confidence_score, presentation_score, updated_at)
+            SELECT id, user_id,
+                   CASE WHEN communication_score = 0 THEN NULL ELSE communication_score END,
+                   CASE WHEN critical_thinking_score = 0 THEN NULL ELSE critical_thinking_score END,
+                   CASE WHEN argumentation_score = 0 THEN NULL ELSE argumentation_score END,
+                   CASE WHEN confidence_score = 0 THEN NULL ELSE confidence_score END,
+                   CASE WHEN presentation_score = 0 THEN NULL ELSE presentation_score END,
+                   updated_at
+            FROM skills
+        """))
+        connection.execute(text("DROP TABLE skills"))
+        connection.execute(text("ALTER TABLE skills_migrated RENAME TO skills"))
+
+
 def _initialize_sqlite_schema() -> None:
     if not database_url.startswith("sqlite"):
         return
@@ -172,15 +204,16 @@ def _initialize_sqlite_schema() -> None:
             CREATE TABLE IF NOT EXISTS skills (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL UNIQUE,
-                communication_score INTEGER NOT NULL DEFAULT 0,
-                critical_thinking_score INTEGER NOT NULL DEFAULT 0,
-                argumentation_score INTEGER NOT NULL DEFAULT 0,
-                confidence_score INTEGER NOT NULL DEFAULT 0,
-                presentation_score INTEGER NOT NULL DEFAULT 0,
+                communication_score INTEGER DEFAULT NULL,
+                critical_thinking_score INTEGER DEFAULT NULL,
+                argumentation_score INTEGER DEFAULT NULL,
+                confidence_score INTEGER DEFAULT NULL,
+                presentation_score INTEGER DEFAULT NULL,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """))
+        _ensure_skills_nullable(connection)
 
         connection.execute(text("""
             CREATE TABLE IF NOT EXISTS debate_sessions (

@@ -6,6 +6,9 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.models.debate import DebateArgument, DebateSession
+from app.models.debate_coaching import DebateCoachingRecord
+from app.models.presentation import PresentationAnalysis
+from app.models.user import User
 from app.services.llm_service import LLMAnalysisError, LLMService
 
 client = TestClient(app)
@@ -15,9 +18,17 @@ def auth_user(role="learner"):
     email = f"user-{uuid4().hex[:8]}@example.com"
     registered = client.post(
         "/auth/register",
-        json={"name": f"Test {role.title()}", "email": email, "password": "Password123!", "role": role},
+        json={"name": f"Test {role.title()}", "email": email, "password": "Password123!"},
     )
     assert registered.status_code == 201
+    assert registered.json()["role"] == "learner"
+    if role != "learner":
+        db = SessionLocal()
+        u = db.query(User).filter(User.email == email).first()
+        if u:
+            u.role = role
+            db.commit()
+        db.close()
     logged_in = client.post("/auth/login", json={"email": email, "password": "Password123!"})
     assert logged_in.status_code == 200
     token = logged_in.json()["access_token"]
@@ -76,15 +87,18 @@ def test_gemini_request_formatting_and_error_handling(monkeypatch):
 def test_skills_auto_calculation_and_sync():
     headers, user = auth_user("learner")
 
-    # Fetch initial skills - should have has_activity = False
+    # Fetch initial skills for fresh user - all competencies must be unassessed (None)
     res = client.get("/skills/me", headers=headers)
     assert res.status_code == 200
     data = res.json()
-    assert data["communication_score"] == 0
-    assert data["argumentation_score"] == 0
+    assert data["communication_score"] is None
+    assert data["critical_thinking_score"] is None
+    assert data["argumentation_score"] is None
+    assert data["confidence_score"] is None
+    assert data["presentation_score"] is None
     assert data["has_activity"] is False
 
-    # Simulate user debate activity directly in DB
+    # Simulate completed debate assessment in DB
     db = SessionLocal()
     try:
         debate = DebateSession(
@@ -113,6 +127,27 @@ def test_skills_auto_calculation_and_sync():
             content="Furthermore, empirical data from solar installations shows an 80% price reduction over a decade.",
         )
         db.add_all([arg1, arg2])
+
+        # Add coaching evaluation record
+        coaching = DebateCoachingRecord(
+            debate_id=debate.id,
+            user_id=user["id"],
+            category_scores={
+                "argument_quality": {"score": 85, "explanation": "Strong claims"},
+                "communication_clarity": {"score": 80, "explanation": "Clear diction"},
+                "logical_consistency": {"score": 78, "explanation": "Coherent logic"},
+                "rebuttal_effectiveness": {"score": 82, "explanation": "Good counterpoints"},
+            },
+            overall_score=81.0,
+            overall_assessment="Solid argument structure and persuasive warrants.",
+            strengths=["Clear logic", "Good structure"],
+            weaknesses=["Needs more empirical backing"],
+            improvement_suggestions=["Cite statistical sources"],
+            improvement_plan={"strongest_skills": [], "areas_for_improvement": [], "practice_recommendations": [], "next_steps": [], "measurable_next_debate_goal": "Goal", "progress_indicators": []},
+            source_argument_count=2,
+            model="gemini-3.8-flash",
+        )
+        db.add(coaching)
         db.commit()
     finally:
         db.close()
@@ -124,7 +159,12 @@ def test_skills_auto_calculation_and_sync():
     assert updated_data["has_activity"] is True
     assert updated_data["argumentation_score"] > 0
     assert updated_data["communication_score"] > 0
+    assert updated_data["critical_thinking_score"] > 0
+    # Crucial: Speaking Confidence and Presentation Delivery MUST remain None (0 speech recordings)
+    assert updated_data["confidence_score"] is None
+    assert updated_data["presentation_score"] is None
     assert updated_data["provenance"]["arguments_count"] == 2
+    assert updated_data["provenance"]["presentations_count"] == 0
 
 
 def test_debate_duplicate_prevention_on_rapid_submission():

@@ -5,7 +5,7 @@ class RegisterRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     email: EmailStr
     password: str = Field(min_length=8, max_length=72)
-    role: str | None = Field(default=None, pattern="^(learner|debate_coach|educator|administrator)$")
+    role: str | None = Field(default=None)
 
     @property
     def normalized_email(self) -> str:

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
+import { formatDateTimeIST } from '../utils/date'
 
 export default function AppLayout() {
   const { user, logout } = useAuth()
@@ -221,7 +222,7 @@ export default function AppLayout() {
                     >
                       <div className="notification-title">
                         <strong>{n.title}</strong>
-                        <time>{new Date(n.created_at).toLocaleDateString()}</time>
+                        <time>{formatDateTimeIST(n.created_at)}</time>
                       </div>
                       <p>{n.message}</p>
                     </div>

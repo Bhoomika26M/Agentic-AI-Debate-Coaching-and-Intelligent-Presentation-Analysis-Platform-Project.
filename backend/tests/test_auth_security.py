@@ -20,10 +20,48 @@ def test_successful_registration_and_login():
         json={"name": "Secure User", "email": email, "password": "StrongPass123"},
     )
     assert register.status_code == 201
+    assert register.json()["role"] == "learner"
 
     login = client.post("/auth/login", json={"email": email, "password": "StrongPass123"})
     assert login.status_code == 200
     assert login.json()["access_token"]
+
+
+def test_registration_without_role_defaults_to_learner():
+    email = "default-learner@example.com"
+    res = client.post(
+        "/auth/register",
+        json={"name": "Default Learner", "email": email, "password": "StrongPass123"},
+    )
+    assert res.status_code == 201
+    assert res.json()["role"] == "learner"
+
+    db = SessionLocal()
+    user = db.query(User).filter(User.email == email).first()
+    db.close()
+    assert user is not None
+    assert user.role == "learner"
+
+
+def test_registration_ignores_privileged_role_self_assignment():
+    email = "attacker-role@example.com"
+    res = client.post(
+        "/auth/register",
+        json={
+            "name": "Attacker",
+            "email": email,
+            "password": "StrongPass123",
+            "role": "administrator",
+        },
+    )
+    assert res.status_code == 201
+    assert res.json()["role"] == "learner"
+
+    db = SessionLocal()
+    user = db.query(User).filter(User.email == email).first()
+    db.close()
+    assert user is not None
+    assert user.role == "learner"
 
 
 def test_duplicate_registration_and_invalid_password_are_rejected():

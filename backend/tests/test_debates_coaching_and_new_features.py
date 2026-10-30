@@ -2,7 +2,9 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.database import SessionLocal
 from app.main import app
+from app.models.user import User
 
 
 client = TestClient(app)
@@ -12,9 +14,17 @@ def auth_user(role="learner"):
     email = f"user-{uuid4().hex[:8]}@example.com"
     registered = client.post(
         "/auth/register",
-        json={"name": f"Test {role.title()}", "email": email, "password": "Password123!", "role": role},
+        json={"name": f"Test {role.title()}", "email": email, "password": "Password123!"},
     )
     assert registered.status_code == 201
+    assert registered.json()["role"] == "learner"
+    if role != "learner":
+        db = SessionLocal()
+        u = db.query(User).filter(User.email == email).first()
+        if u:
+            u.role = role
+            db.commit()
+        db.close()
     logged_in = client.post("/auth/login", json={"email": email, "password": "Password123!"})
     assert logged_in.status_code == 200
     token = logged_in.json()["access_token"]

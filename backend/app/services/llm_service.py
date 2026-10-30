@@ -28,7 +28,7 @@ def sanitize_error_message(message: str | None) -> str:
     # Redact Google API URLs
     text = re.sub(r"https?://generativelanguage\.googleapis\.com[^\s\'\"]*", "https://generativelanguage.googleapis.com/... [endpoint redacted]", text)
     # Check if this is a known raw client error string and sanitize to a friendly message
-    if "400 Bad Request" in text or "JSON mode is not enabled" in text or "API key" in text:
+    if "400 Bad Request" in text or "JSON mode is not enabled" in text:
         return "Audio transcription failed. Please try again. If the issue persists, contact support."
     return text[:300]
 

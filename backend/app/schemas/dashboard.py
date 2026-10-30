@@ -8,7 +8,7 @@ class LearnerDashboardData(BaseModel):
     total_presentations: int
     average_debate_score: float | None
     average_presentation_score: float | None
-    skills: dict[str, int]
+    skills: dict[str, int | None]
     improvement_trends: list[dict[str, Any]]
     recent_debates: list[dict[str, Any]]
     recent_presentations: list[dict[str, Any]]

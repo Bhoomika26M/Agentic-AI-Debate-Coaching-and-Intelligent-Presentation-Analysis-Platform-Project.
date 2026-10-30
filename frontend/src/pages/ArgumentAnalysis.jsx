@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import api from '../services/api'
+import { formatDateTimeIST } from '../utils/date'
 
 const initialForm = {
   topic: '',
@@ -145,11 +146,6 @@ export default function ArgumentAnalysis() {
     }
   }
 
-  const formatter = new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
-
   return (
     <section className="page-stack analysis-page">
       <div className="page-heading">
@@ -267,7 +263,7 @@ export default function ArgumentAnalysis() {
                       </span>
                       <strong style={{ fontSize: '0.92rem', color: 'var(--text-main)' }}>{result.topic}</strong>
                     </div>
-                    <span className="help-text">{formatter.format(new Date(result.created_at))}</span>
+                    <span className="help-text">{formatDateTimeIST(result.created_at)}</span>
                   </div>
 
                   {/* Overall Reasoning Quality Banner */}
@@ -446,7 +442,7 @@ export default function ArgumentAnalysis() {
                       </div>
                       <h4>{analysis.topic}</h4>
                       <span className="analysis-card-date">
-                        {formatter.format(new Date(analysis.created_at))}
+                        {formatDateTimeIST(analysis.created_at)}
                       </span>
                     </button>
                   )

@@ -1,5 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
+from app.core.timezone import UTCDateTime
 
 
 class NotificationResponse(BaseModel):
@@ -11,7 +12,7 @@ class NotificationResponse(BaseModel):
     message: str
     type: str
     is_read: bool
-    created_at: datetime
+    created_at: UTCDateTime
 
 
 class NotificationListResponse(BaseModel):

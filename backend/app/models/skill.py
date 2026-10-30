@@ -11,11 +11,11 @@ class Skill(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
-    communication_score: Mapped[int] = mapped_column(Integer, default=0)
-    critical_thinking_score: Mapped[int] = mapped_column(Integer, default=0)
-    argumentation_score: Mapped[int] = mapped_column(Integer, default=0)
-    confidence_score: Mapped[int] = mapped_column(Integer, default=0)
-    presentation_score: Mapped[int] = mapped_column(Integer, default=0)
+    communication_score: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    critical_thinking_score: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    argumentation_score: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    confidence_score: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    presentation_score: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user = relationship("User", back_populates="skill")

@@ -1,6 +1,7 @@
 from datetime import datetime
 from sqlalchemy.orm import Session
 
+from app.core.timezone import format_ist
 from app.models.notification import Notification
 from app.models.user import User
 
@@ -30,7 +31,7 @@ def notify_debate_reminder(
     debate_topic: str,
     scheduled_at: datetime | None = None,
 ) -> Notification:
-    time_str = f" scheduled for {scheduled_at.strftime('%b %d, %Y at %H:%M')}" if scheduled_at else ""
+    time_str = f" scheduled for {format_ist(scheduled_at, '%b %d, %Y at %I:%M %p')}" if scheduled_at else ""
     return create_notification(
         database,
         user_id=user_id,

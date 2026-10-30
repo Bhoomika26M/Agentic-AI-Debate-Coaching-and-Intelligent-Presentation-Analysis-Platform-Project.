@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.timezone import format_ist, to_utc_iso
 from app.models.debate import DebateArgument, DebateParticipant, DebateSession
 from app.models.debate_coaching import DebateCoachingRecord
 from app.models.presentation import PresentationAnalysis
@@ -57,7 +58,7 @@ def export_debate_report(
                 "topic": debate.topic,
                 "format": debate.format,
                 "status": debate.status,
-                "created_at": debate.created_at.isoformat() if debate.created_at else None,
+                "created_at": to_utc_iso(debate.created_at),
             },
             "arguments": [
                 {
@@ -66,7 +67,7 @@ def export_debate_report(
                     "position": a.position,
                     "content": a.content,
                     "is_ai": a.is_ai,
-                    "created_at": a.created_at.isoformat() if a.created_at else None,
+                    "created_at": to_utc_iso(a.created_at),
                 }
                 for a in arguments
             ],
@@ -78,7 +79,7 @@ def export_debate_report(
                     "strengths": c.strengths,
                     "weaknesses": c.weaknesses,
                     "improvement_suggestions": c.improvement_suggestions,
-                    "created_at": c.created_at.isoformat() if c.created_at else None,
+                    "created_at": to_utc_iso(c.created_at),
                 }
                 for c in coaching_records
             ],
@@ -92,7 +93,7 @@ def export_debate_report(
                 a.author_name,
                 a.position,
                 a.content,
-                a.created_at.strftime("%Y-%m-%d %H:%M") if a.created_at else "",
+                format_ist(a.created_at, "%Y-%m-%d %I:%M %p") if a.created_at else "",
             ]
             for a in arguments
         ]
@@ -109,7 +110,7 @@ def export_debate_report(
             f"Topic: {debate.topic}",
             f"Format: {debate.format.replace('_', ' ').capitalize()}",
             f"Status: {debate.status.capitalize()}",
-            f"Created At: {debate.created_at.strftime('%B %d, %Y') if debate.created_at else 'N/A'}",
+            f"Created At: {format_ist(debate.created_at, '%B %d, %Y at %I:%M %p') if debate.created_at else 'N/A'}",
             f"Total Arguments: {len(arguments)}",
         ]),
     ]
@@ -225,7 +226,7 @@ def export_presentation_report(
             f"File: {pres.display_filename}",
             f"Type: {pres.submission_type.capitalize()}",
             f"Status: {pres.status.capitalize()}",
-            f"Submitted: {pres.created_at.strftime('%B %d, %Y %H:%M') if pres.created_at else 'N/A'}",
+            f"Submitted: {format_ist(pres.created_at, '%B %d, %Y at %I:%M %p') if pres.created_at else 'N/A'}",
         ]),
         ("Presentation Analytics & Metrics", [
             f"Speaking Rate: {pres.speaking_rate_wpm or 'N/A'} WPM (Target: 130-160 WPM)",
@@ -272,11 +273,11 @@ def export_learner_progress_report(
     pres_count = database.query(PresentationAnalysis).filter(PresentationAnalysis.user_id == target_id).count()
 
     skills_data = {
-        "Communication": skill.communication_score if skill else 0,
-        "Critical Thinking": skill.critical_thinking_score if skill else 0,
-        "Argumentation": skill.argumentation_score if skill else 0,
-        "Confidence": skill.confidence_score if skill else 0,
-        "Presentation": skill.presentation_score if skill else 0,
+        "Communication": skill.communication_score if skill else None,
+        "Critical Thinking": skill.critical_thinking_score if skill else None,
+        "Argumentation": skill.argumentation_score if skill else None,
+        "Confidence": skill.confidence_score if skill else None,
+        "Presentation": skill.presentation_score if skill else None,
     }
 
     if format == "json":
@@ -289,7 +290,11 @@ def export_learner_progress_report(
     if format == "excel":
         headers = ["Skill Domain", "Current Score", "Proficiency Status"]
         rows = [
-            [name, val, "Proficient" if val >= 75 else ("Developing" if val >= 50 else "Needs Practice")]
+            [
+                name,
+                f"{val}/100" if val is not None else "Not assessed",
+                "Not Assessed" if val is None else ("Proficient" if val >= 75 else ("Developing" if val >= 50 else "Needs Practice")),
+            ]
             for name, val in skills_data.items()
         ]
         xml_content = create_excel_xml(f"Progress_{target_user.name}", headers, rows)
@@ -310,7 +315,11 @@ def export_learner_progress_report(
             f"Presentations Analyzed: {pres_count}",
         ]),
         ("Core Competency Baseline", [
-            f"{name}: {val}/100 ({'Proficient' if val >= 75 else ('Developing' if val >= 50 else 'Needs Focus')})"
+            (
+                f"{name}: {val}/100 ({'Proficient' if val >= 75 else ('Developing' if val >= 50 else 'Needs Focus')})"
+                if val is not None else
+                f"{name}: Not assessed (Awaiting practice assessment)"
+            )
             for name, val in skills_data.items()
         ]),
         ("Coaching Summary", [

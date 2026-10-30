@@ -186,7 +186,7 @@ def create_presentation_submission(
     except Exception as exc:
         record.status = "failed"
         safe_msg = str(exc)
-        if "API key" in safe_msg or "key=" in safe_msg or "400 Bad Request" in safe_msg or "JSON mode is not enabled" in safe_msg:
+        if "key=" in safe_msg or "400 Bad Request" in safe_msg or "JSON mode is not enabled" in safe_msg:
             safe_msg = "Audio transcription failed. Please try again. If the issue persists, contact support."
         record.error_message = safe_msg[:300]
     database.commit()
@@ -253,7 +253,7 @@ def retry_presentation_submission(
     except Exception as exc:
         record.status = "failed"
         safe_msg = str(exc)
-        if "API key" in safe_msg or "key=" in safe_msg or "400 Bad Request" in safe_msg or "JSON mode is not enabled" in safe_msg:
+        if "key=" in safe_msg or "400 Bad Request" in safe_msg or "JSON mode is not enabled" in safe_msg:
             safe_msg = "Audio transcription failed. Please try again. If the issue persists, contact support."
         record.error_message = safe_msg[:300]
 

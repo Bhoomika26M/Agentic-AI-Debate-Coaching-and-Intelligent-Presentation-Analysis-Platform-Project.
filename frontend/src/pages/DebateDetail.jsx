@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
+import { formatDateTimeIST } from '../utils/date'
 
 const formatLabel = (value) => value?.replaceAll('_', ' ') || ''
 
@@ -342,7 +343,7 @@ export default function DebateDetail() {
                 <p className="conversation-card-body">{argument.content}</p>
 
                 <div className="conversation-card-footer">
-                  <time dateTime={argument.created_at}>{new Date(argument.created_at).toLocaleString()}</time>
+                  <time dateTime={argument.created_at}>{formatDateTimeIST(argument.created_at)}</time>
                   <span className="word-count-badge">{words} {words === 1 ? 'word' : 'words'}</span>
                 </div>
               </article>
@@ -495,7 +496,7 @@ export default function DebateDetail() {
                 <h2>Overall Coaching Assessment</h2>
                 <p>{activeFeedback.overall_assessment}</p>
                 <div style={{ marginTop: 6, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Evaluated from {activeFeedback.source_argument_count} user turns · Generated {new Date(activeFeedback.created_at).toLocaleString()}
+                  Evaluated from {activeFeedback.source_argument_count} user turns · Generated {formatDateTimeIST(activeFeedback.created_at)}
                 </div>
               </div>
             </div>
@@ -666,13 +667,7 @@ export default function DebateDetail() {
                 >
                   <div className="coaching-report-card-header">
                     <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                      {new Date(record.created_at).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {formatDateTimeIST(record.created_at)}
                     </span>
                     <span className="analysis-card-score">
                       {record.overall_score === null ? 'N/A' : `${Math.round(record.overall_score)}/100`}

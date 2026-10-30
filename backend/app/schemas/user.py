@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from app.core.timezone import UTCDateTime
 
 
 class UserUpdate(BaseModel):
@@ -18,5 +19,5 @@ class UserResponse(BaseModel):
     name: str
     email: EmailStr
     role: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
