@@ -12,10 +12,15 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), database: Session = Depends(get_db)) -> User:
-    credentials_error = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials", headers={"WWW-Authenticate": "Bearer"})
+    credentials_error = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required or token is invalid/expired", headers={"WWW-Authenticate": "Bearer"})
+    if not token:
+        raise credentials_error
     try:
         payload = decode_access_token(token)
-        user_id = int(payload.get("sub", ""))
+        raw_user_id = payload.get("sub")
+        if raw_user_id is None:
+            raise ValueError("Missing subject")
+        user_id = int(raw_user_id)
     except (JWTError, ValueError, TypeError):
         raise credentials_error from None
     user = database.get(User, user_id)

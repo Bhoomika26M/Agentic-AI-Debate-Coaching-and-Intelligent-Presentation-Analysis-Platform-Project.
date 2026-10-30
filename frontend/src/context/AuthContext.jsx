@@ -14,7 +14,14 @@ export function AuthProvider({ children }) {
       setLoading(false)
       return
     }
-    api.get('/auth/me').then(({ data }) => setUser(data)).catch(() => localStorage.removeItem(tokenKey)).finally(() => setLoading(false))
+    api
+      .get('/auth/me')
+      .then(({ data }) => setUser(data))
+      .catch(() => {
+        localStorage.removeItem(tokenKey)
+        setUser(null)
+      })
+      .finally(() => setLoading(false))
   }, [])
 
   async function login(email, password) {
@@ -22,14 +29,25 @@ export function AuthProvider({ children }) {
     localStorage.setItem(tokenKey, data.access_token)
     const currentUser = await api.get('/auth/me')
     setUser(currentUser.data)
+    return currentUser.data
   }
 
   async function register(details) {
-    await api.post('/auth/register', details)
-    await login(details.email, details.password)
+    const payload = {
+      ...details,
+      email: details.email.trim().toLowerCase(),
+      role: details.role || 'learner',
+    }
+    await api.post('/auth/register', payload)
+    return login(payload.email, payload.password)
   }
 
-  function logout() {
+  async function logout() {
+    try {
+      await api.post('/auth/logout')
+    } catch {
+      // no-op: JWT is stateless and the client must clear local session state.
+    }
     localStorage.removeItem(tokenKey)
     setUser(null)
   }

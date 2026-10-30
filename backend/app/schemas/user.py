@@ -7,6 +7,10 @@ class UserUpdate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
 
 
+class UserRoleUpdate(BaseModel):
+    role: str = Field(pattern="^(learner|debate_coach|educator|administrator)$")
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

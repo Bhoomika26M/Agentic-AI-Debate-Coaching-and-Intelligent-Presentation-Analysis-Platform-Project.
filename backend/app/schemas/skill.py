@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,3 +18,5 @@ class SkillResponse(SkillUpdate):
     id: int
     user_id: int
     updated_at: datetime
+    has_activity: bool = False
+    provenance: dict[str, Any] | None = None
