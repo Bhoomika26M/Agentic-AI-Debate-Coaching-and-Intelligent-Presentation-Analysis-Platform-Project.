@@ -117,7 +117,6 @@ During the platform's development, several critical architectural, algorithmic, 
 ```mermaid
 flowchart TD
     subgraph Client["Client Tier (React 18 + Vite)"]
-        UI_Dash["Role Dashboards (Learner, Coach, Educator, Admin)"]
         UI_Debate["Debate Sparring Arena & Conversation Stream"]
         UI_Studio["Argument Studio & 5-Type Counterargument Engine"]
         UI_Pres["Speech & Presentation Delivery Analytics"]
