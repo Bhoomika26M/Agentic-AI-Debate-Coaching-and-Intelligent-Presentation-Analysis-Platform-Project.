@@ -176,7 +176,6 @@ The platform is organized into 14 distinct functional modules mapped across the 
   - Defense against privilege escalation: backend strictly ignores/prohibits client-requested roles during registration.
   - Secure registration, login, and password management using PBKDF2/bcrypt hashing.
   - Stateless JSON Web Token (JWT) bearer authentication with HS256 encryption.
-  - Role-based authorization guarding endpoints for all four roles (`learner`, `debate_coach`, `educator`, `administrator`).
   - Administrative role assignment endpoint (`PATCH /users/{id}/role`).
 
 - **Module 2 — User Profile & Skill Competency Tracking**:
