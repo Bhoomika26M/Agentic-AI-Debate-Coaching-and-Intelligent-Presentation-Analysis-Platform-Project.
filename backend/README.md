@@ -6,7 +6,7 @@ FastAPI backend powered by Python 3.11+, SQLAlchemy 2.0, Alembic migrations, JWT
 
 ## Key Features & Services
 
-- **Authentication & RBAC**: Streamlined registration defaulting securely to `learner`; client privilege escalation prevented; JWT bearer tokens (HS256) guarding endpoints across 4 distinct roles: `learner`, `debate_coach`, `educator`, and `administrator`.
+- **Authentication & Access Control**: Simple learner registration defaulting automatically and securely to `learner`; client privilege escalation prevented; JWT bearer tokens (HS256) guarding endpoints with internal administrative authorization.
 - **Debate Sparring Service**: Turn-ordered multi-turn debate simulation with automated AI opponent generation and idempotency protection.
 - **Argument & Fallacy Engine**: Detection of 8 formal/informal fallacies and 5-dimensional counterargument generation (*Logical, Empirical, Ethical, Practical, Policy*).
 - **Speech & Presentation Analytics**: Direct audio processing via `gemini-3.5-transcribe` with auto-calculated Words Per Minute (WPM), filler disfluency counters, acoustic duration, and an in-place retry engine (`POST /presentations/{id}/retry`).
@@ -63,9 +63,10 @@ $env:PYTHONPATH="."
 pytest tests -v
 ```
 
-The test suite (41 tests) covers:
-- Registration without role defaults and privilege escalation prevention
+The test suite (49 tests) covers:
+- Registration with default learner role and privilege escalation prevention
 - User authentication, JWT expiration, and password strength
+- Competency performance scoring (null defaults, zero score fabrication, audio modality isolation)
 - Argument analysis and claim extraction
 - 8-type logical fallacy detection
 - 5-type counterargument generation engine
@@ -74,4 +75,4 @@ The test suite (41 tests) covers:
 - Presentation audio duration and speaking rate calculation
 - In-place retry logic for presentation records
 - Binary PDF-1.4 and Excel SpreadsheetML export generation
-- RBAC permissions across Learner, Coach, Educator, and Admin
+- Access control enforcement and administrative permissions
