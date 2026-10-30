@@ -20,7 +20,7 @@
 2. [Key Engineering Innovations & Architectural Fixes](#2-key-engineering-innovations--architectural-fixes)
 3. [System Architecture Diagram](#3-system-architecture-diagram)
 4. [Functional Modules & Capabilities (Milestones 1–4)](#4-functional-modules--capabilities-milestones-14)
-5. [Role-Based Access Control (RBAC)](#5-role-based-access-control-rbac)
+5. [User Authentication & System Access Model](#5-user-authentication--system-access-model)
 6. [Technology Stack](#6-technology-stack)
 7. [Project Directory Structure](#7-project-directory-structure)
 8. [Installation & Getting Started Guide](#8-installation--getting-started-guide)
@@ -81,10 +81,15 @@ During the platform's development, several critical architectural, algorithmic, 
 - **Debate Workspace Redesign**: Distinct user vs. AI conversation cards, assigned position badges, live turn trackers, typing pulse indicators, and instant report history switcher.
 - **Presentation Workspace Redesign**: Drag-and-drop file dropzone, live multi-stage processing indicators, delivery KPI grid, and collapsable verbatim transcript viewer.
 
-### 2.6. Frictionless Onboarding & Secure Default Learner Role Assignment
-- **Streamlined Workflow**: Completely eliminated confusing role selection dropdowns from the registration UI. Users register straightforwardly using only **Name**, **Email**, and **Password**.
+### 2.6. Frictionless Onboarding & Automatic Learner Role Assignment
+- **Learner-Centric Registration Workflow**: Completely eliminated confusing role selection dropdowns and separate registration flows. The platform now implements a simple, focused learner registration pipeline:
+  1. A new user opens the registration page (`/register`).
+  2. The user enters their name, email, password, and password confirmation—without choosing any user role.
+  3. The backend automatically and securely assigns the default `learner` role.
+  4. The user logs in at `/login` using their email and password.
+  5. The authenticated user gains immediate access to all debate sparring, speech presentation, argument analysis, and competency tracking features.
 - **Privilege Escalation Prevention**: The backend strictly and unconditionally assigns `role="learner"` for all registrations. Any client attempts to self-assign elevated privileges (`administrator`, `educator`, `debate_coach`) are disregarded and neutralized.
-- **Internal RBAC Continuity**: The full 4-role access control structure (`learner`, `debate_coach`, `educator`, `administrator`) is preserved throughout the database, models, and authorization middleware. Privileged role upgrades remain safely restricted to the administrator endpoint (`PATCH /users/{id}/role`).
+- **Internal Access Control Model**: The internal database schema maintains the `role` field (`learner`, `debate_coach`, `educator`, `administrator`) for backend authorization and administrative operations, but the public user-facing application is 100% focused on learner debaters and speakers. Users cannot register as coaches, educators, or administrators.
 
 ### 2.7. Performance-Based Competency Architecture & Nullable Scoring
 - **Root Cause of Score Fabrication**:
@@ -117,7 +122,7 @@ During the platform's development, several critical architectural, algorithmic, 
 ```mermaid
 flowchart TD
     subgraph Client["Client Tier (React 18 + Vite)"]
-        UI_Dash["Role Dashboards (Learner, Coach, Educator, Admin)"]
+        UI_Dash["Learner Practice Dashboard & Progress Analytics"]
         UI_Debate["Debate Sparring Arena & Conversation Stream"]
         UI_Studio["Argument Studio & 5-Type Counterargument Engine"]
         UI_Pres["Speech & Presentation Delivery Analytics"]
@@ -126,7 +131,7 @@ flowchart TD
 
     subgraph Gateway["API Gateway Tier (FastAPI)"]
         Router["FastAPI Application Router"]
-        AuthMid["JWT Authentication & RBAC Middleware"]
+        AuthMid["JWT Authentication & Access Control"]
         Sanitize["Secret Sanitizer & Error Redactor"]
         CORS["CORS & Request Validation (Pydantic v2)"]
     end
@@ -171,14 +176,14 @@ The platform is organized into 14 distinct functional modules mapped across the 
 
 ### Milestone 1: Core Setup, Architecture & Identity Management (Weeks 1 & 2)
 
-- **Module 1 — User Authentication & RBAC**:
+- **Module 1 — User Authentication & Access Control**:
   - Centered SaaS authentication experience across Login, Register, Forgot Password, and Reset Password screens with interactive password visibility toggles and real-time validation.
-  - Simplified, frictionless registration requiring only Name, Email, and Password; all new accounts automatically and securely default to the `learner` role.
-  - Defense against privilege escalation: backend strictly ignores/prohibits client-requested roles during registration.
+  - Simplified, learner-based onboarding requiring only Name, Email, Password, and Confirm Password; all new accounts automatically and securely default to the `learner` role.
+  - Complete elimination of role selection dropdowns, preventing privilege escalation.
   - Secure registration, login, and password management using PBKDF2/bcrypt hashing.
   - Stateless JSON Web Token (JWT) bearer authentication with HS256 encryption.
-  - Role-based authorization guarding endpoints for all four roles (`learner`, `debate_coach`, `educator`, `administrator`).
-  - Administrative role assignment endpoint (`PATCH /users/{id}/role`).
+  - Cryptographic single-use password reset tokens with 15-minute expiration and anti-enumeration protections.
+  - Internal role attribute (`learner`, `debate_coach`, `educator`, `administrator`) preserved for backend administrative authorization.
 
 - **Module 2 — User Profile & Skill Competency Tracking**:
   - User profiles tracking debate experience level (Beginner, Intermediate, Advanced, Elite), topic interests, and presentation domains.
@@ -259,11 +264,12 @@ The platform is organized into 14 distinct functional modules mapped across the 
   - Qualitative rubric scores (/100): *Delivery Confidence, Articulation Clarity, and Audience Engagement*.
   - In-place retry endpoint (`POST /presentations/{id}/retry`) recovering failed submissions without record duplication.
 
-- **Module 11 — Role-Based Analytics Dashboards**:
-  - **Learner Dashboard**: Practice statistics, competency baseline bars, debate history, and roadmap phase status.
-  - **Debate Coach Dashboard**: Coachee tracking, review queues, scoring distributions, and coaching recommendations.
-  - **Educator Dashboard**: Cohort performance metrics, student rosters, completion rates, and rubric breakdowns.
-  - **Administrator Dashboard**: System telemetry, user role management, debate volumes, and platform broadcast tools.
+- **Module 11 — Learner Practice & Analytics Dashboard**:
+  - **Practice KPI Overview**: Real-time counter cards tracking debates joined, arguments submitted, speech recordings analyzed, and average debate scores.
+  - **Competency Progress Tracking**: Visual baseline meters showing verified scores across all 5 skill dimensions, with `"Not assessed"` states for unpracticed areas.
+  - **Recent Activity Stream**: Quick-launch links to active and scheduled debate sessions with assigned stance indicators.
+  - **Interactive Learning Roadmap**: Embedded 4-Phase Learning Path drawer outlining structured drills based on actual performance.
+  - **Administrative Telemetry**: System metrics and user management accessible via backend API for platform administrators.
 
 - **Module 12 — Notification & Engagement System**:
   - Notification triggers for debate updates, new coach feedback, practice milestones, and admin announcements.
@@ -281,22 +287,31 @@ The platform is organized into 14 distinct functional modules mapped across the 
 
 ---
 
-## 5. Role-Based Access Control (RBAC)
+## 5. User Authentication & System Access Model
 
-The platform enforces strict permissions across 4 user personas:
+The platform is designed with a **learner-first architecture**: every user registers and participates in the application as a learner. There are no separate public registration paths or role selection dropdowns.
 
-| Capability / Resource | Learner | Debate Coach | Educator | Administrator |
-| :--- | :---: | :---: | :---: | :---: |
-| **Participate in Debate Sessions** | ✅ | ✅ | ✅ | ✅ |
-| **Use Argument Studio & Fallacy Engine** | ✅ | ✅ | ✅ | ✅ |
-| **Upload Speech Recordings & View Reports** | ✅ | ✅ | ✅ | ✅ |
-| **View Personal Coaching & Learning Roadmap** | ✅ | ✅ | ✅ | ✅ |
-| **Export Personal PDF & Excel Reports** | ✅ | ✅ | ✅ | ✅ |
-| **Evaluate & Review Student Debates** | ❌ | ✅ | ✅ | ✅ |
-| **View Cohort Analytics & Class Rankings** | ❌ | ❌ | ✅ | ✅ |
-| **Broadcast Platform Announcements** | ❌ | ❌ | ❌ | ✅ |
-| **Assign & Reassign User Roles** | ❌ | ❌ | ❌ | ✅ |
-| **System-Wide Telemetry & User Deletion** | ❌ | ❌ | ❌ | ✅ |
+### 5.1. Registration & Authentication Lifecycle
+1. **Registration**: A new user signs up by entering their Name, Email, Password, and Confirm Password at `/register`.
+2. **Default Role Assignment**: The backend strictly and automatically assigns `role="learner"`. Client requests cannot alter or escalate this role during registration.
+3. **Session Authentication**: The user logs in at `/login` with their email and password, receiving an HS256-signed JWT access token.
+4. **Feature Access**: The authenticated learner accesses all debate sparring, speech analysis, Argument Studio, and competency tracking modules.
+
+### 5.2. Internal Authorization & Administrative Separation
+The underlying database schema preserves the `role` field on the `users` table (`learner`, `debate_coach`, `educator`, `administrator`) to maintain authorization boundaries in the backend API. Elevated administrative privileges (such as broadcasting announcements or reviewing system telemetry) are strictly restricted and can only be assigned by system administrators via `PATCH /api/users/{id}/role`.
+
+| Platform Capability / Resource | Platform Users (Learners) | System Administrators |
+| :--- | :---: | :---: |
+| **Register & Authenticate Account** | ✅ | ✅ |
+| **Create & Spar in Debate Rounds** | ✅ | ✅ |
+| **Argument Studio (Claim Mining & Fallacy Detection)** | ✅ | ✅ |
+| **5-Dimension Counterargument Generation** | ✅ | ✅ |
+| **Upload Speech Audio & Delivery Analytics** | ✅ | ✅ |
+| **View 5-Competency Matrix & Verified Provenance** | ✅ | ✅ |
+| **Access 4-Phase Personalized Learning Roadmap** | ✅ | ✅ |
+| **Export Binary PDF & Excel Reports** | ✅ | ✅ |
+| **Broadcast System-Wide Announcements** | ❌ | ✅ |
+| **Manage User Roles & System Telemetry** | ❌ | ✅ |
 
 ---
 
@@ -349,13 +364,13 @@ Infosys_Internship/
 │   │   │   ├── schemas/                  # Pydantic v2 request/response schemas
 │   │   │   ├── routers/                  # REST API endpoints
 │   │   │   │   ├── auth.py               # /auth (login, register, me, password reset)
-│   │   │   │   ├── users.py              # /users (profiles, role management)
+│   │   │   │   ├── users.py              # /users (profiles, administrative role updates)
 │   │   │   │   ├── debates.py            # /debates (sessions, arguments, sparring)
 │   │   │   │   ├── argument_analysis.py  # /analysis (argument evaluation & fallacies)
 │   │   │   │   ├── counterarguments.py   # /analysis/counterarguments (5 dimensions)
 │   │   │   │   ├── presentations.py      # /presentations (upload, analyze, retry)
 │   │   │   │   ├── skills.py             # /skills (competencies, learning roadmap)
-│   │   │   │   ├── dashboard.py          # /dashboard (role-based overview metrics)
+│   │   │   │   ├── dashboard.py          # /dashboard (practice metrics & system telemetry)
 │   │   │   │   ├── notifications.py      # /notifications (alerts & announcements)
 │   │   │   │   └── reports.py            # /reports (PDF & Excel binary exporters)
 │   │   │   ├── services/                 # Domain logic & LLM integrations
@@ -376,7 +391,7 @@ Infosys_Internship/
 │   │   │   ├── context/                  # AuthContext and user session state
 │   │   │   ├── layouts/                  # AppLayout with navy sidebar & notifications
 │   │   │   ├── pages/
-│   │   │   │   ├── Dashboard.jsx         # Multi-role overview & learning roadmap
+│   │   │   │   ├── Dashboard.jsx         # Learner practice dashboard & learning roadmap
 │   │   │   │   ├── Debates.jsx           # Debate arena session listings
 │   │   │   │   ├── DebateDetail.jsx      # Conversation stream, sparring & coaching
 │   │   │   │   ├── CreateDebate.jsx      # Session creation wizard
@@ -498,12 +513,12 @@ Infosys_Internship/
 All endpoints are prefixed with `/api` and return standardized JSON envelopes:
 
 ### Authentication & Users
-- `POST /api/auth/register` — Register a new account (Name, Email, Password required; automatically and securely assigned the default `learner` role).
+- `POST /api/auth/register` — Register a new account (Name, Email, Password required; automatically assigned the default `learner` role; no role field accepted).
 - `POST /api/auth/login` — Authenticate and receive a JWT Bearer token.
 - `GET /api/auth/me` — Retrieve the current authenticated user identity.
 - `GET /api/users/profile` — Get the current user's profile, interests, and coaching preferences.
 - `PUT /api/users/profile` — Update user profile and coaching strictness.
-- `PATCH /api/users/{id}/role` — Reassign a user's role (*Admin only*).
+- `PATCH /api/users/{id}/role` — Reassign a user's role (*Administrative command only*).
 
 ### Debates & Sparring
 - `GET /api/debates` — List active, scheduled, and completed debate sessions.
@@ -530,7 +545,7 @@ All endpoints are prefixed with `/api` and return standardized JSON envelopes:
 - `GET /api/presentations/reports.csv` — Download presentation history archive in CSV format.
 
 ### Dashboards, Skills & Notifications
-- `GET /api/dashboard/overview?view={role}` — Get aggregate analytics for Learner, Coach, Educator, or Admin.
+- `GET /api/dashboard/overview` — Get learner practice metrics, debate counts, and competency scores (supports administrative view parameter).
 - `GET /api/skills/me` — Retrieve verified 5-competency baseline scores (`None`/`null` for unassessed competencies).
 - `PUT /api/skills/me` — Deterministically recalculate and synchronize verified competencies from completed assessments (rejects client-supplied score overrides).
 - `GET /api/skills/learning-path` — Retrieve personalized 4-phase learning roadmap.
@@ -598,10 +613,10 @@ The platform features a proprietary zero-dependency document generation engine t
 
 | Milestone | Target Timeline | Key Requirements & Deliverables | Verification Status |
 | :--- | :--- | :--- | :---: |
-| **Milestone 1** | Weeks 1 & 2 | • System architecture & database schema<br>• JWT authentication & 4-role RBAC<br>• User profile & skill tracking<br>• Debate session management (6 formats) | **100% Completed**<br>✅ Verified |
+| **Milestone 1** | Weeks 1 & 2 | • System architecture & database schema<br>• JWT authentication & automatic learner role assignment<br>• User profile & skill tracking<br>• Debate session management (6 formats) | **100% Completed**<br>✅ Verified |
 | **Milestone 2** | Weeks 3 & 4 | • Argument analysis & claim extraction<br>• 8-type logical fallacy detection engine<br>• 5-dimension counterargument engine<br>• Argument scoring and correction advice | **100% Completed**<br>✅ Verified |
 | **Milestone 3** | Weeks 5 & 6 | • Agentic multi-turn AI debate simulation<br>• Weighted 5-rubric performance scoring<br>• Personalized coaching & improvement plans<br>• 4-phase structured learning roadmaps | **100% Completed**<br>✅ Verified |
-| **Milestone 4** | Weeks 7 & 8 | • Audio speech transcription via Gemini API<br>• Delivery metrics (WPM, filler words, clarity)<br>• Role-based dashboards (Learner, Coach, Educator, Admin)<br>• Binary PDF & Excel SpreadsheetML exports<br>• Security hardening & UI design system overhaul | **100% Completed**<br>✅ Verified |
+| **Milestone 4** | Weeks 7 & 8 | • Audio speech transcription via Gemini API<br>• Delivery metrics (WPM, filler words, clarity)<br>• Learner practice dashboard & progress analytics<br>• Binary PDF & Excel SpreadsheetML exports<br>• Security hardening & UI design system overhaul | **100% Completed**<br>✅ Verified |
 
 ---
 
