@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+backend/venv/
+venv/
+*.db
+*.sqlite3
+
+# Node
+frontend/node_modules/
+node_modules/
+frontend/dist/
+dist/
+.DS_Store
+
+# Uploads
+backend/uploads/audio/*.wav
+backend/uploads/audio/*.mp3
+backend/uploads/audio/*.m4a
+backend/uploads/audio/*.webm
+backend/uploads/exports/*.pdf
+backend/uploads/exports/*.xlsx
+
+# Environment
+.env
+backend/.env
