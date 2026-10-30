@@ -19,6 +19,9 @@ class AIService:
     def is_live_llm_ready(self) -> bool:
         return self.client is not None
 
+    def get_inference_mode(self) -> str:
+        return "openai_gpt4o" if self.is_live_llm_ready() else "development_heuristic_mode"
+
     def _call_llm_json(self, system_prompt: str, user_prompt: str) -> Optional[Dict[str, Any]]:
         if not self.is_live_llm_ready():
             return None

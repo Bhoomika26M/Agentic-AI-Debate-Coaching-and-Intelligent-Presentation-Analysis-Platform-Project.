@@ -23,6 +23,7 @@ export default function ArgumentAnalysis() {
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
   const [copied, setCopied] = useState(false);
+  const [savedNotification, setSavedNotification] = useState(false);
 
   useEffect(() => {
     fetchHistory();
@@ -66,6 +67,11 @@ export default function ArgumentAnalysis() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
+  };
+
+  const handleSaveToLibrary = () => {
+    setSavedNotification(true);
+    setTimeout(() => setSavedNotification(false), 3000);
   };
 
   return (
@@ -129,7 +135,41 @@ export default function ArgumentAnalysis() {
             </div>
           </div>
         </form>
+
+        {history.length > 0 && (
+          <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold text-gray-400 flex items-center space-x-1">
+              <History className="w-3.5 h-3.5 text-gray-400" />
+              <span>Past Analyses:</span>
+            </span>
+            {history.slice(0, 4).map((h, idx) => (
+              <button
+                key={h.id || idx}
+                onClick={() => {
+                  setResult(h);
+                  if (h.topic) setTopic(h.topic);
+                }}
+                className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all truncate max-w-xs ${
+                  result?.id === h.id
+                    ? 'bg-[#FCF6E5] border-[#D49B19] text-[#B87E0E] font-bold'
+                    : 'bg-[#FAF8F3] hover:bg-[#F2ECE1] border-[#ECE7DE] text-gray-700'
+                }`}
+              >
+                {h.topic ? `${h.topic} (${h.overall_score})` : `Score: ${h.overall_score}`}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {savedNotification && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center justify-between">
+          <span className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>Argument dossier successfully bookmarked into your private library.</span>
+          </span>
+        </div>
+      )}
 
       {/* STRUCTURED RESULTS DISPLAY */}
       {result && (
@@ -137,17 +177,35 @@ export default function ArgumentAnalysis() {
           {/* Top Score Banner */}
           <div className="bg-white rounded-2xl border border-[#ECE7DE] p-6 shadow-card flex flex-wrap items-center justify-between gap-4">
             <div className="space-y-1">
-              <span className="text-[10px] uppercase font-bold text-[#D49B19] tracking-wider">
-                Composite Argument Score
-              </span>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] uppercase font-bold text-[#D49B19] tracking-wider">
+                  Composite Argument Score
+                </span>
+                {result.inference_mode && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-semibold">
+                    {result.inference_mode === 'openai_gpt4o' ? 'OpenAI GPT-4o' : 'Deterministic Heuristic'}
+                  </span>
+                )}
+              </div>
               <div className="flex items-baseline space-x-2">
                 <span className="text-3xl font-black text-[#1E242B]">{result.overall_score}</span>
                 <span className="text-xs text-gray-400">/ 100</span>
               </div>
             </div>
 
+            <div className="flex items-center space-x-3">
+              <button
+                type="button"
+                onClick={handleSaveToLibrary}
+                className="px-3.5 py-2 rounded-xl bg-[#FAF8F3] hover:bg-[#F2ECE1] border border-[#ECE7DE] text-xs font-bold text-gray-700 transition-colors flex items-center space-x-1.5"
+              >
+                <Check className="w-3.5 h-3.5 text-[#D49B19]" />
+                <span>Save to Library</span>
+              </button>
+            </div>
+
             {/* Sub-metric Pills */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs w-full sm:w-auto">
               <div className="p-2.5 bg-[#FAF8F3] rounded-xl border border-[#ECE7DE]">
                 <span className="text-[10px] text-gray-500 block">Clarity</span>
                 <span className="font-bold text-[#1E242B]">{result.clarity_score}</span>

@@ -22,6 +22,7 @@ class PresentationAnalysisOut(BaseModel):
     strengths: List[str] = []
     weaknesses: List[str] = []
     improvement_recommendations: List[str] = []
+    inference_mode: Optional[str] = "development_heuristic_mode"
     created_at: datetime
 
     class Config:

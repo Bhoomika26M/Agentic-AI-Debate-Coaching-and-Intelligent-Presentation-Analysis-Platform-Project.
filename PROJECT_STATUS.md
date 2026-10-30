@@ -65,10 +65,26 @@
   - Full Docker containerization (`backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml`, `nginx.conf`)
   - End-to-end API validation suite (`backend/test_api.py`) passing with 100% success
 
+- [x] **Stage 6: Comprehensive Audit, Security Hardening & Full-Stack Repair**
+  - **Security & Authorization**: Fixed cross-user data isolation in debate turns and PDF exports (`HTTPException(403)`).
+  - **Data Validation**: Strict Pydantic input length and size bounds across all endpoints.
+  - **Dynamic Analytics**: Replaced static charts with live database aggregation for win distributions, weekly trend curves, and composite averages.
+  - **Presentation PDF Export**: Implemented `generate_presentation_pdf()` in `export_service.py` via ReportLab and exposed `GET /api/presentation/{id}/export/pdf`.
+  - **Admin User Role Elevation**: Added `PUT /api/admin/users/{id}/role` with self-demotion guards.
+  - **Frontend UX Improvements**:
+    - Created `Register.jsx` supporting Learner, Debate Coach, and Educator onboarding.
+    - Reorganized sidebar into 4 distinct groups: Main, AI Tools, Account, Administration (admin-only).
+    - Created `SettingsPage.jsx` with AI telemetry, speech cadence targets, and audio preferences.
+    - Added responsive mobile drawer navigation with backdrop.
+    - Session persistence in AI Debate Arena (`sessionStorage`).
+    - 1-click clean sentence copying in Fallacy Detector and rebuttal dossier copying in Counterarguments.
+    - Live upload progress bar and authenticated PDF dossier downloads.
+  - **Verification**: Complete 8-workflow automated suite (`backend/test_e2e_workflows.py`) passing 100%; frontend Vite build passing with 0 errors.
+
 ---
 
 ### Verification Summary
-- **Backend API Routes**: Tested and validated (`/api/auth/*`, `/api/users/*`, `/api/debates/*`, `/api/arguments/*`, `/api/fallacies/*`, `/api/counterarguments/*`, `/api/presentation/*`, `/api/coaching/*`, `/api/analytics/*`, `/api/admin/*`, `/api/health`).
+- **Backend API Routes**: Tested and validated (`/api/auth/*`, `/api/users/*`, `/api/debates/*`, `/api/arguments/*`, `/api/fallacies/*`, `/api/counterarguments/*`, `/api/presentation/*`, `/api/coaching/*`, `/api/analytics/*`, `/api/admin/*`, `/api/system/ai-status`, `/api/health`).
 - **Database Schema**: Successfully migrated and seeded with rich relational data.
-- **Frontend Build**: `npm run build` compiled 2360 modules with 0 errors via Vite.
+- **Frontend Build**: `npm run build` compiled 2362 modules with 0 errors via Vite.
 - **Visual Design**: Matches the uploaded JustiTalk reference dashboard screenshot.

@@ -15,6 +15,8 @@ import AnalyticsPage from './pages/Analytics/AnalyticsPage';
 import Profile from './pages/Profile/Profile';
 import AdminPage from './pages/Admin/AdminPage';
 import Login from './pages/Auth/Login';
+import Register from './pages/Auth/Register';
+import SettingsPage from './pages/Settings/SettingsPage';
 import {
   AboutPage,
   PricingPage,
@@ -27,6 +29,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route path="/" element={<DashboardLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="discover" element={<Discover />} />
@@ -42,6 +45,7 @@ export default function App() {
         <Route path="admin/payments" element={<PaymentAdminPage />} />
         <Route path="admin/users" element={<AdminPage />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="pricing" element={<PricingPage />} />
         <Route path="about" element={<AboutPage />} />
         <Route path="contact" element={<ContactPage />} />

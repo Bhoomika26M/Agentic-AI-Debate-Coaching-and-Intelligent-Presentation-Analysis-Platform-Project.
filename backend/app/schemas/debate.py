@@ -1,19 +1,19 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.models.debate import DebateFormat, DebatePosition, DebateStatus
 
 class DebateCreate(BaseModel):
-    title: str
-    topic: str
+    title: str = Field(..., min_length=2, max_length=200)
+    topic: str = Field(..., min_length=5, max_length=1000)
     format: DebateFormat = DebateFormat.AI_SIMULATION
     difficulty: str = "Intermediate"
-    duration_minutes: int = 15
+    duration_minutes: int = Field(default=15, ge=1, le=120)
     user_position: DebatePosition = DebatePosition.FOR
-    max_rounds: int = 4
+    max_rounds: int = Field(default=4, ge=1, le=10)
 
 class DebateMessageCreate(BaseModel):
-    content: str
+    content: str = Field(..., min_length=2, max_length=4000)
 
 class DebateMessageOut(BaseModel):
     id: int
@@ -38,7 +38,7 @@ class DebateEvaluationOut(BaseModel):
     communication_skills: float
     total_score: float
     winner: str
-    summary: Optional[str]
+    summary: Optional[str] = None
     strengths: List[str] = []
     weaknesses: List[str] = []
     actionable_feedback: List[str] = []

@@ -1,11 +1,11 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Argument Analysis
 class ArgumentAnalysisRequest(BaseModel):
-    argument: str
-    topic: Optional[str] = None
+    argument: str = Field(..., min_length=5, max_length=5000)
+    topic: Optional[str] = Field(None, max_length=200)
 
 class ArgumentAnalysisOut(BaseModel):
     id: Optional[int] = None
@@ -24,6 +24,7 @@ class ArgumentAnalysisOut(BaseModel):
     logical_consistency_score: float
     persuasiveness_score: float
     overall_score: float
+    inference_mode: Optional[str] = "development_heuristic_mode"
     created_at: Optional[datetime] = None
 
     class Config:
@@ -31,7 +32,7 @@ class ArgumentAnalysisOut(BaseModel):
 
 # Logical Fallacy Detection
 class FallacyDetectionRequest(BaseModel):
-    text: str
+    text: str = Field(..., min_length=3, max_length=5000)
 
 class DetectedFallacyItem(BaseModel):
     name: str
@@ -48,6 +49,7 @@ class FallacyDetectionOut(BaseModel):
     fallacies: List[DetectedFallacyItem]
     credibility_impact: str
     summary: str
+    inference_mode: Optional[str] = "development_heuristic_mode"
     created_at: Optional[datetime] = None
 
     class Config:
@@ -55,8 +57,8 @@ class FallacyDetectionOut(BaseModel):
 
 # Counterargument Generation
 class CounterargumentRequest(BaseModel):
-    argument: str
-    topic: Optional[str] = None
+    argument: str = Field(..., min_length=5, max_length=5000)
+    topic: Optional[str] = Field(None, max_length=200)
 
 class CounterargumentOut(BaseModel):
     id: Optional[int] = None
@@ -70,6 +72,7 @@ class CounterargumentOut(BaseModel):
     alternative_perspectives: List[str]
     challenge_questions: List[str]
     debate_strategy_suggestions: List[str]
+    inference_mode: Optional[str] = "development_heuristic_mode"
     created_at: Optional[datetime] = None
 
     class Config:

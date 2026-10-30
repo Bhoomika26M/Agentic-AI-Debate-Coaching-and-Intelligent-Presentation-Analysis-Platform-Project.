@@ -22,6 +22,26 @@ export default function Counterarguments() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [copiedIndex, setCopiedIndex] = useState(null);
+  const [copiedAll, setCopiedAll] = useState(false);
+
+  const handleCopyAll = () => {
+    if (!result) return;
+    const all = [
+      "LOGICAL REBUTTALS:",
+      ...(result.logical_rebuttals || []).map(r => `• ${r}`),
+      "\nEVIDENCE-BASED REBUTTALS:",
+      ...(result.evidence_based_rebuttals || []).map(r => `• ${r}`),
+      "\nETHICAL & VALUE REBUTTALS:",
+      ...(result.ethical_rebuttals || []).map(r => `• ${r}`),
+      "\nPRACTICAL / IMPLEMENTATION CRITIQUES:",
+      ...(result.practical_rebuttals || []).map(r => `• ${r}`),
+      "\nCROSS-EXAMINATION QUESTIONS:",
+      ...(result.challenge_questions || []).map(r => `• ${r}`)
+    ].join('\n');
+    navigator.clipboard.writeText(all);
+    setCopiedAll(true);
+    setTimeout(() => setCopiedAll(false), 2000);
+  };
 
   const handleGenerate = async (e) => {
     e.preventDefault();
@@ -114,6 +134,39 @@ export default function Counterarguments() {
       {/* RESULTS DISPLAY */}
       {result && (
         <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-[#ECE7DE] p-5 shadow-card flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-lg bg-[#FCF6E5] flex items-center justify-center text-[#D49B19]">
+                <Swords className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#1E242B]">
+                  Strategic Rebuttal Dossier
+                </h3>
+                <p className="text-xs text-gray-500">
+                  5 specialized argumentation dimensions synthesized
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              {result.inference_mode && (
+                <span className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 font-semibold">
+                  {result.inference_mode === 'openai_gpt4o' ? 'OpenAI GPT-4o' : 'Deterministic Engine'}
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={handleCopyAll}
+                className="px-4 py-2 rounded-xl bg-[#FAF8F3] hover:bg-[#F2ECE1] border border-[#ECE7DE] text-xs font-bold text-gray-800 transition-colors flex items-center space-x-1.5"
+              >
+                {copiedAll ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-[#D49B19]" />}
+                <span>{copiedAll ? 'Copied Dossier!' : 'Copy All Rebuttals'}</span>
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* 1. Logical Rebuttals */}
             <div className="bg-white rounded-2xl border border-[#ECE7DE] p-6 shadow-card space-y-3">

@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.models.user import UserRole
 
 class UserBase(BaseModel):
@@ -9,11 +9,14 @@ class UserBase(BaseModel):
     role: UserRole = UserRole.LEARNER
 
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(..., min_length=6)
 
 class UserLogin(BaseModel):
     email: str
     password: str
+
+class UserRoleUpdate(BaseModel):
+    role: UserRole
 
 class Token(BaseModel):
     access_token: str

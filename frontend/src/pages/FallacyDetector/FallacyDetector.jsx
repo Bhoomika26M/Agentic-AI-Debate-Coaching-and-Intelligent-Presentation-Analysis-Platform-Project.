@@ -7,7 +7,9 @@ import {
   CheckCircle2,
   XCircle,
   ArrowRight,
-  Info
+  Info,
+  Copy,
+  Check
 } from 'lucide-react';
 import api from '../../services/api';
 
@@ -30,11 +32,23 @@ export default function FallacyDetector() {
   const [inputText, setInputText] = useState(SAMPLE_FALLACY_TEXTS[0].text);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [copiedIdx, setCopiedIdx] = useState(null);
 
   useEffect(() => {
     // Initial load
     handleDetect();
+    fetchHistory();
   }, []);
+
+  const fetchHistory = async () => {
+    try {
+      const res = await api.get('/fallacies/history');
+      setHistory(res.data || []);
+    } catch (e) {
+      console.log('Error fetching fallacy history:', e);
+    }
+  };
 
   const handleDetect = async (e) => {
     if (e) e.preventDefault();
@@ -44,12 +58,19 @@ export default function FallacyDetector() {
     try {
       const res = await api.post('/fallacies/detect', { text: inputText });
       setResult(res.data);
+      fetchHistory();
     } catch (err) {
       console.error('Fallacy detection failed:', err);
       alert('Could not run fallacy audit.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCopyCleanVersion = (text, idx) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 2000);
   };
 
   return (
@@ -113,6 +134,28 @@ export default function FallacyDetector() {
             </button>
           </div>
         </form>
+
+        {history.length > 0 && (
+          <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold text-gray-400">Past Audits:</span>
+            {history.slice(0, 4).map((h, idx) => (
+              <button
+                key={h.id || idx}
+                onClick={() => {
+                  setResult(h);
+                  if (h.input_text) setInputText(h.input_text);
+                }}
+                className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all truncate max-w-xs ${
+                  result?.id === h.id
+                    ? 'bg-[#FCF6E5] border-[#D49B19] text-[#B87E0E] font-bold'
+                    : 'bg-[#FAF8F3] hover:bg-[#F2ECE1] border-[#ECE7DE] text-gray-700'
+                }`}
+              >
+                {h.has_fallacies ? `Fallacies Found (${h.credibility_impact})` : 'Sound Argument'}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* RESULTS DISPLAY */}
@@ -141,11 +184,18 @@ export default function FallacyDetector() {
                 )}
               </div>
               <div>
-                <h3 className="text-sm font-bold text-[#1E242B]">
-                  {result.has_fallacies
-                    ? `Identified ${result.fallacies?.length} Fallacy Pattern(s)`
-                    : 'Logically Sound Reasoning Detected'}
-                </h3>
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-sm font-bold text-[#1E242B]">
+                    {result.has_fallacies
+                      ? `Identified ${result.fallacies?.length} Fallacy Pattern(s)`
+                      : 'Logically Sound Reasoning Detected'}
+                  </h3>
+                  {result.inference_mode && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/80 border border-gray-200 text-gray-600 font-semibold">
+                      {result.inference_mode === 'openai_gpt4o' ? 'OpenAI GPT-4o' : 'Heuristic NLP'}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-gray-600 mt-0.5">{result.summary}</p>
               </div>
             </div>
@@ -210,10 +260,30 @@ export default function FallacyDetector() {
 
                       {/* Corrected rewrite */}
                       <div className="p-3.5 bg-emerald-50/30 rounded-xl border border-emerald-200/60 space-y-1">
-                        <span className="font-bold text-emerald-800 flex items-center space-x-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Adjudicated Clean Alternative:</span>
-                        </span>
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-emerald-800 flex items-center space-x-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Adjudicated Clean Alternative:</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyCleanVersion(fal.corrected_version, idx)}
+                            className="p-1 text-emerald-700 hover:text-emerald-900 rounded flex items-center space-x-1 text-[10px] font-semibold"
+                            title="Copy clean sentence"
+                          >
+                            {copiedIdx === idx ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-600" />
+                                <span>Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                                <span>Copy</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                         <p className="text-emerald-950 font-medium leading-relaxed italic">
                           "{fal.corrected_version}"
                         </p>

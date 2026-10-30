@@ -16,14 +16,15 @@ def detect_fallacies(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if not req.text.strip():
-        raise HTTPException(status_code=400, detail="Text cannot be empty.")
+    clean_text = req.text.strip()
+    if len(clean_text) < 3:
+        raise HTTPException(status_code=400, detail="Text must be at least 3 characters.")
 
-    result = ai_service.detect_fallacies(req.text)
+    result = ai_service.detect_fallacies(clean_text)
 
     record = FallacyDetection(
         user_id=current_user.id,
-        input_text=req.text,
+        input_text=clean_text,
         has_fallacies=result.get("has_fallacies", False),
         fallacies=result.get("fallacies", []),
         credibility_impact=result.get("credibility_impact", "None"),
@@ -32,13 +33,24 @@ def detect_fallacies(
     db.add(record)
     db.commit()
     db.refresh(record)
-    return record
+
+    out_dict = FallacyDetectionOut.model_validate(record).model_dump()
+    out_dict["inference_mode"] = ai_service.get_inference_mode()
+    return out_dict
 
 @router.get("/history", response_model=List[FallacyDetectionOut])
 def get_fallacy_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return db.query(FallacyDetection).filter(
+    records = db.query(FallacyDetection).filter(
         FallacyDetection.user_id == current_user.id
     ).order_by(FallacyDetection.created_at.desc()).limit(20).all()
+
+    mode = ai_service.get_inference_mode()
+    out = []
+    for r in records:
+        d = FallacyDetectionOut.model_validate(r).model_dump()
+        d["inference_mode"] = mode
+        out.append(d)
+    return out

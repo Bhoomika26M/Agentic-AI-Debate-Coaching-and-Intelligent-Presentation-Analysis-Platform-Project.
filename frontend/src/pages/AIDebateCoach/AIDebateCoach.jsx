@@ -38,6 +38,8 @@ export default function AIDebateCoach() {
   const [evaluation, setEvaluation] = useState(null);
   const [showEvalModal, setShowEvalModal] = useState(false);
   const [secondsElapsed, setSecondsElapsed] = useState(0);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [aiEngineStatus, setAiEngineStatus] = useState(null);
 
   // Setup form
   const [title, setTitle] = useState("AI Adjudication & Civil Law");
@@ -47,6 +49,41 @@ export default function AIDebateCoach() {
   const [maxRounds, setMaxRounds] = useState(4);
 
   const messagesEndRef = useRef(null);
+
+  // Restore debate from sessionStorage if active
+  useEffect(() => {
+    const restoreSession = async () => {
+      const savedDebateId = sessionStorage.getItem('justitalk_active_debate_id');
+      if (savedDebateId) {
+        try {
+          const res = await api.get(`/debates/${savedDebateId}`);
+          if (res.data) {
+            setActiveDebate(res.data);
+            setMessages(res.data.messages || []);
+            setInDebate(true);
+            if (res.data.status === 'Completed' && res.data.evaluation) {
+              setEvaluation(res.data.evaluation);
+            }
+          }
+        } catch (err) {
+          console.log('No active cached session found or session expired');
+          sessionStorage.removeItem('justitalk_active_debate_id');
+        }
+      }
+    };
+
+    const fetchEngineStatus = async () => {
+      try {
+        const res = await api.get('/system/ai-status');
+        setAiEngineStatus(res.data);
+      } catch (e) {
+        // Fallback default
+      }
+    };
+
+    restoreSession();
+    fetchEngineStatus();
+  }, []);
 
   // Timer
   useEffect(() => {
@@ -82,6 +119,7 @@ export default function AIDebateCoach() {
       setInDebate(true);
       setSecondsElapsed(0);
       setEvaluation(null);
+      sessionStorage.setItem('justitalk_active_debate_id', res.data.id);
     } catch (err) {
       console.error('Failed to start debate session:', err);
       alert('Could not start debate session. Please ensure backend is running.');
@@ -128,6 +166,39 @@ export default function AIDebateCoach() {
     }
   };
 
+  const handleResetDebate = () => {
+    sessionStorage.removeItem('justitalk_active_debate_id');
+    setInDebate(false);
+    setActiveDebate(null);
+    setMessages([]);
+    setEvaluation(null);
+    setShowEvalModal(false);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!activeDebate) return;
+    setDownloadingPdf(true);
+    try {
+      const res = await api.get(`/debates/${activeDebate.id}/export/pdf`, {
+        responseType: 'blob'
+      });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `debate_${activeDebate.id}_dossier.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download debate dossier PDF:', err);
+      alert('Could not download debate dossier PDF. Please check authorization.');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   const formatTime = (secs) => {
     const mins = Math.floor(secs / 60);
     const rem = secs % 60;
@@ -139,7 +210,7 @@ export default function AIDebateCoach() {
       {!inDebate ? (
         /* SETUP DEBATE SCREEN */
         <div className="bg-white rounded-2xl border border-[#ECE7DE] p-8 shadow-card space-y-8">
-          <div className="border-b border-gray-100 pb-5">
+          <div className="border-b border-gray-100 pb-5 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 rounded-xl bg-[#FCF6E5] flex items-center justify-center text-[#D49B19]">
                 <Bot className="w-6 h-6" />
@@ -153,6 +224,13 @@ export default function AIDebateCoach() {
                 </p>
               </div>
             </div>
+
+            {aiEngineStatus && (
+              <div className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-[#FAF8F3] border border-[#ECE7DE] text-[11px] font-semibold text-gray-700">
+                <span className={`w-2 h-2 rounded-full ${aiEngineStatus.mode === 'openai_gpt4o' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+                <span>AI Engine: {aiEngineStatus.mode === 'openai_gpt4o' ? 'OpenAI GPT-4o Online' : 'Deterministic Heuristic Mode'}</span>
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleStartDebate} className="space-y-6">
@@ -290,9 +368,9 @@ export default function AIDebateCoach() {
               </button>
 
               <button
-                onClick={() => setInDebate(false)}
+                onClick={handleResetDebate}
                 className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
-                title="Restart"
+                title="Restart & Return"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -510,21 +588,18 @@ export default function AIDebateCoach() {
 
             {/* Actions */}
             <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-              <a
-                href={`/api/debates/${activeDebate?.id}/export/pdf`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-[#FAF8F3] hover:bg-[#F2ECE1] border border-[#ECE7DE] text-xs font-bold text-gray-800 transition-colors"
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                disabled={downloadingPdf}
+                className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-[#FAF8F3] hover:bg-[#F2ECE1] border border-[#ECE7DE] text-xs font-bold text-gray-800 transition-colors disabled:opacity-50"
               >
                 <Download className="w-3.5 h-3.5 text-[#D49B19]" />
-                <span>Export PDF Dossier</span>
-              </a>
+                <span>{downloadingPdf ? 'Exporting PDF...' : 'Export PDF Dossier'}</span>
+              </button>
 
               <button
-                onClick={() => {
-                  setShowEvalModal(false);
-                  setInDebate(false);
-                }}
+                onClick={handleResetDebate}
                 className="px-6 py-2 rounded-xl bg-[#181F25] text-white text-xs font-bold hover:bg-black transition-colors"
               >
                 Close & Return

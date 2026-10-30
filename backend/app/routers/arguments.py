@@ -16,15 +16,16 @@ def analyze_argument(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if not req.argument.strip():
-        raise HTTPException(status_code=400, detail="Argument text cannot be empty.")
+    clean_text = req.argument.strip()
+    if len(clean_text) < 5:
+        raise HTTPException(status_code=400, detail="Argument text must be at least 5 characters.")
 
-    analysis = ai_service.analyze_argument(req.argument, req.topic)
+    analysis = ai_service.analyze_argument(clean_text, req.topic)
 
     record = ArgumentAnalysis(
         user_id=current_user.id,
         topic=req.topic,
-        input_argument=req.argument,
+        input_argument=clean_text,
         main_claim=analysis["main_claim"],
         supporting_arguments=analysis.get("supporting_arguments", []),
         evidence_assessment=analysis.get("evidence_assessment", ""),
@@ -42,13 +43,25 @@ def analyze_argument(
     db.add(record)
     db.commit()
     db.refresh(record)
-    return record
+
+    # Attach inference_mode for UI transparency
+    record_dict = ArgumentAnalysisOut.model_validate(record).model_dump()
+    record_dict["inference_mode"] = ai_service.get_inference_mode()
+    return record_dict
 
 @router.get("/history", response_model=List[ArgumentAnalysisOut])
 def get_argument_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return db.query(ArgumentAnalysis).filter(
+    records = db.query(ArgumentAnalysis).filter(
         ArgumentAnalysis.user_id == current_user.id
     ).order_by(ArgumentAnalysis.created_at.desc()).limit(20).all()
+
+    mode = ai_service.get_inference_mode()
+    out = []
+    for r in records:
+        d = ArgumentAnalysisOut.model_validate(r).model_dump()
+        d["inference_mode"] = mode
+        out.append(d)
+    return out

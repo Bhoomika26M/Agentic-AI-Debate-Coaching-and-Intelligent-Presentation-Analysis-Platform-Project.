@@ -16,15 +16,16 @@ def generate_counterarguments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if not req.argument.strip():
-        raise HTTPException(status_code=400, detail="Argument text cannot be empty.")
+    clean_text = req.argument.strip()
+    if len(clean_text) < 5:
+        raise HTTPException(status_code=400, detail="Argument text must be at least 5 characters.")
 
-    result = ai_service.generate_counterarguments(req.argument, req.topic)
+    result = ai_service.generate_counterarguments(clean_text, req.topic)
 
     record = Counterargument(
         user_id=current_user.id,
         topic=req.topic,
-        input_argument=req.argument,
+        input_argument=clean_text,
         logical_rebuttals=result.get("logical_rebuttals", []),
         evidence_based_rebuttals=result.get("evidence_based_rebuttals", []),
         ethical_counterarguments=result.get("ethical_counterarguments", []),
@@ -37,13 +38,24 @@ def generate_counterarguments(
     db.add(record)
     db.commit()
     db.refresh(record)
-    return record
+
+    out_dict = CounterargumentOut.model_validate(record).model_dump()
+    out_dict["inference_mode"] = ai_service.get_inference_mode()
+    return out_dict
 
 @router.get("/history", response_model=List[CounterargumentOut])
 def get_counterargument_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return db.query(Counterargument).filter(
+    records = db.query(Counterargument).filter(
         Counterargument.user_id == current_user.id
     ).order_by(Counterargument.created_at.desc()).limit(20).all()
+
+    mode = ai_service.get_inference_mode()
+    out = []
+    for r in records:
+        d = CounterargumentOut.model_validate(r).model_dump()
+        d["inference_mode"] = mode
+        out.append(d)
+    return out

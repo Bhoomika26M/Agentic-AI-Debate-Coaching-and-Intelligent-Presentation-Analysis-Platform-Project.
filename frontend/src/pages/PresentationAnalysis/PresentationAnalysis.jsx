@@ -10,7 +10,8 @@ import {
   Sparkles,
   Award,
   Volume2,
-  FileAudio
+  FileAudio,
+  Download
 } from 'lucide-react';
 import api from '../../services/api';
 
@@ -23,6 +24,8 @@ export default function PresentationAnalysis() {
   const [mode, setMode] = useState("file"); // "file" or "text" or "record"
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // Audio recording state
   const [recording, setRecording] = useState(false);
@@ -80,6 +83,7 @@ export default function PresentationAnalysis() {
   const handleSubmitAnalysis = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setUploadProgress(0);
 
     try {
       if (mode === "file" && selectedFile) {
@@ -88,7 +92,12 @@ export default function PresentationAnalysis() {
         formData.append("title", speechTitle);
 
         const res = await api.post('/presentation/analyze-audio', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
+            }
+          }
         });
         setResult(res.data);
       } else if (mode === "record" && audioBlob) {
@@ -98,7 +107,12 @@ export default function PresentationAnalysis() {
         formData.append("title", speechTitle || "Live Mic Recording");
 
         const res = await api.post('/presentation/analyze-audio', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
+            }
+          }
         });
         setResult(res.data);
       } else {
@@ -116,6 +130,31 @@ export default function PresentationAnalysis() {
       alert('Could not complete presentation analysis.');
     } finally {
       setLoading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!result) return;
+    setDownloadingPdf(true);
+    try {
+      const res = await api.get(`/presentation/${result.id}/export/pdf`, {
+        responseType: 'blob'
+      });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `presentation_${result.id}_report.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download presentation PDF:', err);
+      alert('Could not download presentation PDF. Please check authorization.');
+    } finally {
+      setDownloadingPdf(false);
     }
   };
 
@@ -283,6 +322,21 @@ export default function PresentationAnalysis() {
             </div>
           )}
 
+          {uploadProgress > 0 && uploadProgress < 100 && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-[11px] text-gray-500 font-semibold">
+                <span>Uploading & Processing Media...</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-[#D49B19] h-2 rounded-full transition-all duration-200"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end pt-2">
             <button
               type="submit"
@@ -299,6 +353,41 @@ export default function PresentationAnalysis() {
       {/* RESULTS DISPLAY */}
       {result && (
         <div className="space-y-6">
+          {/* Action & Inference Bar */}
+          <div className="bg-white rounded-2xl border border-[#ECE7DE] p-5 shadow-card flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-lg bg-[#FCF6E5] flex items-center justify-center text-[#D49B19]">
+                <Mic className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#1E242B]">
+                  Speech Delivery & Vocal Cadence Dossier
+                </h3>
+                <p className="text-xs text-gray-500">
+                  {result.title || "Keynote Speech Analysis"}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              {result.inference_mode && (
+                <span className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 font-semibold">
+                  {result.inference_mode === 'openai_gpt4o' ? 'OpenAI Whisper + GPT-4o' : 'Whisper/Cadence Engine'}
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                disabled={downloadingPdf}
+                className="px-4 py-2 rounded-xl bg-[#FAF8F3] hover:bg-[#F2ECE1] border border-[#ECE7DE] text-xs font-bold text-gray-800 transition-colors flex items-center space-x-1.5 disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5 text-[#D49B19]" />
+                <span>{downloadingPdf ? 'Exporting PDF...' : 'Download PDF Report'}</span>
+              </button>
+            </div>
+          </div>
+
           {/* Top Metric Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* WPM & Pace */}

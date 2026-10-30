@@ -132,6 +132,101 @@ class ExportService:
         return output_path
 
     @staticmethod
+    def generate_presentation_pdf(data: Dict[str, Any]) -> str:
+        filename = f"presentation_report_{data.get('id', 'export')}.pdf"
+        output_path = os.path.join(settings.UPLOAD_DIR, "exports", filename)
+
+        doc = SimpleDocTemplate(
+            output_path,
+            pagesize=letter,
+            rightMargin=40,
+            leftMargin=40,
+            topMargin=40,
+            bottomMargin=40
+        )
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle(
+            'JustiTalkTitle',
+            parent=styles['Heading1'],
+            fontName='Helvetica-Bold',
+            fontSize=22,
+            textColor=colors.HexColor('#1E242B'),
+            spaceAfter=6
+        )
+        subtitle_style = ParagraphStyle(
+            'JustiTalkSubtitle',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=11,
+            textColor=colors.HexColor('#D49B19'),
+            spaceAfter=15
+        )
+        heading2_style = ParagraphStyle(
+            'JustiTalkH2',
+            parent=styles['Heading2'],
+            fontName='Helvetica-Bold',
+            fontSize=14,
+            textColor=colors.HexColor('#1E242B'),
+            spaceBefore=12,
+            spaceAfter=6
+        )
+        body_style = ParagraphStyle(
+            'JustiTalkBody',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=10,
+            textColor=colors.HexColor('#33404D'),
+            leading=14
+        )
+
+        story = []
+
+        # Header branding
+        story.append(Paragraph("JustiTalk - Speech & Presentation Analytics Dossier", title_style))
+        story.append(Paragraph(f"Presentation #{data.get('id')} | {data.get('title', 'Speech Recording')}", subtitle_style))
+        story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#D49B19'), spaceAfter=15))
+
+        # Metrics Table
+        meta_data = [
+            [Paragraph("<b>Speech Title:</b>", body_style), Paragraph(str(data.get('title', 'N/A')), body_style)],
+            [Paragraph("<b>Duration:</b>", body_style), Paragraph(f"{data.get('duration_seconds', 0):.1f} seconds", body_style)],
+            [Paragraph("<b>Speaking Pace:</b>", body_style), Paragraph(f"{data.get('words_per_minute', 0):.1f} WPM ({data.get('speech_pace_label', 'Optimal')})", body_style)],
+            [Paragraph("<b>Filler Words:</b>", body_style), Paragraph(f"{data.get('filler_words_count', 0)} detected", body_style)],
+            [Paragraph("<b>Composite Score:</b>", body_style), Paragraph(f"<b>{data.get('overall_presentation_score', 0):.1f} / 100</b> (Clarity: {data.get('clarity_score', 0):.1f}, Confidence: {data.get('confidence_score', 0):.1f})", body_style)]
+        ]
+        meta_table = Table(meta_data, colWidths=[140, 370])
+        meta_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#FAF8F3')),
+            ('PADDING', (0,0), (-1,-1), 6),
+            ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E0D5')),
+            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#EBE5D8')),
+        ]))
+        story.append(meta_table)
+        story.append(Spacer(1, 15))
+
+        # Transcription
+        story.append(Paragraph("Speech Transcription", heading2_style))
+        story.append(Paragraph(f'"{data.get("transcription", "")}"', body_style))
+        story.append(Spacer(1, 12))
+
+        # Strengths & Recommendations
+        if data.get('strengths'):
+            story.append(Paragraph("Key Delivery Strengths", heading2_style))
+            for s in data.get('strengths', []):
+                story.append(Paragraph(f"• {s}", body_style))
+            story.append(Spacer(1, 10))
+
+        if data.get('improvement_recommendations'):
+            story.append(Paragraph("Actionable Recommendations", heading2_style))
+            for r in data.get('improvement_recommendations', []):
+                story.append(Paragraph(f"• {r}", body_style))
+            story.append(Spacer(1, 10))
+
+        doc.build(story)
+        return output_path
+
+    @staticmethod
     def generate_excel_report(data_list: List[Dict[str, Any]], sheet_name: str = "Debate Analytics") -> str:
         filename = f"report_{sheet_name.lower().replace(' ', '_')}.xlsx"
         output_path = os.path.join(settings.UPLOAD_DIR, "exports", filename)

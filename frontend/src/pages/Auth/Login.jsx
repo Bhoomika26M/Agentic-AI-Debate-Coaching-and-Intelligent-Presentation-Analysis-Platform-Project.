@@ -81,8 +81,16 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="pt-2 text-center text-xs text-gray-500">
-          Demo Admin Credentials: <b className="text-gray-800">admin@justitalk.com</b> / <b className="text-gray-800">password123</b>
+        <div className="pt-2 text-center text-xs text-gray-500 space-y-2">
+          <div>
+            Don't have an account?{' '}
+            <Link to="/register" className="text-[#D49B19] font-bold hover:underline">
+              Create an account
+            </Link>
+          </div>
+          <div className="pt-2 border-t border-gray-100 text-[11px] text-gray-400">
+            Demo Admin Credentials: <b className="text-gray-700">admin@justitalk.com</b> / <b className="text-gray-700">password123</b>
+          </div>
         </div>
       </div>
     </div>

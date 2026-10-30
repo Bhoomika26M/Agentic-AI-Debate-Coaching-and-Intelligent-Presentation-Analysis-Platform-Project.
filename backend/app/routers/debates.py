@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.debate import (
     DebateSession,
     DebateParticipant,
@@ -139,8 +139,17 @@ def submit_debate_turn(
     debate = db.query(DebateSession).filter(DebateSession.id == debate_id).first()
     if not debate:
         raise HTTPException(status_code=404, detail="Debate session not found")
+    
+    # Ownership and authorization verification
+    if debate.creator_id != current_user.id and current_user.role != UserRole.ADMINISTRATOR:
+        raise HTTPException(status_code=403, detail="You are not authorized to participate in this debate session.")
+
     if debate.status == DebateStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="This debate session is already completed.")
+
+    clean_content = message_in.content.strip()
+    if len(clean_content) < 2:
+        raise HTTPException(status_code=400, detail="Turn statement must be at least 2 characters.")
 
     # 1. Add User Message
     user_msg = DebateMessage(
@@ -148,7 +157,7 @@ def submit_debate_turn(
         round_number=debate.current_round,
         sender_type="user",
         sender_name=current_user.full_name,
-        content=message_in.content
+        content=clean_content
     )
     db.add(user_msg)
     db.commit()
@@ -199,6 +208,10 @@ def evaluate_debate(
     if not debate:
         raise HTTPException(status_code=404, detail="Debate session not found")
 
+    # Authorization verification
+    if debate.creator_id != current_user.id and current_user.role != UserRole.ADMINISTRATOR:
+        raise HTTPException(status_code=403, detail="You are not authorized to evaluate this debate session.")
+
     if debate.evaluation:
         return debate.evaluation
 
@@ -214,7 +227,7 @@ def evaluate_debate(
 
     evaluation = DebateEvaluation(
         debate_id=debate.id,
-        user_id=current_user.id,
+        user_id=debate.creator_id,
         argument_quality=eval_result["argument_quality"],
         evidence_usage=eval_result["evidence_usage"],
         logical_consistency=eval_result["logical_consistency"],
@@ -235,8 +248,9 @@ def evaluate_debate(
     debate.winner = eval_result["winner"]
 
     # If user won, update profile
-    if eval_result["winner"] == "User" and current_user.profile:
-        current_user.profile.debates_won += 1
+    creator = db.query(User).filter(User.id == debate.creator_id).first()
+    if eval_result["winner"] == "User" and creator and creator.profile:
+        creator.profile.debates_won += 1
 
     db.commit()
     db.refresh(evaluation)
@@ -251,6 +265,9 @@ def export_debate_pdf(
     debate = db.query(DebateSession).filter(DebateSession.id == debate_id).first()
     if not debate:
         raise HTTPException(status_code=404, detail="Debate session not found")
+
+    if debate.creator_id != current_user.id and current_user.role != UserRole.ADMINISTRATOR:
+        raise HTTPException(status_code=403, detail="You are not authorized to export this debate dossier.")
 
     eval_dict = {}
     if debate.evaluation:
