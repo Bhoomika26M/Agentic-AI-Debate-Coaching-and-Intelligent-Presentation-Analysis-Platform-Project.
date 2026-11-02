@@ -462,5 +462,7 @@ async def voice_socket(websocket: WebSocket) -> None:
             await connection._stop_turn()
         try:
             await websocket.close()
-        except RuntimeError:
+        except (RuntimeError, WebSocketDisconnect):
+            # The browser may already have closed the socket. A failed final
+            # close is cleanup, not a second application error.
             pass

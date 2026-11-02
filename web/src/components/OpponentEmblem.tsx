@@ -11,11 +11,11 @@ const common = {
 function StrategistMark() {
   return (
     <g>
-      <path d="M32 8 L52 32 L32 56 L12 32 Z" {...common} />
-      <path d="M20 42 L32 26 L44 42" {...common} />
-      <path d="M32 26 V16" {...common} />
-      <path d="M18 50 H46" {...common} opacity={0.55} />
-      <circle cx={32} cy={26} r={2.8} fill="currentColor" stroke="none" />
+      <path d="M32 10 V27 M32 27 L16 46 M32 27 L48 46 M16 46 H48" {...common} strokeWidth={3} />
+      <circle cx={32} cy={12} r={5} fill="currentColor" stroke="none" />
+      <circle cx={16} cy={48} r={5} fill="currentColor" stroke="none" />
+      <circle cx={48} cy={48} r={5} fill="currentColor" stroke="none" />
+      <circle cx={32} cy={27} r={5} fill="var(--paper-light)" stroke="currentColor" strokeWidth={3} />
     </g>
   );
 }
@@ -23,11 +23,9 @@ function StrategistMark() {
 function SkepticMark() {
   return (
     <g>
-      <circle cx={25} cy={25} r={13.5} {...common} />
-      <path d="M19.5 25.5 L23.8 29.8 L31.5 20.5" {...common} strokeWidth={2.6} />
-      <path d="M35 35 L50 50" {...common} strokeWidth={2.6} />
-      <path d="M48 10 V17 M44.5 13.5 H51.5" {...common} />
-      <path d="M10 46 H17" {...common} opacity={0.55} />
+      <path d="M22 15 C22 9 27 6 33 6 C40 6 45 11 45 17 C45 23 41 26 35 30 C31 33 30 36 30 40" {...common} strokeWidth={4} />
+      <circle cx={30} cy={51} r={3.5} fill="currentColor" stroke="none" />
+      <path d="M45 39 L55 49 M48 36 L58 46" {...common} strokeWidth={3} />
     </g>
   );
 }
@@ -35,12 +33,8 @@ function SkepticMark() {
 function DiplomatMark() {
   return (
     <g>
-      <path d="M12 15 H52" {...common} />
-      <path d="M32 15 V51" {...common} opacity={0.55} />
-      <path d="M12 23 C18 35 25 40 32 36" {...common} />
-      <path d="M52 23 C46 35 39 40 32 36" {...common} />
-      <path d="M23 51 H41" {...common} />
-      <circle cx={32} cy={36} r={2.8} fill="currentColor" stroke="none" />
+      <path d="M8 14 H39 C43 14 46 17 46 21 V34 C46 38 43 41 39 41 H25 L15 49 V41 H15 C11 41 8 38 8 34 Z" {...common} strokeWidth={3} />
+      <path d="M26 27 H55 C58 27 60 29 60 32 V44 C60 47 58 49 55 49 H49 L43 56 V49" {...common} strokeWidth={3} />
     </g>
   );
 }

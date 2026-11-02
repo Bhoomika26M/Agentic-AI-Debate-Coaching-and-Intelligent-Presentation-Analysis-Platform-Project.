@@ -154,7 +154,13 @@ export function useSpeechInput(options: Options) {
       if (!vad) {
         vad = await MicVAD.new({
           baseAssetPath: "/vad/",
-          onnxWASMBasePath: "/vad/",
+          // Keep ONNX's ESM glue bundled by Vite. Point only the binary at
+          // public/; using a string base path makes ONNX dynamically import
+          // /vad/ort-wasm-*.mjs, which Vite correctly rejects as a public import.
+          onnxWASMBasePath: "",
+          ortConfig: (ort) => {
+            ort.env.wasm.wasmPaths = { wasm: "/vad/ort-wasm-simd-threaded.wasm" };
+          },
           startOnLoad: false,
           positiveSpeechThreshold: 0.55,
           negativeSpeechThreshold: 0.3,

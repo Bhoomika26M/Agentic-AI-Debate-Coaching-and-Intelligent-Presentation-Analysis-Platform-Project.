@@ -196,6 +196,13 @@ function Header({
 }
 
 const HASH_VIEWS: View[] = ["landing", "setup", "present", "auth", "account", "settings", "onboarding", "home"];
+const SETTINGS_SECTION_IDS = new Set([
+  "settings-profile",
+  "settings-practice",
+  "settings-coach",
+  "settings-appearance",
+  "settings-data",
+]);
 
 const SNAPSHOT_KEY = "verdict-arena-snapshot";
 const RECENTS_KEY = "verdict-recent-motions";
@@ -230,6 +237,7 @@ function loadRecentMotions(): string[] {
 
 function viewFromHash(): View {
   const hash = window.location.hash.replace("#/", "").replace("#", "");
+  if (SETTINGS_SECTION_IDS.has(hash)) return "settings";
   return (HASH_VIEWS as string[]).includes(hash) ? (hash as View) : "landing";
 }
 
@@ -242,6 +250,7 @@ export default function App() {
   });
   const theme = appSettings.theme;
   const [topicChoice, setTopicChoice] = useState(starterTopics[0]);
+  const [setupStep, setSetupStep] = useState<1 | 2 | 3 | 4>(1);
   const [customTopic, setCustomTopic] = useState("");
   const [bankTopics, setBankTopics] = useState<BankTopic[]>([]);
   const [bankNotice, setBankNotice] = useState("");
@@ -439,6 +448,11 @@ export default function App() {
   }, [streaming, challenging]);
 
   useEffect(() => {
+    const sectionHash = window.location.hash.replace(/^#/, "");
+    if (view === "settings" && SETTINGS_SECTION_IDS.has(sectionHash)) {
+      window.requestAnimationFrame(() => document.getElementById(sectionHash)?.scrollIntoView({ block: "start" }));
+      return;
+    }
     const hash = view === "landing" ? "#/" : `#/${view}`;
     if (window.location.hash !== hash) window.history.replaceState(null, "", hash);
     window.scrollTo(0, 0);
@@ -1475,18 +1489,12 @@ export default function App() {
         )}
 
         {view === "setup" && (
-          <motion.main key="setup" className="setup-page" {...pageMotion}>
-            <div className="setup-topline">
-              <button className="back-link" onClick={returnHome}><ArrowLeft size={16} /> Back</button>
-            </div>
+          <motion.main key="setup" className="setup-page fixture-page" {...pageMotion}>
             <div className="setup-heading">
               <h1>{learnerName ? `Set up your debate, ${learnerName.split(/\s+/)[0]}.` : "Set up your debate."}</h1>
               <p>{learnerName ? "Chosen for your level. Adjust any detail before you step in." : "Choose a motion, side and opponent, then set the pace. Change anything before you begin."}</p>
-              <div className="setup-progress" role="status" aria-label="Setup summary">
-                <span className={activeTopic.trim() ? "is-set" : "is-missing"}>MOTION · {activeTopic.trim() ? "SET" : "CHOOSE ONE"}</span>
-                <span className="is-set">SIDE · {position.toUpperCase()}</span>
-                <span className="is-set">OPPONENT · {activePersona.name.replace("The ", "").toUpperCase()}</span>
-                <span className="is-set">DIFFICULTY · {difficultyOptions.find((option) => option.value === difficulty)?.label.toUpperCase()} · {duration} MIN</span>
+              <div className="fixture-steps" role="list" aria-label="Debate setup steps">
+                {(["Motion", "Side", "Opponent", "Round"] as const).map((label, index) => <span key={label} className={setupStep === index + 1 ? "current" : setupStep > index + 1 ? "complete" : "upcoming"} role="listitem"><i>{index + 1}</i>{label}</span>).reduce<ReactNode[]>((items, item, index) => index ? [...items, <span key={`line-${index}`} className="fixture-connector" />, item] : [item], [])}
               </div>
               {modelOffline && (
                 <div className="inline-notice" role="status">
@@ -1496,7 +1504,8 @@ export default function App() {
               )}
             </div>
 
-            <div className="setup-layout">
+            <div className={`setup-layout fixture-layout step-${setupStep}`}>
+              {setupStep === 1 && <>
               <section className="setup-panel motion-panel">
                 <div className="panel-heading"><span className="panel-count">1</span><div><h2>Your motion</h2><p>Pick a topic, or write your own.</p></div></div>
                 {recentMotions.length > 0 && (
@@ -1539,18 +1548,18 @@ export default function App() {
                   </button>
                 )}
                 {bankNotice && <p className="setup-hint" role="status">{bankNotice}</p>}
-                <div className="position-row">
-                  <span className="setting-label">YOUR SIDE</span>
-                  <div className="segmented-control" role="group" aria-label="Your side">
-                    <button aria-pressed={position === "for"} className={position === "for" ? "active" : ""} onClick={() => setPosition("for")}>FOR</button>
-                    <button aria-pressed={position === "against"} className={position === "against" ? "active" : ""} onClick={() => setPosition("against")}>AGAINST</button>
-                  </div>
-                </div>
               </section>
-
-              <a className="setup-continue" href="#setup-opponent">Next: your opponent <ArrowDownRight size={15} /></a>
+              </>}
+              {setupStep === 2 && <section className="setup-panel motion-panel">
+                <div className="panel-heading"><span className="panel-count">2</span><div><h2>Choose your side.</h2><p>Argue for or against the motion.</p></div></div>
+                <div className="fixture-side-options" role="group" aria-label="Your side">
+                  <button className={position === "for" ? "selected" : ""} aria-pressed={position === "for"} onClick={() => setPosition("for")}><b>For</b><span>Defend the motion and build the affirmative case.</span></button>
+                  <button className={position === "against" ? "selected" : ""} aria-pressed={position === "against"} onClick={() => setPosition("against")}><b>Against</b><span>Challenge the motion and argue the opposition.</span></button>
+                </div>
+              </section>}
+              {setupStep === 3 && <>
               <section className="setup-panel opponent-panel" id="setup-opponent">
-                <div className="panel-heading"><span className="panel-count">2</span><div><h2>Your opponent</h2><p>Each one attacks a case differently.</p></div></div>
+                <div className="panel-heading"><span className="panel-count">3</span><div><h2>Your opponent</h2><p>Each one attacks a case differently.</p></div></div>
                 <div className="persona-list" role="radiogroup" aria-label="Choose your opponent">
                   {personas.map((person) => (
                     <button
@@ -1567,6 +1576,10 @@ export default function App() {
                   ))}
                 </div>
 
+              </section>
+              </>}
+              {setupStep === 4 && <section className="setup-panel opponent-panel round-panel">
+                <div className="panel-heading"><span className="panel-count">4</span><div><h2>Set the round.</h2><p>Choose how hard and how long to practise.</p></div></div>
                 <div className="setting-block">
                   <div className="setting-line"><span className="setting-label">DIFFICULTY</span></div>
                   <div className="difficulty-options" role="radiogroup" aria-label="Rehearsal pressure">
@@ -1587,17 +1600,19 @@ export default function App() {
                   <input type="range" min="2" max="10" step="1" value={duration} onChange={(event) => setDuration(Number(event.target.value))} aria-label="Debate duration in minutes" />
                   <div className="range-labels"><span>2 MIN</span><span>10 MIN</span></div>
                 </div>
-              </section>
+              </section>}
+              <aside className="fixture-summary" aria-label="Your match summary"><h2>Your match</h2><dl><div><dt>Side</dt><dd>{position === "for" ? "For" : "Against"}</dd></div><div><dt>Opponent</dt><dd>{activePersona.name}</dd></div><div><dt>Pressure</dt><dd>{difficultyOptions.find((option) => option.value === difficulty)?.label}</dd></div><div><dt>Length</dt><dd>{duration} minutes</dd></div></dl></aside>
             </div>
 
             <div className="setup-bottom">
-              {!authLoading && !user && (
-                <div className="local-note"><LockKeyhole size={14} /><span>No account needed. Sign in to keep this transcript in your archive.</span></div>
-              )}
-              <button className="button button-dark setup-submit" onClick={() => void startSession()} disabled={!activeTopic.trim() || startingSession}>
+              {setupStep === 1 && <button className="fixture-back" type="button" onClick={returnHome}><ArrowLeft size={18} />Back</button>}
+              {setupStep > 1 && <button className="fixture-back" type="button" onClick={() => { setSetupStep((step) => (step - 1) as 1 | 2 | 3 | 4); window.scrollTo(0, 0); }}><ArrowLeft size={18} />Back</button>}
+              {setupStep < 4 && <button className="button button-dark setup-submit" type="button" disabled={setupStep === 1 && !activeTopic.trim()} onClick={() => { setSetupStep((step) => (step + 1) as 1 | 2 | 3 | 4); window.scrollTo(0, 0); }}>Continue <ArrowRight size={17} /></button>}
+              {setupStep === 4 && <button className="button button-dark setup-submit" onClick={() => void startSession()} disabled={!activeTopic.trim() || startingSession}>
                 {startingSession ? "Setting up..." : "Start rehearsal"} {!startingSession && <ArrowRight size={17} />}
-              </button>
+              </button>}
             </div>
+            {setupStep < 4 && <div className="fixture-next-cue"><span>NEXT</span><b>{["", "Choose your side.", "Meet your opponent.", "Set the round."][setupStep]}</b><small>{["", "Argue for or against the motion.", "Choose the voice that will challenge your case.", "Set the pressure and length of your rehearsal."][setupStep]}</small></div>}
             {!activeTopic.trim() && (
               <p className="setup-hint" role="status">Choose a motion above, or write your own, to begin.</p>
             )}
