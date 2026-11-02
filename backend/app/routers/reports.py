@@ -36,13 +36,19 @@ async def get_performance_report(
 ):
     """
     Return comprehensive performance analytics for the authenticated user.
-    Includes score trends, session statistics, and skill progression data.
+    Coaches, educators, and admins see aggregated student cohort analytics;
+    learners see their own personal trajectory.
     """
-    result = await db.execute(
-        select(DebateSession)
-        .where(DebateSession.user_id == current_user.id)
-        .order_by(DebateSession.scheduled_at.asc())
-    )
+    if current_user.role in ("admin", "coach", "educator"):
+        result = await db.execute(
+            select(DebateSession).order_by(DebateSession.scheduled_at.asc())
+        )
+    else:
+        result = await db.execute(
+            select(DebateSession)
+            .where(DebateSession.user_id == current_user.id)
+            .order_by(DebateSession.scheduled_at.asc())
+        )
     sessions = result.scalars().all()
 
     total_sessions = len(sessions)
@@ -123,9 +129,14 @@ async def get_debate_reports(
     Detailed Debate Reports: metrics across debate formats (Parliamentary, Oxford, etc.),
     win streak, argument quality averages, and rubric breakdowns.
     """
-    result = await db.execute(
-        select(DebateSession).where(DebateSession.user_id == current_user.id)
-    )
+    if current_user.role in ("admin", "coach", "educator"):
+        result = await db.execute(
+            select(DebateSession).order_by(DebateSession.scheduled_at.desc())
+        )
+    else:
+        result = await db.execute(
+            select(DebateSession).where(DebateSession.user_id == current_user.id)
+        )
     sessions = result.scalars().all()
     completed = [s for s in sessions if s.status == "completed"]
 
@@ -178,12 +189,19 @@ async def get_debate_reports(
 @router.get("/presentation")
 async def get_presentation_reports(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Presentation Assessment Reports: delivery trends, words per minute,
     filler word rates, confidence markers, and clarity progressions.
     """
     history = list(current_user.presentation_history or [])
+    if not history and current_user.role in ("admin", "coach", "educator"):
+        learners_res = await db.execute(select(User).where(User.role == "learner"))
+        for l in learners_res.scalars().all():
+            if l.presentation_history:
+                history.extend(l.presentation_history)
+
     total_pres = len(history)
     scores = [h.get("overall_score", 70) for h in history]
     wpms = [h.get("words_per_minute", 135) for h in history]
@@ -218,16 +236,28 @@ async def get_presentation_reports(
 @router.get("/coaching")
 async def get_coaching_reports(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Coaching Reports: personalized strengths, targeted areas for improvement,
     drill progress, and coach advice summaries.
     """
-    skills = current_user.communication_skills or {}
-    clarity = skills.get("clarity_score", 75)
-    evidence = skills.get("evidence_strength", 70)
-    logic = skills.get("logical_consistency", 72)
-    persuasion = skills.get("persuasiveness", 74)
+    skills = dict(current_user.communication_skills or {})
+    if current_user.role in ("admin", "coach", "educator"):
+        learners_res = await db.execute(select(User).where(User.role == "learner"))
+        aggregated = {}
+        for l in learners_res.scalars().all():
+            for k, v in (l.communication_skills or {}).items():
+                if isinstance(v, (int, float)):
+                    aggregated.setdefault(k, []).append(float(v))
+        if aggregated:
+            for k, v in aggregated.items():
+                skills[k] = round(sum(v) / len(v), 1)
+
+    clarity = skills.get("clarity_score", skills.get("clarity", 75))
+    evidence = skills.get("evidence_strength", skills.get("evidence", 70))
+    logic = skills.get("logical_consistency", skills.get("logic", 72))
+    persuasion = skills.get("persuasiveness", skills.get("rhetoric", 74))
 
     return {
         "user_id": current_user.id,
@@ -674,11 +704,11 @@ async def admin_platform_overview(
 ):
     """
     Admin dashboard: platform-wide analytics including user stats and session metrics.
-    Accessible to admin, coach, and educator roles only.
+    Accessible strictly to the admin role only.
     """
-    if current_user.role not in ("admin", "coach", "educator"):
+    if current_user.role != "admin":
         from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Admin or Coach access required.")
+        raise HTTPException(status_code=403, detail="Admin access required.")
 
     # User counts
     user_result = await db.execute(select(User))

@@ -1,35 +1,10 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-const NAV_SECTIONS = [
-  {
-    label: 'Workspace',
-    items: [
-      { to: '/dashboard',    icon: '🏠', label: 'Dashboard' },
-      { to: '/sessions',     icon: '📋', label: 'Debate Sessions' },
-      { to: '/profile',      icon: '👤', label: 'Profile & Skills' },
-    ],
-  },
-  {
-    label: 'AI Debate & Training',
-    items: [
-      { to: '/analysis',     icon: '⚡', label: 'Argument & Fallacy Lab' },
-      { to: '/simulation',   icon: '🤖', label: 'AI Debate Simulation' },
-      { to: '/coaching',     icon: '🏆', label: 'Coaching & Learning' },
-    ],
-  },
-  {
-    label: 'Intelligence & Insights',
-    items: [
-      { to: '/presentation', icon: '🎤', label: 'Presentation Analysis' },
-      { to: '/reports',      icon: '📊', label: 'Reports & Analytics' },
-    ],
-  },
-]
-
 export default function Sidebar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const role = user?.role || 'learner'
 
   const handleLogout = () => {
     logout()
@@ -42,7 +17,33 @@ export default function Sidebar() {
     educator: '#7c3aed',
     admin: '#b84c4c',
   }
-  const roleColor = roleColors[user?.role] || '#176b68'
+  const roleColor = roleColors[role] || '#176b68'
+
+  const navSections = [
+    {
+      label: 'Workspace',
+      items: [
+        { to: '/dashboard', icon: '🏠', label: role === 'coach' ? 'Coach Dashboard' : role === 'educator' ? 'Educator Dashboard' : role === 'admin' ? 'Admin Dashboard' : 'Dashboard' },
+        { to: '/sessions',  icon: '📋', label: role === 'coach' ? 'Adjudication Queue' : role === 'educator' ? 'Class Sessions' : role === 'admin' ? 'All Platform Sessions' : 'My Debate Sessions' },
+        { to: '/profile',   icon: '👤', label: 'Profile & Skills' },
+      ],
+    },
+    {
+      label: 'AI Debate & Training',
+      items: [
+        { to: '/analysis',   icon: '⚡', label: 'Argument & Fallacy Lab' },
+        { to: '/simulation', icon: '🤖', label: 'AI Debate Simulation' },
+        { to: '/coaching',   icon: '🏆', label: role === 'coach' ? 'Coaching Drills' : 'Coaching & Learning' },
+      ],
+    },
+    {
+      label: 'Intelligence & Insights',
+      items: [
+        { to: '/presentation', icon: '🎤', label: 'Presentation Analysis' },
+        { to: '/reports',      icon: '📊', label: role === 'educator' ? 'Academic Reports & Export' : role === 'admin' ? 'Telemetry & Audit Reports' : 'Reports & Analytics' },
+      ],
+    },
+  ]
 
   return (
     <aside className="sidebar">
@@ -73,7 +74,7 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="sidebar-nav">
-        {NAV_SECTIONS.map((section) => (
+        {navSections.map((section) => (
           <div key={section.label} className="nav-section">
             <div className="nav-section-label">{section.label}</div>
             {section.items.map(({ to, icon, label }) => (

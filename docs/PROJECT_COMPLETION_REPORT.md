@@ -3,7 +3,7 @@
 
 **Project Title:** Agentic AI Debate Coach & Presentation Analysis Platform  
 **Status:** ✅ All 4 Milestones Fully Completed & Verified (27/27 Tests Passing)  
-**Stack:** FastAPI (Python 3.13) · React 19 + Vite · SQLite (dev) / PostgreSQL 16 (prod) · Docker  
+**Stack:** FastAPI (Python 3.13) · React 19 + Vite · SQLite (local) / PostgreSQL 16 (optional prod)  
 
 ---
 
@@ -304,9 +304,9 @@ Features: real-time unread badges in navigation bar, dropdown notification cente
 - **Educator Dashboard**: Class analytics, student rankings, session performance reports.
 - **Admin Dashboard**: Platform-wide analytics, user role distributions, platform benchmarks.
 
-**5. Containerization & Production Deployment**
-- **Docker Compose** (`docker-compose.yml`): PostgreSQL 16 + FastAPI (Uvicorn) + React/Nginx containers.
-- **Local Fallback**: Automatic zero-config fallback to `sqlite+aiosqlite` when PostgreSQL is absent.
+**5. Local Development & Zero-Config Fallback**
+- **Local Fallback**: Automatic zero-config fallback to `sqlite+aiosqlite` when PostgreSQL is absent — the entire platform runs out-of-the-box with no Docker or cloud infrastructure required.
+- Optional Docker Compose configuration available for production deployment.
 
 ---
 
@@ -315,40 +315,40 @@ Features: real-time unread badges in navigation bar, dropdown notification cente
 All 4 Milestones: **27/27 tests passing (100%)**
 
 ```
-backend$ pytest -v
+backend$ pytest backend/tests/ -v
 ============================= test session starts =============================
-platform win32 -- Python 3.13.4, pytest-9.1.1
+platform win32 -- Python 3.13.4, pytest-9.2.0, pluggy-1.7.0
 collected 27 items
 
-tests/test_milestone1.py::TestMilestone1::test_01_health_check                          PASSED [  3%]
-tests/test_milestone1.py::TestMilestone1::test_02_registration_all_roles                PASSED [  7%]
-tests/test_milestone1.py::TestMilestone1::test_03_login_and_auth_validation             PASSED [ 11%]
-tests/test_milestone1.py::TestMilestone1::test_04_user_profile_and_skill_tracking       PASSED [ 14%]
-tests/test_milestone1.py::TestMilestone1::test_05_debate_session_lifecycle              PASSED [ 18%]
-tests/test_milestone1.py::TestMilestone1::test_06_role_based_access_and_evaluation      PASSED [ 22%]
-tests/test_milestone2.py::TestMilestone2::test_01_supported_fallacies_catalog           PASSED [ 25%]
-tests/test_milestone2.py::TestMilestone2::test_02_detect_ad_hominem_and_slippery_slope  PASSED [ 29%]
-tests/test_milestone2.py::TestMilestone2::test_03_detect_false_dilemma_and_straw_man    PASSED [ 33%]
-tests/test_milestone2.py::TestMilestone2::test_04_detect_circular_reasoning_and_appeal_to_authority PASSED [ 37%]
-tests/test_milestone2.py::TestMilestone2::test_05_detect_hasty_gen_and_red_herring      PASSED [ 40%]
-tests/test_milestone2.py::TestMilestone2::test_06_sound_argument_evaluation_and_weighted_scoring    PASSED [ 44%]
-tests/test_milestone2.py::TestMilestone2::test_07_session_transcript_analysis_integration           PASSED [ 48%]
-tests/test_milestone3.py::TestMilestone3::test_01_simulation_personas_catalog           PASSED [ 51%]
-tests/test_milestone3.py::TestMilestone3::test_02_simulation_start_and_turn_progression PASSED [ 55%]
-tests/test_milestone3.py::TestMilestone3::test_03_counterargument_generation_all_types  PASSED [ 59%]
-tests/test_milestone3.py::TestMilestone3::test_04_coaching_recommendations              PASSED [ 62%]
-tests/test_milestone3.py::TestMilestone3::test_05_personalized_learning_plan            PASSED [ 66%]
-tests/test_milestone3.py::TestMilestone3::test_06_skill_gap_analysis                    PASSED [ 70%]
-tests/test_milestone3.py::TestMilestone3::test_07_drill_library                         PASSED [ 74%]
-tests/test_milestone4.py::TestMilestone4::test_01_presentation_analysis_and_history     PASSED [ 77%]
-tests/test_milestone4.py::TestMilestone4::test_02_audio_presentation_upload             PASSED [ 81%]
-tests/test_milestone4.py::TestMilestone4::test_03_reports_endpoints                     PASSED [ 85%]
-tests/test_milestone4.py::TestMilestone4::test_04_export_system_csv_excel_pdf           PASSED [ 88%]
-tests/test_milestone4.py::TestMilestone4::test_05_admin_overview_rbac                   PASSED [ 92%]
-tests/test_milestone4.py::TestMilestone4::test_06_notifications_and_engagement_system   PASSED [ 96%]
-tests/test_milestone4.py::TestMilestone4::test_07_oauth2_sso_login                      PASSED [100%]
+backend/tests/test_milestone1.py::TestMilestone1::test_01_health_check                          PASSED [  3%]
+backend/tests/test_milestone1.py::TestMilestone1::test_02_registration_all_roles                PASSED [  7%]
+backend/tests/test_milestone1.py::TestMilestone1::test_03_login_and_auth_validation             PASSED [ 11%]
+backend/tests/test_milestone1.py::TestMilestone1::test_04_user_profile_and_skill_tracking       PASSED [ 14%]
+backend/tests/test_milestone1.py::TestMilestone1::test_05_debate_session_lifecycle              PASSED [ 18%]
+backend/tests/test_milestone1.py::TestMilestone1::test_06_role_based_access_and_evaluation      PASSED [ 22%]
+backend/tests/test_milestone2.py::TestMilestone2::test_01_supported_fallacies_catalog           PASSED [ 25%]
+backend/tests/test_milestone2.py::TestMilestone2::test_02_detect_ad_hominem_and_slippery_slope  PASSED [ 29%]
+backend/tests/test_milestone2.py::TestMilestone2::test_03_detect_false_dilemma_and_straw_man    PASSED [ 33%]
+backend/tests/test_milestone2.py::TestMilestone2::test_04_detect_circular_reasoning_and_appeal_to_authority PASSED [ 37%]
+backend/tests/test_milestone2.py::TestMilestone2::test_05_detect_hasty_gen_and_red_herring      PASSED [ 40%]
+backend/tests/test_milestone2.py::TestMilestone2::test_06_sound_argument_evaluation_and_weighted_scoring    PASSED [ 44%]
+backend/tests/test_milestone2.py::TestMilestone2::test_07_session_transcript_analysis_integration           PASSED [ 48%]
+backend/tests/test_milestone3.py::TestMilestone3::test_01_simulation_personas_catalog           PASSED [ 51%]
+backend/tests/test_milestone3.py::TestMilestone3::test_02_simulation_start_and_turn_progression PASSED [ 55%]
+backend/tests/test_milestone3.py::TestMilestone3::test_03_counterargument_generation_all_types  PASSED [ 59%]
+backend/tests/test_milestone3.py::TestMilestone3::test_04_coaching_recommendations              PASSED [ 62%]
+backend/tests/test_milestone3.py::TestMilestone3::test_05_personalized_learning_plan            PASSED [ 66%]
+backend/tests/test_milestone3.py::TestMilestone3::test_06_skill_gap_analysis                    PASSED [ 70%]
+backend/tests/test_milestone3.py::TestMilestone3::test_07_drill_library                         PASSED [ 74%]
+backend/tests/test_milestone4.py::TestMilestone4::test_01_presentation_analysis_and_history     PASSED [ 77%]
+backend/tests/test_milestone4.py::TestMilestone4::test_02_audio_presentation_upload             PASSED [ 81%]
+backend/tests/test_milestone4.py::TestMilestone4::test_03_reports_endpoints                     PASSED [ 85%]
+backend/tests/test_milestone4.py::TestMilestone4::test_04_export_system_csv_excel_pdf           PASSED [ 88%]
+backend/tests/test_milestone4.py::TestMilestone4::test_05_admin_overview_rbac                   PASSED [ 92%]
+backend/tests/test_milestone4.py::TestMilestone4::test_06_notifications_and_engagement_system   PASSED [ 96%]
+backend/tests/test_milestone4.py::TestMilestone4::test_07_oauth2_sso_login                      PASSED [100%]
 
-======================= 27 passed, 47 warnings in 8.66s =======================
+======================= 27 passed, 48 warnings in 16.64s =======================
 ```
 
 ---
@@ -391,9 +391,6 @@ tests/test_milestone4.py::TestMilestone4::test_07_oauth2_sso_login              
 | **Frontend Page** | `frontend/src/pages/Reports.jsx` | 4 | PDF, Excel & CSV Export System |
 | **Frontend Component** | `frontend/src/components/Navbar.jsx` | 1+4 | Navbar with notification badge |
 | **Frontend Component** | `frontend/src/components/Sidebar.jsx` | All | Application sidebar navigation |
-| **Deployment** | `docker-compose.yml` | 4 | PostgreSQL + FastAPI + Nginx orchestration |
-| **Deployment** | `backend/Dockerfile` | 4 | FastAPI backend container |
-| **Deployment** | `frontend/Dockerfile` | 4 | React + Nginx frontend container |
 | **Config** | `backend/.env.example` | All | Environment variable template |
 | **Config** | `backend/requirements.txt` | All | Python dependency manifest |
 | **Documentation** | `README.md` | All | Project overview, quick start, API reference |

@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react'
+import { useAuth } from '../context/AuthContext'
 import api from '../api/client'
 
 export default function Reports() {
+  const { user } = useAuth()
+  const role = user?.role || 'learner'
+  const canExport = ['educator', 'admin'].includes(role)
+  const isAdmin = role === 'admin'
+
   const [performance, setPerformance]       = useState(null)
   const [debateReport, setDebateReport]     = useState(null)
   const [presReport, setPresReport]         = useState(null)
@@ -107,37 +113,42 @@ export default function Reports() {
 
   return (
     <div style={{ animation: 'fadeIn 0.4s ease' }}>
-        {/* Header with Export Action Toolbar */}
+        {/* Header with Export Action Toolbar (Accessible to Educator & Admin only) */}
         <div className="page-header" style={{ flexWrap: 'wrap', gap: 16 }}>
           <div>
-            <h1 className="page-title">📊 Reports & Export System</h1>
+            <h1 className="page-title">📊 Reports &amp; Analytics</h1>
             <p className="page-subtitle">
-              Comprehensive debate analytics, presentation assessments, and multi-format exports
+              {role === 'learner' && 'Your personal performance analytics, debate scores, and progress metrics.'}
+              {role === 'coach' && 'Student performance analytics, evaluation history, and coaching trends.'}
+              {role === 'educator' && 'Comprehensive academic reports, curriculum analytics, and institutional exports.'}
+              {role === 'admin' && 'System-wide debate analytics, executive reports, and platform telemetry.'}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => handleExport('pdf')}
-              disabled={!!exporting}
-            >
-              {exporting === 'pdf' ? '⏳ Generating...' : '📄 Export PDF'}
-            </button>
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => handleExport('excel')}
-              disabled={!!exporting}
-            >
-              {exporting === 'excel' ? '⏳ Generating...' : '📊 Export Excel'}
-            </button>
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => handleExport('csv')}
-              disabled={!!exporting}
-            >
-              {exporting === 'csv' ? '⏳ Exporting...' : '📥 Export CSV'}
-            </button>
-          </div>
+          {canExport && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => handleExport('pdf')}
+                disabled={!!exporting}
+              >
+                {exporting === 'pdf' ? '⏳ Generating...' : '📄 Export PDF'}
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => handleExport('excel')}
+                disabled={!!exporting}
+              >
+                {exporting === 'excel' ? '⏳ Generating...' : '📊 Export Excel'}
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => handleExport('csv')}
+                disabled={!!exporting}
+              >
+                {exporting === 'csv' ? '⏳ Exporting...' : '📥 Export CSV'}
+              </button>
+            </div>
+          )}
         </div>
 
         {error && <div className="error-msg">{error}</div>}
@@ -162,7 +173,7 @@ export default function Reports() {
           <button className={`tab-btn ${activeTab === 'sessions' ? 'active' : ''}`} onClick={() => setActiveTab('sessions')}>
             📋 Sessions
           </button>
-          {adminData && (
+          {isAdmin && adminData && (
             <button className={`tab-btn ${activeTab === 'admin' ? 'active' : ''}`} onClick={() => setActiveTab('admin')}>
               🛡️ Admin Overview
             </button>
@@ -452,8 +463,8 @@ export default function Reports() {
           </div>
         )}
 
-        {/* ── 7. Admin Tab ── */}
-        {activeTab === 'admin' && adminData && (
+        {/* ── 7. Admin Tab (Strictly for Administrator Role) ── */}
+        {activeTab === 'admin' && isAdmin && adminData && (
           <div>
             <div className="stats-row">
               <div className="stat-card">

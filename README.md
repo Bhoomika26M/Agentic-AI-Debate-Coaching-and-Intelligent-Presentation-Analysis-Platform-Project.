@@ -13,7 +13,7 @@ This platform addresses all 4 Milestones (Weeks 1 to 8) specified in the **Agent
 - **Milestone 4 (Weeks 7 & 8)**: Speech & Audio Presentation Analytics (WPM, Fillers, Pitch/Pacing, Confidence), Multi-Format Executive Export System (PDF, Excel `.xlsx`, CSV), Notification & Engagement System, and Role-Adaptive Dashboards.
 
 > [!NOTE]
-> **Deployment Note:** While the curriculum document mentions cloud deployment (Docker, AWS, Azure), **cloud deployment is NOT required for evaluation**. The entire platform runs seamlessly on your local machine using standard `uvicorn` and `vite`. Docker Compose is provided purely as optional infrastructure.
+> **Deployment Note:** While the curriculum document mentions cloud deployment (Docker, AWS, Azure), **cloud deployment is NOT required for evaluation**. The entire platform runs seamlessly on your local machine using standard `uvicorn` and `vite`.
 
 ---
 
@@ -36,7 +36,7 @@ The platform architecture directly incorporates the stack specified in Section 7
 | **Search & Vector Storage** | **Elasticsearch** & **Vector DB (FAISS)** | Embedding concept for similarity matching of historical debate motions and counterargument retrieval. |
 | **Document Exporting** | **ReportLab** & **openpyxl** | Programmatic generation of executive PDF reports and multi-tab styled Excel `.xlsx` workbooks. |
 | **Security & Auth** | **JWT**, **bcrypt**, **passlib**, **OAuth2 SSO** | Stateless bearer token auth with role-based route guards and password hashing. |
-| **DevOps & Containers** | **Docker**, **Docker Compose**, **Git & GitHub** | Container recipes for backend, frontend, and database services. |
+| **DevOps & Containers** | **Git & GitHub** | Version control. *(Docker container recipes are not required for local evaluation.)* |
 
 ---
 
@@ -175,7 +175,6 @@ debate/
 │   └── package.json                  # React 19 + Vite dependencies
 │
 ├── docs/                             # Architecture and completion documentation
-├── docker-compose.yml                # Optional container orchestration
 └── README.md
 ```
 
@@ -236,10 +235,10 @@ npm run dev
 To verify all 27 Milestone verification tests:
 
 ```bash
-cd backend
-.\venv\Scripts\pytest.exe -v tests
+# From D:\PROJECTS\debate root
+backend\venv\Scripts\pytest backend\tests\ -v
 ```
-*Expected Result: `27 passed in ~9s` covering Auth, RBAC, Sessions, Argument Mining, Fallacy Detection, Sparring Simulation, Coaching Plans, Presentation Prosody, and Document Exports.*
+*Expected Result: `27 passed in ~17s` covering Auth, RBAC, Sessions, Argument Mining, Fallacy Detection, Sparring Simulation, Coaching Plans, Presentation Prosody, and Document Exports.*
 
 ---
 

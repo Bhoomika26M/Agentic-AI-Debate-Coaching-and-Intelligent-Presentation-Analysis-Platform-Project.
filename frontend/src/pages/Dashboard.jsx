@@ -113,8 +113,8 @@ export default function Dashboard() {
         .catch(() => {})
     }
 
-    // 3. If Coach or Educator, load students
-    if (['coach', 'educator'].includes(role)) {
+    // 3. If Coach, Educator, or Admin, load students
+    if (['coach', 'educator', 'admin'].includes(role)) {
       api.get('/users/students')
         .then(r => {
           const studentList = Array.isArray(r.data) ? r.data : []
@@ -176,9 +176,17 @@ export default function Dashboard() {
       <div className="card" style={{ padding: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div>
-            <h3 style={{ margin: 0 }}>Recent Debate Sessions</h3>
+            <h3 style={{ margin: 0 }}>
+              {role === 'learner' && 'My Debate Sessions'}
+              {role === 'coach' && 'Sessions For Evaluation'}
+              {role === 'educator' && 'Class Debate Rounds'}
+              {role === 'admin' && 'Platform Debate Sessions'}
+            </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-              Your scheduled, active, and completed debate sessions
+              {role === 'learner' && 'Your scheduled, active, and completed personal debate rounds.'}
+              {role === 'coach' && 'Debate sessions submitted by students requiring review.'}
+              {role === 'educator' && 'Active and completed debate sessions across your cohorts.'}
+              {role === 'admin' && 'Live debate activity and records across all formats.'}
             </p>
           </div>
           <Link to="/sessions" className="btn btn-secondary btn-sm">

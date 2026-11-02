@@ -45,6 +45,7 @@ export default function DebateSessions() {
   const [evalFeedback, setEvalFeedback] = useState('')
   const [evaluating, setEvaluating]     = useState(false)
   const [evalSuccess, setEvalSuccess]   = useState(false)
+  const [isEditingEval, setIsEditingEval] = useState(false)
   const [transcriptDraft, setTranscriptDraft] = useState('')
   const [savingTranscript, setSavingTranscript] = useState(false)
   const [analyzingAI, setAnalyzingAI]   = useState(false)
@@ -63,6 +64,7 @@ export default function DebateSessions() {
     setEvalFeedback(s.feedback_summary || '')
     setTranscriptDraft(s.transcript || '')
     setEvalSuccess(false)
+    setIsEditingEval(false)
     setAiReport(null)
     setAiError('')
   }
@@ -156,6 +158,7 @@ export default function DebateSessions() {
       setViewSession(data)
       setSessions(prev => prev.map(item => item.id === data.id ? data : item))
       setEvalSuccess(true)
+      setIsEditingEval(false)
     } catch {
       // optimistic fallback
       const updated = {
@@ -167,6 +170,7 @@ export default function DebateSessions() {
       setViewSession(updated)
       setSessions(prev => prev.map(item => item.id === viewSession.id ? updated : item))
       setEvalSuccess(true)
+      setIsEditingEval(false)
     } finally {
       setEvaluating(false)
     }
@@ -192,8 +196,20 @@ export default function DebateSessions() {
       {/* Header */}
       <div className="page-header">
         <div>
-          <h1>Debate Sessions</h1>
-          <p>Create, schedule, and manage your debate sessions</p>
+          <h1>
+            {user?.role === 'learner' && 'My Debate Sessions'}
+            {user?.role === 'coach' && 'Debate Adjudication & Sessions'}
+            {user?.role === 'educator' && 'Class Debate Rounds'}
+            {user?.role === 'admin' && 'Platform Debate Sessions (Admin)'}
+            {!user?.role && 'Debate Sessions'}
+          </h1>
+          <p>
+            {user?.role === 'learner' && 'Schedule, practice, and review your debate rounds across 6 formats.'}
+            {user?.role === 'coach' && 'Review student debate transcripts, evaluate arguments, and submit official scores.'}
+            {user?.role === 'educator' && 'Monitor student debate participation, speech records, and cohort progress.'}
+            {user?.role === 'admin' && 'System-wide oversight and management across all debate rounds and formats.'}
+            {!user?.role && 'Create, schedule, and manage your debate sessions'}
+          </p>
         </div>
         <button id="create-session-btn" className="btn btn-primary" onClick={() => setShowModal(true)}>
           ➕ New Session
@@ -406,39 +422,92 @@ export default function DebateSessions() {
                 )}
               </div>
 
-              {/* Scorecard Display if evaluated */}
-              {viewSession.score != null && (
+              {/* Evaluated State: Locked Scorecard */}
+              {viewSession.score != null && !isEditingEval ? (
                 <div style={{
-                  padding: '16px',
+                  padding: '18px',
                   background: 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(108,99,255,0.08))',
-                  border: '1px solid rgba(16,185,129,0.3)',
+                  border: '1px solid rgba(16,185,129,0.35)',
                   borderRadius: 'var(--radius-lg)',
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--brand-success)', letterSpacing: '0.05em' }}>OFFICIAL EVALUATION</span>
-                    <span style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--brand-success)' }}>{viewSession.score}<span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>/100</span></span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: '1.1rem' }}>🔒</span>
+                      <div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--brand-success)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                          Official Review Finalized
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          Score & feedback locked
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--brand-success)' }}>
+                        {viewSession.score}
+                      </span>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>/100</span>
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', fontStyle: 'italic' }}>
-                    "{viewSession.feedback_summary}"
-                  </div>
-                </div>
-              )}
 
-              {/* Coach / Educator Evaluation Form */}
-              {isCoachOrAdmin && (
+                  <div style={{
+                    fontSize: '0.88rem',
+                    color: 'var(--text-primary)',
+                    fontStyle: 'italic',
+                    background: 'rgba(0,0,0,0.15)',
+                    padding: '12px 14px',
+                    borderRadius: 'var(--radius-md)',
+                    borderLeft: '3px solid var(--brand-success)',
+                    marginBottom: isCoachOrAdmin ? 12 : 0,
+                    lineHeight: 1.5,
+                  }}>
+                    "{viewSession.feedback_summary || 'Satisfactory debate performance recorded.'}"
+                  </div>
+
+                  {isCoachOrAdmin && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          setEvalScore(viewSession.score || 80)
+                          setEvalFeedback(viewSession.feedback_summary || '')
+                          setIsEditingEval(true)
+                        }}
+                        style={{ fontSize: '0.8rem', padding: '5px 12px' }}
+                      >
+                        ✏️ Edit Review & Score
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : isCoachOrAdmin ? (
+                /* Editable Evaluation Form for Coach / Educator / Admin */
                 <div style={{
                   padding: '16px',
                   background: 'var(--bg-overlay)',
                   border: '1px solid var(--border-medium)',
                   borderRadius: 'var(--radius-lg)',
                 }}>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--brand-secondary)', marginBottom: 10 }}>
-                    🏆 Coach Evaluation & Feedback
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--brand-secondary)' }}>
+                      🏆 {viewSession.score != null ? 'Edit Adjudication & Score' : 'Coach Evaluation & Feedback'}
+                    </div>
+                    {isEditingEval && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setIsEditingEval(false)}
+                        style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                      >
+                        Cancel
+                      </button>
+                    )}
                   </div>
 
                   {evalSuccess && (
                     <div className="alert alert-success" style={{ marginBottom: 12 }}>
-                      ✅ Evaluation submitted and student score updated!
+                      ✅ Evaluation submitted and student score locked!
                     </div>
                   )}
 
@@ -468,10 +537,30 @@ export default function DebateSessions() {
                         style={{ resize: 'vertical', fontSize: '0.88rem' }}
                       />
                     </div>
-                    <button type="submit" className="btn btn-primary btn-sm" disabled={evaluating} style={{ alignSelf: 'flex-start' }}>
-                      {evaluating ? 'Submitting…' : '⭐ Submit Evaluation'}
-                    </button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button type="submit" className="btn btn-primary btn-sm" disabled={evaluating}>
+                        {evaluating ? 'Submitting…' : (viewSession.score != null ? '💾 Update & Lock Evaluation' : '⭐ Submit & Lock Evaluation')}
+                      </button>
+                      {isEditingEval && (
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setIsEditingEval(false)}>
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </form>
+                </div>
+              ) : (
+                /* Learner view when not evaluated yet */
+                <div style={{
+                  padding: '12px 16px',
+                  background: 'var(--bg-overlay)',
+                  border: '1px dashed var(--border-medium)',
+                  borderRadius: 'var(--radius-lg)',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.85rem',
+                  textAlign: 'center',
+                }}>
+                  ⏳ Adjudication pending: Official score and coach feedback will appear here once reviewed.
                 </div>
               )}
 
