@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
-  Compass,
   Video,
   History,
   BarChart3,
@@ -11,10 +10,8 @@ import {
   AlertTriangle,
   Swords,
   Mic,
-  CreditCard,
   Users,
   User,
-  Tag,
   Settings,
   LogOut,
   ChevronLeft,
@@ -27,7 +24,8 @@ import {
   ChevronDown,
   Menu,
   X,
-  Cpu
+  Activity,
+  Award
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -61,17 +59,21 @@ export default function DashboardLayout() {
     checkAi();
   }, []);
 
-  // 4 Clear Sections per Prompt Phase 4.1
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login?logged_out=true', { replace: true });
+  };
+
+  // Strictly PDF-Aligned Navigation per Section 8
   const mainNav = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'Discover', path: '/discover', icon: Compass },
-    { name: 'Live Debates', path: '/live-debates', icon: Video },
-    { name: 'History', path: '/history', icon: History },
+    { name: 'Debate Sessions', path: '/debates', icon: Video },
+    { name: 'AI Debate', path: '/ai-coach', icon: Bot },
+    { name: 'Debate History', path: '/history', icon: History },
     { name: 'Analytics', path: '/analytics', icon: BarChart3 },
   ];
 
   const aiToolsNav = [
-    { name: 'AI Debate Coach', path: '/ai-coach', icon: Bot },
     { name: 'Argument Analysis', path: '/argument-analysis', icon: FileText },
     { name: 'Fallacy Detector', path: '/fallacy-detector', icon: AlertTriangle },
     { name: 'Counterarguments', path: '/counterarguments', icon: Swords },
@@ -81,12 +83,11 @@ export default function DashboardLayout() {
   const accountNav = [
     { name: 'Profile', path: '/profile', icon: User },
     { name: 'Settings', path: '/settings', icon: Settings },
-    { name: 'Pricing', path: '/pricing', icon: Tag },
   ];
 
   const adminNav = [
     { name: 'User Management', path: '/admin/users', icon: Users },
-    { name: 'Payment Admin', path: '/admin/payments', icon: CreditCard },
+    { name: 'System Reports', path: '/admin/system', icon: Activity },
   ];
 
   const handleSmoothRefresh = () => {
@@ -94,10 +95,29 @@ export default function DashboardLayout() {
     setTimeout(() => {
       setIsRefreshing(false);
       window.location.reload();
-    }, 300);
+    }, 250);
   };
 
   const isAdmin = user?.role === 'Administrator';
+
+  // Get active page heading
+  const getPageTitle = () => {
+    const p = location.pathname;
+    if (p === '/') return `${user?.role || 'Learner'} Dashboard`;
+    if (p === '/debates' || p === '/live-debates') return 'Debate Sessions';
+    if (p === '/ai-coach') return 'AI Debate Coach Arena';
+    if (p === '/history') return 'Debate Match History';
+    if (p === '/analytics') return 'Rhetorical & Skill Analytics';
+    if (p === '/argument-analysis') return 'Argument Analysis Engine';
+    if (p === '/fallacy-detector') return 'Logical Fallacy Detector';
+    if (p === '/counterarguments') return 'Counterargument Generator';
+    if (p === '/presentation-analysis') return 'Presentation & Speech Analytics';
+    if (p === '/profile') return 'User Profile & Skill Settings';
+    if (p === '/settings') return 'Application Settings';
+    if (p === '/admin/users') return 'User Management & Access Control';
+    if (p === '/admin/system') return 'System Reports & Model Telemetry';
+    return 'JustiTalk Platform';
+  };
 
   return (
     <div className="min-h-screen flex bg-[#FAF8F3] text-[#1E242B]">
@@ -150,31 +170,33 @@ export default function DashboardLayout() {
             </button>
           </div>
 
-          {/* Navigation Links Scroll Container */}
-          <div className="px-3 py-4 overflow-y-auto max-h-[calc(100vh-140px)] space-y-5">
+          {/* Navigation Links Scrollable Area */}
+          <nav className="p-3 space-y-6 overflow-y-auto max-h-[calc(100vh-8rem)]">
             {/* 1. MAIN */}
-            <div className="space-y-1">
+            <div>
               {(!collapsed || mobileOpen) && (
-                <p className="px-3 text-[11px] font-bold tracking-wider text-gray-400 uppercase">
+                <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
                   Main
-                </p>
+                </div>
               )}
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 {mainNav.map((item) => {
                   const Icon = item.icon;
-                  const isActive = location.pathname === item.path;
                   return (
                     <NavLink
                       key={item.path}
                       to={item.path}
-                      className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all ${
-                        isActive
-                          ? 'bg-[#FBF3DC] text-[#B87E0E] font-semibold shadow-xs'
-                          : 'text-[#475562] hover:bg-[#F4EFE6] hover:text-[#1E242B]'
-                      }`}
-                      title={collapsed && !mobileOpen ? item.name : undefined}
+                      end={item.path === '/'}
+                      className={({ isActive }) =>
+                        `flex items-center px-3 py-2 text-xs font-semibold rounded-xl transition-all duration-150 ${
+                          isActive
+                            ? 'bg-[#FCF6E5] text-[#B87E0E] font-bold shadow-xs'
+                            : 'text-gray-600 hover:bg-[#F2ECE1] hover:text-[#1E242B]'
+                        } ${collapsed && !mobileOpen ? 'justify-center px-0' : 'space-x-3'}`
+                      }
+                      title={collapsed ? item.name : undefined}
                     >
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#D49B19]' : 'text-gray-400'} ${collapsed && !mobileOpen ? 'mx-auto' : 'mr-3'}`} />
+                      <Icon className="w-4 h-4 shrink-0" />
                       {(!collapsed || mobileOpen) && <span>{item.name}</span>}
                     </NavLink>
                   );
@@ -183,28 +205,29 @@ export default function DashboardLayout() {
             </div>
 
             {/* 2. AI TOOLS */}
-            <div className="space-y-1">
+            <div>
               {(!collapsed || mobileOpen) && (
-                <p className="px-3 text-[11px] font-bold tracking-wider text-gray-400 uppercase">
+                <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
                   AI Tools
-                </p>
+                </div>
               )}
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 {aiToolsNav.map((item) => {
                   const Icon = item.icon;
-                  const isActive = location.pathname === item.path;
                   return (
                     <NavLink
                       key={item.path}
                       to={item.path}
-                      className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all ${
-                        isActive
-                          ? 'bg-[#FBF3DC] text-[#B87E0E] font-semibold shadow-xs'
-                          : 'text-[#475562] hover:bg-[#F4EFE6] hover:text-[#1E242B]'
-                      }`}
-                      title={collapsed && !mobileOpen ? item.name : undefined}
+                      className={({ isActive }) =>
+                        `flex items-center px-3 py-2 text-xs font-semibold rounded-xl transition-all duration-150 ${
+                          isActive
+                            ? 'bg-[#FCF6E5] text-[#B87E0E] font-bold shadow-xs'
+                            : 'text-gray-600 hover:bg-[#F2ECE1] hover:text-[#1E242B]'
+                        } ${collapsed && !mobileOpen ? 'justify-center px-0' : 'space-x-3'}`
+                      }
+                      title={collapsed ? item.name : undefined}
                     >
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#D49B19]' : 'text-gray-400'} ${collapsed && !mobileOpen ? 'mx-auto' : 'mr-3'}`} />
+                      <Icon className="w-4 h-4 shrink-0" />
                       {(!collapsed || mobileOpen) && <span>{item.name}</span>}
                     </NavLink>
                   );
@@ -213,28 +236,29 @@ export default function DashboardLayout() {
             </div>
 
             {/* 3. ACCOUNT */}
-            <div className="space-y-1">
+            <div>
               {(!collapsed || mobileOpen) && (
-                <p className="px-3 text-[11px] font-bold tracking-wider text-gray-400 uppercase">
+                <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
                   Account
-                </p>
+                </div>
               )}
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 {accountNav.map((item) => {
                   const Icon = item.icon;
-                  const isActive = location.pathname === item.path;
                   return (
                     <NavLink
                       key={item.path}
                       to={item.path}
-                      className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all ${
-                        isActive
-                          ? 'bg-[#FBF3DC] text-[#B87E0E] font-semibold shadow-xs'
-                          : 'text-[#475562] hover:bg-[#F4EFE6] hover:text-[#1E242B]'
-                      }`}
-                      title={collapsed && !mobileOpen ? item.name : undefined}
+                      className={({ isActive }) =>
+                        `flex items-center px-3 py-2 text-xs font-semibold rounded-xl transition-all duration-150 ${
+                          isActive
+                            ? 'bg-[#FCF6E5] text-[#B87E0E] font-bold shadow-xs'
+                            : 'text-gray-600 hover:bg-[#F2ECE1] hover:text-[#1E242B]'
+                        } ${collapsed && !mobileOpen ? 'justify-center px-0' : 'space-x-3'}`
+                      }
+                      title={collapsed ? item.name : undefined}
                     >
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#D49B19]' : 'text-gray-400'} ${collapsed && !mobileOpen ? 'mx-auto' : 'mr-3'}`} />
+                      <Icon className="w-4 h-4 shrink-0" />
                       {(!collapsed || mobileOpen) && <span>{item.name}</span>}
                     </NavLink>
                   );
@@ -242,31 +266,31 @@ export default function DashboardLayout() {
               </div>
             </div>
 
-            {/* 4. ADMINISTRATION (Guarded: Only for Administrator) */}
+            {/* 4. ADMINISTRATION (Admin Only) */}
             {isAdmin && (
-              <div className="space-y-1">
+              <div>
                 {(!collapsed || mobileOpen) && (
-                  <p className="px-3 text-[11px] font-bold tracking-wider text-[#B87E0E] uppercase flex items-center justify-between">
-                    <span>Administration</span>
-                    <span className="text-[9px] bg-[#FCF6E5] px-1.5 py-0.2 rounded border border-[#F4E9C0]">Admin</span>
-                  </p>
+                  <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-amber-700/80">
+                    Administration
+                  </div>
                 )}
-                <div className="space-y-0.5">
+                <div className="space-y-1">
                   {adminNav.map((item) => {
                     const Icon = item.icon;
-                    const isActive = location.pathname === item.path;
                     return (
                       <NavLink
                         key={item.path}
                         to={item.path}
-                        className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all ${
-                          isActive
-                            ? 'bg-[#FBF3DC] text-[#B87E0E] font-semibold shadow-xs'
-                            : 'text-[#475562] hover:bg-[#F4EFE6] hover:text-[#1E242B]'
-                        }`}
-                        title={collapsed && !mobileOpen ? item.name : undefined}
+                        className={({ isActive }) =>
+                          `flex items-center px-3 py-2 text-xs font-semibold rounded-xl transition-all duration-150 ${
+                            isActive
+                              ? 'bg-[#FCF6E5] text-[#B87E0E] font-bold shadow-xs'
+                              : 'text-gray-600 hover:bg-[#F2ECE1] hover:text-[#1E242B]'
+                          } ${collapsed && !mobileOpen ? 'justify-center px-0' : 'space-x-3'}`
+                        }
+                        title={collapsed ? item.name : undefined}
                       >
-                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#D49B19]' : 'text-gray-400'} ${collapsed && !mobileOpen ? 'mx-auto' : 'mr-3'}`} />
+                        <Icon className="w-4 h-4 shrink-0 text-[#D49B19]" />
                         {(!collapsed || mobileOpen) && <span>{item.name}</span>}
                       </NavLink>
                     );
@@ -274,36 +298,39 @@ export default function DashboardLayout() {
                 </div>
               </div>
             )}
-          </div>
+          </nav>
         </div>
 
-        {/* BOTTOM USER PROFILE & LOGOUT */}
+        {/* SIDEBAR FOOTER (User Info & Clearly Visible Logout) */}
         <div className="p-3 border-t border-[#ECE7DE] bg-[#FAF8F3]">
-          <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-[#ECE7DE]/70 shadow-xs">
-            <div className="flex items-center space-x-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#DF9E16] to-[#F5CA65] flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs">
-                <Shield className="w-4 h-4 fill-white" />
-              </div>
-              {(!collapsed || mobileOpen) && (
-                <div className="truncate">
-                  <p className="text-xs font-semibold text-[#1E242B] truncate leading-tight">
-                    {user?.full_name || 'Admin'}
-                  </p>
-                  <p className="text-[10px] text-gray-500 leading-tight">
-                    {user?.role || 'Learner'} • {user?.subscription?.plan_name || 'Pro Plan'}
-                  </p>
+          <div className={`flex items-center ${collapsed && !mobileOpen ? 'justify-center' : 'justify-between'}`}>
+            {(!collapsed || mobileOpen) ? (
+              <div className="flex items-center space-x-2.5 overflow-hidden">
+                <div className="w-8 h-8 rounded-lg bg-[#FCF6E5] border border-[#F4E9C0] flex items-center justify-center text-[#D49B19] shrink-0 font-bold text-xs">
+                  {user?.full_name?.charAt(0) || user?.email?.charAt(0).toUpperCase() || 'U'}
                 </div>
+                <div className="truncate min-w-0">
+                  <div className="text-xs font-bold text-[#1E242B] truncate">
+                    {user?.full_name || user?.email?.split('@')[0]}
+                  </div>
+                  <div className="text-[10px] text-[#B87E0E] font-medium">
+                    {user?.role || 'Learner'}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              title="Logout from JustiTalk"
+              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center space-x-1.5"
+            >
+              <LogOut className="w-4 h-4" />
+              {(!collapsed || mobileOpen) && (
+                <span className="text-xs font-semibold text-gray-600 hover:text-red-600">Logout</span>
               )}
-            </div>
-            {(!collapsed || mobileOpen) && (
-              <button
-                onClick={logout}
-                title="Logout"
-                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            )}
+            </button>
           </div>
         </div>
       </aside>
@@ -326,24 +353,10 @@ export default function DashboardLayout() {
 
             <div>
               <h1 className="text-lg md:text-xl font-bold text-[#1E242B] tracking-tight">
-                {location.pathname === '/' ? 'Dashboard' :
-                 location.pathname === '/ai-coach' ? 'AI Debate Coach' :
-                 location.pathname === '/argument-analysis' ? 'Argument Analysis' :
-                 location.pathname === '/fallacy-detector' ? 'Logical Fallacy Detector' :
-                 location.pathname === '/counterarguments' ? 'Counterargument Generator' :
-                 location.pathname === '/presentation-analysis' ? 'Presentation Analysis' :
-                 location.pathname === '/analytics' ? 'Performance Analytics' :
-                 location.pathname === '/live-debates' ? 'Live Debates' :
-                 location.pathname === '/history' ? 'Debate History' :
-                 location.pathname === '/discover' ? 'Discover Debates' :
-                 location.pathname === '/profile' ? 'User Profile' :
-                 location.pathname === '/settings' ? 'Settings' :
-                 location.pathname === '/pricing' ? 'Pricing & Plans' :
-                 location.pathname === '/admin/users' ? 'User Management' :
-                 location.pathname === '/admin/payments' ? 'Payment Admin' : 'JustiTalk Platform'}
+                {getPageTitle()}
               </h1>
               <p className="text-[11px] md:text-xs text-gray-500 hidden sm:block">
-                {location.pathname === '/' ? "Welcome back! Here's your debate activity overview." : 'AI-Powered Dialectic & Rhetoric Intelligence'}
+                {location.pathname === '/' ? `Welcome back, ${user?.full_name || 'Debater'}!` : 'Agentic AI Debate Coach & Presentation Analysis Platform'}
               </p>
             </div>
           </div>
@@ -373,19 +386,12 @@ export default function DashboardLayout() {
               <span className="hidden sm:inline">Refresh</span>
             </button>
 
-            {/* Theme Toggle Icon */}
-            <button
-              title="Warm Theme Active"
-              className="p-1.5 md:p-2 text-gray-500 hover:text-gray-700 hover:bg-[#F2ECE1] rounded-lg transition-colors"
-            >
-              <Sun className="w-4 h-4 text-[#D49B19]" />
-            </button>
-
             {/* Notifications */}
             <div className="relative">
               <button
                 onClick={() => setShowNotifMenu(!showNotifMenu)}
                 className="p-1.5 md:p-2 text-gray-500 hover:text-gray-700 hover:bg-[#F2ECE1] rounded-lg transition-colors relative"
+                title="Notifications"
               >
                 <Bell className="w-4 h-4" />
                 <span className="absolute top-1 right-1 w-2 h-2 bg-[#D49B19] rounded-full ring-2 ring-white"></span>
@@ -394,38 +400,43 @@ export default function DashboardLayout() {
               {showNotifMenu && (
                 <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-[#ECE7DE] p-3 z-50 animate-in fade-in zoom-in-95 duration-150">
                   <div className="flex items-center justify-between pb-2 border-b border-gray-100 mb-2">
-                    <span className="text-xs font-bold text-gray-800">Notifications</span>
+                    <span className="text-xs font-bold text-gray-800">Platform Notifications</span>
                     <span className="text-[10px] text-[#D49B19] cursor-pointer" onClick={() => setShowNotifMenu(false)}>Close</span>
                   </div>
                   <div className="space-y-2 text-xs">
                     <div className="p-2 bg-[#FBF9F4] rounded-lg border border-[#F4EFE6]">
-                      <p className="font-semibold text-gray-800">New Feedback</p>
-                      <p className="text-gray-500 text-[11px]">Pro AI reviewed your debate stance.</p>
-                      <span className="text-[10px] text-gray-400">Just now</span>
+                      <p className="font-semibold text-gray-800">Debate Coaching Feedback</p>
+                      <p className="text-gray-500 text-[11px]">AI Coach reviewed your civil adjudication debate turn.</p>
+                      <span className="text-[10px] text-gray-400">Today</span>
+                    </div>
+                    <div className="p-2 bg-[#FBF9F4] rounded-lg border border-[#F4EFE6]">
+                      <p className="font-semibold text-gray-800">Skill Milestone</p>
+                      <p className="text-gray-500 text-[11px]">Logical Consistency rating surpassed 85 percentile.</p>
+                      <span className="text-[10px] text-gray-400">Yesterday</span>
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Quick Role Switcher Pill */}
+            {/* Role Switcher Pill for Evaluator Convenience */}
             <div className="relative">
               <button
                 onClick={() => setShowRoleMenu(!showRoleMenu)}
                 className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-[#FCF6E5] border border-[#F4E9C0] text-[#B87E0E] text-xs font-semibold hover:bg-[#F8EBC3] transition-colors shadow-xs"
-                title="Switch Role for Evaluation"
+                title="Switch Active Role"
               >
                 <Shield className="w-3.5 h-3.5 fill-current" />
-                <span>{user?.role || 'Admin'}</span>
+                <span>{user?.role || 'Learner'}</span>
                 <ChevronDown className="w-3 h-3 text-[#B87E0E]" />
               </button>
 
               {showRoleMenu && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-[#ECE7DE] py-1 z-50 animate-in fade-in zoom-in-95 duration-150">
                   <div className="px-3 py-1.5 text-[10px] uppercase font-bold text-gray-400 border-b border-gray-100">
-                    Switch Active Role
+                    Switch User Role
                   </div>
-                  {['Administrator', 'Learner', 'Debate Coach', 'Educator'].map((r) => (
+                  {['Learner', 'Debate Coach', 'Educator', 'Administrator'].map((r) => (
                     <button
                       key={r}
                       onClick={() => {

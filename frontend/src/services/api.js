@@ -22,8 +22,15 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Clear token on unauthorized if needed
-      // localStorage.removeItem('justitalk_token');
+      const url = error.config?.url || '';
+      // Only bounce if this was an authenticated API request and NOT the login endpoint itself
+      if (!url.includes('/auth/login') && !url.includes('/auth/register')) {
+        localStorage.removeItem('justitalk_token');
+        sessionStorage.clear();
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
+          window.location.href = '/login?session_expired=true';
+        }
+      }
     }
     return Promise.reject(error);
   }

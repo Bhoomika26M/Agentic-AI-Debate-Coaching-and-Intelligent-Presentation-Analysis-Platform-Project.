@@ -13,6 +13,12 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/register", response_model=UserOut)
 def register(user_in: UserCreate, db: Session = Depends(get_db)):
+    if user_in.role == UserRole.ADMINISTRATOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator accounts cannot be created through public registration. Please contact an existing system administrator."
+        )
+
     existing = db.query(User).filter(User.email == user_in.email).first()
     if existing:
         raise HTTPException(
@@ -91,6 +97,13 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
 @router.get("/me", response_model=UserOut)
 def get_current_user_info(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.post("/logout")
+def logout_session(current_user: User = Depends(get_current_user)):
+    return {
+        "status": "success",
+        "message": "User session invalidated successfully."
+    }
 
 @router.post("/forgot-password")
 def forgot_password(email: str):

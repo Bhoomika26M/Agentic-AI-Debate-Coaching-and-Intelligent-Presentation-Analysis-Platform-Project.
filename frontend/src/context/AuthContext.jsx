@@ -8,46 +8,46 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('justitalk_token') || null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize or fetch me
+  // Initialize and validate session on initial page load
   useEffect(() => {
     const initAuth = async () => {
       const savedToken = localStorage.getItem('justitalk_token');
       if (savedToken) {
         try {
+          api.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`;
           const res = await api.get('/auth/me');
           setUser(res.data);
-          setLoading(false);
-          return;
+          setToken(savedToken);
         } catch (err) {
-          console.warn('Saved token expired or invalid, auto-logging in as demo admin...', err);
+          console.warn('Saved token expired or invalid:', err);
           localStorage.removeItem('justitalk_token');
+          delete api.defaults.headers.common['Authorization'];
+          setToken(null);
+          setUser(null);
         }
+      } else {
+        // No auto-login: Unauthenticated user stays unauthenticated
+        setToken(null);
+        setUser(null);
       }
-
-      // Auto login as default Admin (from screenshot) so the reviewer immediately sees the full app
-      try {
-        const loginRes = await api.post('/auth/login', {
-          email: 'admin@justitalk.com',
-          password: 'password123',
-        });
-        const newToken = loginRes.data.access_token;
-        localStorage.setItem('justitalk_token', newToken);
-        setToken(newToken);
-        setUser(loginRes.data.user);
-      } catch (e) {
-        console.error('Auto demo login failed:', e);
-      } finally {
-        setLoading(false);
-      }
+      setLoading(false);
     };
 
     initAuth();
   }, []);
 
-  const login = async (email, password) => {
+  const login = async (email, password, rememberMe = true) => {
     const res = await api.post('/auth/login', { email, password });
     const newToken = res.data.access_token;
-    localStorage.setItem('justitalk_token', newToken);
+    
+    if (rememberMe) {
+      localStorage.setItem('justitalk_token', newToken);
+    } else {
+      sessionStorage.setItem('justitalk_token', newToken);
+      localStorage.removeItem('justitalk_token');
+    }
+
+    api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
     setToken(newToken);
     setUser(res.data.user);
     return res.data.user;
@@ -55,17 +55,34 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     const res = await api.post('/auth/register', userData);
-    // Automatically log in with credentials
-    return login(userData.email, userData.password);
+    return res.data;
   };
 
-  const logout = () => {
-    localStorage.removeItem('justitalk_token');
-    setToken(null);
-    setUser(null);
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch (e) {
+      // Ignore network errors on logout
+    } finally {
+      localStorage.removeItem('justitalk_token');
+      sessionStorage.clear();
+      delete api.defaults.headers.common['Authorization'];
+      setToken(null);
+      setUser(null);
+    }
   };
 
-  // Quick Role Switcher for instant evaluator testing
+  const refreshUser = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      setUser(res.data);
+      return res.data;
+    } catch (e) {
+      console.error('Failed to refresh user info:', e);
+    }
+  };
+
+  // Quick Role Switcher for evaluator convenience
   const switchRole = async (targetRole) => {
     const roleAccounts = {
       'Administrator': { email: 'admin@justitalk.com', password: 'password123' },
@@ -97,11 +114,8 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
+        refreshUser,
         switchRole,
-        refreshUser: async () => {
-          const res = await api.get('/auth/me');
-          setUser(res.data);
-        }
       }}
     >
       {children}
