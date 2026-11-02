@@ -47,6 +47,7 @@ from .speech import (
     validate_audio,
 )
 from .usage_limits import follow_up_limiter
+from .voice.routes import router as voice_router
 
 # The agent graphs log through logging.info; LOG_LEVEL=WARNING silences them.
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
@@ -56,6 +57,13 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+# Tests and tiny machines can skip the startup model load; turns still work.
+WARMUP_ENABLED = os.getenv("MODEL_WARMUP", "on").strip().lower() not in (
+    "off",
+    "0",
+    "false",
+    "no",
+)
 MAX_ACTIVE_STREAMS = max(1, int(os.getenv("MAX_ACTIVE_STREAMS", "2")))
 stream_slots = asyncio.Semaphore(MAX_ACTIVE_STREAMS)
 STREAM_DONE = "data: [DONE]\n\n"
@@ -78,9 +86,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
                 return
             await asyncio.sleep(5)
 
-    warmup = asyncio.create_task(warm_until_loaded())
+    warmup = asyncio.create_task(warm_until_loaded()) if WARMUP_ENABLED else None
     yield
-    warmup.cancel()
+    if warmup is not None:
+        warmup.cancel()
 
 
 app = FastAPI(title="Debate Coach AI", version="0.1.0", lifespan=lifespan)
@@ -104,6 +113,7 @@ DEPLOYMENT_ENV = validate_deployment(
     allowed_hosts=allowed_hosts,
 )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+app.include_router(voice_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,

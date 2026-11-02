@@ -368,6 +368,73 @@ function buildCues(tally: Tally, prefs: LearnerPrefs, go: (view: "setup" | "acco
   return cues.slice(0, 3);
 }
 
+function recentSessionScores(analyses: (AnalysisReport | null)[]) {
+  return analyses
+    .slice()
+    // The review list arrives newest first; a chart reads left to right.
+    .reverse()
+    .map((report) => {
+      const scores = CRITERIA.map((key) => report?.ratings?.[key]?.score).filter(
+        (value): value is number => typeof value === "number",
+      );
+      return scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null;
+    })
+    .filter((value): value is number => value !== null);
+}
+
+/** Recent argument reviews, shown in the same oldest-to-newest order as the archive. */
+function ProgressDiagram({ tally, analyses, loading, onOpen }: {
+  tally: Tally;
+  analyses: (AnalysisReport | null)[];
+  loading: boolean;
+  onOpen: () => void;
+}) {
+  const scores = recentSessionScores(analyses);
+  const latest = scores.length ? scores[scores.length - 1] : tally.avgArgument;
+  const reviewSummary = latest === null
+    ? "No completed argument review yet."
+    : `${scores.length} reviewed ${scores.length === 1 ? "round" : "rounds"}, latest ${latest.toFixed(1)} out of 5.`;
+
+  return (
+    <section className="dash-progress" aria-labelledby="dash-progress-heading">
+      <div className="dash-progress-copy">
+        <h2 id="dash-progress-heading">
+          {latest === null ? "Your first review starts the record" : `${latest.toFixed(1)} / 5 on your latest review`}
+        </h2>
+        <p>
+          {reviewSummary}{" "}
+          {tally.streak > 0
+            ? `${tally.streak}-day streak.`
+            : `${tally.thisWeek} session${tally.thisWeek === 1 ? "" : "s"} this week, no streak running.`}
+        </p>
+        <button className="dash-text-link" type="button" onClick={onOpen}>
+          Open Progress <ArrowUpRight size={14} aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="dash-review-record" role="group" aria-label="Recent argument reviews">
+        {loading ? (
+          <p className="dash-review-empty">Reading your recent reviews…</p>
+        ) : scores.length ? (
+          <>
+            <span className="dash-review-label">Argument reviews <small>OLD → NEW</small></span>
+            <ol>
+              {scores.map((score, index) => (
+                <li key={`${index}-${score}`} aria-label={`Review ${index + 1}: ${score.toFixed(1)} out of 5`}>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <b>{score.toFixed(1)}</b>
+                </li>
+              ))}
+            </ol>
+          </>
+        ) : (
+          <p className="dash-review-empty">Your first completed review will appear here.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function DashboardView({
   userId,
   accessToken,
@@ -548,9 +615,11 @@ export function DashboardView({
       <section className="board" aria-label="Set up your next rehearsal">
         <div className="board-launch">
           <div className="board-top">
-            <span>NEXT UP</span>
+            <span>YOUR NEXT ROUND</span>
             <span>{activePersona.name.toUpperCase()} · {slot.label.toUpperCase()}</span>
           </div>
+
+          <h2 className="board-heading">Set the terms.</h2>
 
           <div className="board-field">
             <span className="board-label">MOTION</span>
@@ -648,6 +717,13 @@ export function DashboardView({
           <p className="slots-note">{slot.detail} Everything stays changeable in setup.</p>
         </div>
       </section>
+
+      <ProgressDiagram
+        tally={tally}
+        analyses={analyses}
+        loading={loading}
+        onOpen={() => onNavigate("account")}
+      />
 
       <section className="dash-direction" aria-label="Goal progress and practice plan">
         <div className="dash-direction-goal">

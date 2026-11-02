@@ -127,6 +127,17 @@
   margin-top: 18px;
 }
 
+.board-heading {
+  margin: 15px 0 0;
+  color: var(--paper-light);
+  font: 500 clamp(1.45rem, 2.3vw, 1.8rem) / 1.12 var(--serif);
+  letter-spacing: -0.025em;
+}
+
+.board-heading + .board-field {
+  margin-top: 12px;
+}
+
 .board-label {
   display: block;
   margin-bottom: 9px;
@@ -1231,6 +1242,115 @@
   .cue-action {
     grid-column: 2;
     justify-self: start;
+  }
+}
+
+.dash-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.8fr);
+  gap: 32px;
+  align-items: center;
+  margin: 0;
+  padding: 18px 22px;
+  border: 1px solid rgba(23, 20, 15, 0.16);
+  background: var(--paper-light);
+}
+
+.dash-progress-copy {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  justify-items: start;
+}
+
+.dash-progress-copy h2 {
+  margin: 0;
+  font: 500 clamp(1.15rem, 2vw, 1.45rem) / 1.1 var(--serif);
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.dash-progress-copy p {
+  margin: 0;
+  max-width: 48ch;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #514a40;
+}
+
+.dash-review-record {
+  min-width: 0;
+}
+
+.dash-review-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: #514a40;
+  font: 9px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dash-review-label small {
+  color: #625b50;
+  font: 8px var(--mono);
+  letter-spacing: 0.04em;
+}
+
+.dash-review-record ol {
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px solid #ded3c0;
+  list-style: none;
+}
+
+.dash-review-record li {
+  min-width: 46px;
+  min-height: 43px;
+  padding: 5px 7px 4px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  border-bottom: 2px solid #b6a98f;
+  color: #625b50;
+  background: #f1eadb;
+}
+
+.dash-review-record li:last-child {
+  border-bottom-color: #9b772c;
+}
+
+.dash-review-record li span {
+  font: 8px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-review-record li b {
+  color: #201d1a;
+  font: 500 16px/1 var(--serif);
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-review-empty {
+  margin: 0;
+  padding: 12px 0 0;
+  border-top: 1px solid #ded3c0;
+  color: #514a40;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .dash-progress {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 17px 16px;
   }
 }
 

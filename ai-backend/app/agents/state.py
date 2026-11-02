@@ -17,7 +17,9 @@ class DebateState(TypedDict, total=False):
     latest: str | None
     preferences: dict | None
     adaptive_tactics: bool
-    reply_length: Literal["concise", "standard"]
+    reply_length: Literal["concise", "standard", "voice"]
+    voice: bool
+    delivery_cue: str | None
     route: Literal["respond", "redirect"]
     guard_kind: Literal["clean", "hard", "soft"]
     guard_pattern: str | None

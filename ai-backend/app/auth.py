@@ -28,7 +28,17 @@ async def authenticate_request(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
 ) -> str | None:
     """Return the verified subject, or None for a guest when guest mode is allowed."""
-    if credentials is None:
+    return await require_token(credentials.credentials if credentials else None)
+
+
+async def require_token(token: str | None) -> str | None:
+    """Verify a bearer token supplied outside the Authorization header.
+
+    A WebSocket handshake cannot set headers from the browser, so the token
+    arrives as a query parameter. The checks are the same ones an HTTP request
+    gets; only the transport of the token differs.
+    """
+    if not token:
         if REQUIRE_AUTH:
             raise HTTPException(status_code=401, detail="Sign in to use the debate service.")
         return None
@@ -39,10 +49,10 @@ async def authenticate_request(
     try:
         signing_key = await asyncio.to_thread(
             jwks_client.get_signing_key_from_jwt,
-            credentials.credentials,
+            token,
         )
         claims = jwt.decode(
-            credentials.credentials,
+            token,
             signing_key.key,
             algorithms=["ES256", "RS256", "EdDSA"],
             audience="authenticated",

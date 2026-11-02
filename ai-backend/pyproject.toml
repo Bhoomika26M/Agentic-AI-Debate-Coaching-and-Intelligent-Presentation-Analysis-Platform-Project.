@@ -23,6 +23,8 @@ laya = [
 [dependency-groups]
 dev = ["pytest>=8.0,<10.0", "ruff>=0.6,<1.0"]
 stt = ["faster-whisper>=1.2,<2.0", "av>=12,<14"]
+# Voice mode playback. Kokoro-82M weights are Apache-2.0; see docs/VOICE.md.
+tts = ["kokoro-onnx>=0.4.9,<0.5", "onnxruntime>=1.20,<2.0", "soundfile>=0.12,<1.0"]
 
 [tool.uv]
 default-groups = ["dev", "stt"]

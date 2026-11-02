@@ -44,10 +44,10 @@ function recommendedTab(prefs: LearnerPrefs): TabKey {
 }
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "archive", label: "Archive" },
   { key: "progress", label: "Progress" },
   { key: "plan", label: "Plan" },
   { key: "settings", label: "Settings" },
+  { key: "archive", label: "Archive" },
 ];
 
 function opponentName(key: string) {
@@ -84,9 +84,9 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
   const [appSettingsNotice, setAppSettingsNotice] = useState("");
   const [layaStatus, setLayaStatus] = useState<"checking" | "available" | "unavailable" | "unknown">("checking");
   const [prefs, setPrefs] = useState<LearnerPrefs>(() => (user ? loadPrefs(user.id) : emptyPrefs()));
-  const [tab, setTab] = useState<TabKey>(() => (
-    user && hasAnswers(loadPrefs(user.id)) ? "archive" : "settings"
-  ));
+  // The learner space opens on progress: the first useful thing to see is
+  // whether the practice is actually moving.
+  const [tab, setTab] = useState<TabKey>("progress");
   const [showAllRecords, setShowAllRecords] = useState(false);
   const detailRef = useRef<HTMLElement | null>(null);
   const tabsRef = useRef<HTMLDivElement | null>(null);
@@ -165,6 +165,9 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
       return;
     }
     focusHandledRef.current = focusRecordId;
+    // Opening a saved rehearsal means the archive, whatever tab we started on.
+    tabTouchedRef.current = true;
+    setTab("archive");
     if (index >= 5) setShowAllRecords(true);
     void openRecord(focusRecordId).finally(() => onFocusConsumed?.());
   }, [focusRecordId, loading, records]);
@@ -174,14 +177,6 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
     const index = records.findIndex((record) => record.id === selected.session.id);
     if (index >= 5) setShowAllRecords(true);
   }, [selected, records]);
-
-  // A learner with saved work should land on the archive, even before they
-  // have filled in the practice defaults. A brand-new learner still lands on
-  // settings to finish their room.
-  useEffect(() => {
-    if (loading || tabTouchedRef.current) return;
-    if (records.length > 0 && !setupComplete) setTab("archive");
-  }, [loading, records, setupComplete]);
 
   useEffect(() => {
     if (!selected || !window.matchMedia("(max-width: 900px)").matches) return;

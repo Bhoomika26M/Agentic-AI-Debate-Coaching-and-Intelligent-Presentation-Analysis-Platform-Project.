@@ -16,6 +16,8 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 **Rehearse a live debate.** Choose a motion from your topic bank or write your own, argue for or against, pick one of three opponents (Strategist, Skeptic, Diplomat), set the pressure and a 2–10 minute clock, then trade turns. Each model-written opponent reply is drafted in full and reviewed before display; a guard redirect is sent immediately and labelled on-motion. The room shows a drafting-and-checking state while it waits, and labels the result as checked, recovered after review, or a deliberate on-motion redirect. The opponent plans against your weakest joint, remembers what your saved sessions showed was weak, adapts its pressure to how you argue, and can press Socratic follow-ups two deep per learner turn.
 
+**Speak a turn.** Voice mode lets you hold a key to talk, or switch on hands-free and just speak. Your words are transcribed on this machine, checked for recognition noise before anything else sees them, and shown for 1.5 s so you can fix or discard them. Then the same guard, planner and verifier that review a typed turn run, and the opponent answers out loud in one of three distinct voices — one sentence at a time, with live captions. You can interrupt mid-reply; only the words you actually heard are kept. Every spoken turn also shows pace, fillers and pauses as chips. Speech synthesis is on the CPU so the 4B model keeps the GPU. Measured on the development laptop: the opponent's voice starts answering in 0.81 s p50 (a pre-rendered opener), and its first real sentence arrives at 4.56 s p50 — slower than the 2 s target, and [docs/VOICE.md](docs/VOICE.md) says so with the numbers. Nothing is sent to a hosted speech service, and no browser `SpeechRecognition` is used. Without the TTS model the browser reads replies; without a microphone, typed turns still work.
+
 **Review your arguments.** A rehearsal with learner turns can be reviewed for ratings on clarity, relevance, evidence, logic, and persuasion, fallacy flags quoted from your exact words, and five counterpoint styles that test your case from other angles. Any branch the model cannot complete is disclosed as a partial review rather than silently filled in.
 
 **Get a weighted verdict.** Argument, evidence, logic, rebuttal, and communication are combined 30/20/20/15/15 into one deterministic summary of the review and the transcript, each with a line of coaching behind it. It is not a second, independent model judgment. Rebuttal is read from what you actually said back. A reply to an opponent challenge is always scored; without one, only turns after your opening case count, because the opening itself is a case, not a rebuttal. Each reply is checked for taking up the point's own terms, being developed enough to count as an answer, and containing a flagged fallacy itself. The logic score names the fallacy quotes it caught, and communication carries timestamps from your delivery review when there is one. A dimension with no evidence — no closing take, or no rebuttal turn — is left out and the remaining weights are renormalized to 100% and disclosed, rather than filled with a placeholder score.
@@ -24,7 +26,7 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 **Follow a practice plan.** The Plan tab uses your saved reviews when they exist, names the criteria your own scores say are weakest, and drafts a drill for each, a four-week rhythm, and the one thing to work on next. Tick each drill off when you finish it; completion stays with the saved plan.
 
-**Track your progress.** Your learner space holds your archive, a profile with goals and audio preferences, and trends across sessions, streaks, average scores, and filler direction. The archive shows the latest five of the 30 most recent rehearsals first and expands to the rest, and opening a session from the dashboard jumps straight to it. Download an archive CSV with transcripts, reviews, and delivery takes, or print a report. The archive can delete one rehearsal; Settings can delete all saved practice or the account itself.
+**Track your progress.** Your learner space opens on **Progress** — trends across sessions, streaks, average scores, and filler direction — followed by Plan, Settings and Archive in that order. The homepage carries a compact version of the same picture: a ring for your latest review average, one bar per reviewed round, and your streak in words. The archive shows the latest five of the 30 most recent rehearsals first and expands to the rest, and opening a session from the dashboard jumps straight to it. Download an archive CSV with transcripts, reviews, and delivery takes, or print a report. The archive can delete one rehearsal; Settings can delete all saved practice or the account itself.
 
 ![The learner space archive with seeded sample sessions, the next-rehearsal card, and the session tabs](docs/screenshots/account.png)
 
@@ -282,6 +284,28 @@ cd ai-backend && uv run python -c "from app.speech import transcription_availabl
 The default model is `distil-large-v3.5` (English only, about 1.5 GB, fetched on the first transcription). `STT_MODEL=large-v3-turbo` is the multilingual option. On CPU it runs at roughly 2.5 times realtime, so a three minute talk takes about 75 seconds. `STT_DEVICE=cuda` moves transcription onto an NVIDIA GPU, which needs CUDA 12 cuBLAS and cuDNN 9 on the machine; when they are missing the API logs a warning and falls back to CPU int8.
 
 Whisper normalises filler words such as "um" and "uh" out of the transcript, so the filler counts in a delivery review under-report. Every delivery metric is computed from that transcript and segment timestamps; none of it measures pitch, volume, or emotion. Audio duration is read from the container before transcription starts, and decoding is capped by `MAX_TRANSCRIBE_SEC`, so an overlong or pathological upload does not hold a model slot for a full decode.
+
+### Voice debate
+
+The voice path (`/ws/voice`) reuses the same transcription package, guard, planner, verifier and rate limits; it is not a second pipeline. It adds a recognition gate, a per-turn WebSocket protocol, and Kokoro-82M speech on the CPU.
+
+Running it needs more than `uv sync`:
+
+1. `uv sync --group tts` — Kokoro, onnxruntime and soundfile.
+2. The two Kokoro files in `ai-backend/models/kokoro/` (`kokoro-v1.0.onnx`, `voices-v1.0.bin`); links are in [docs/VOICE.md](docs/VOICE.md).
+3. `espeak-ng` on the system (Kokoro's phonemiser, GPL-3.0).
+4. `ollama serve` with `qwen3.5:4b` pulled, and the API on port 8000, because `vite.config.ts` proxies `/ws` there.
+5. A signed-in account when `REQUIRE_AUTH=true`: the voice socket authenticates with the session token and closes with 4401 without one. Typed turns in a guest session do not need it.
+
+The API also checks the page's origin against `WEB_ORIGIN` (default `http://127.0.0.1:5173,http://localhost:5173`) and closes with 4403 otherwise. If the Voice button opens a room that immediately reports a failure, that close code now says which of the three it was; a blank page would mean the room itself crashed, which the arena now contains instead of taking the whole app down.
+
+- Voice turns use `base.en` by default (`VOICE_STT_MODEL`), because a five-second turn wants latency, not the upload path's accuracy-first `distil-large-v3.5`.
+- Speech synthesis is `kokoro-onnx` in process on the CPU. It adds **0 MiB** of VRAM, which is what keeps the 4B model resident in 6 GB. Kokoro needs **espeak-ng (GPL-3.0)**, the one non-permissive dependency in the stack.
+- `VOICE_TTS=off` disables server speech; the browser then uses `speechSynthesis` at the same pace. `GET /api/health` does not report speech state — the socket's `ready` event does (`tts: "kokoro-82m-cpu"` or `"none"`).
+- Setup, licences, per-persona voices, VRAM numbers, and measured p50/p95 over 20 turns are in [docs/VOICE.md](docs/VOICE.md). Raw per-turn data is in [docs/voice-measurements.json](docs/voice-measurements.json).
+- 371 backend tests pass, 70 of them new for voice mode.
+
+Voice mode is **not** real-time or full duplex: you cannot talk over the opponent, and barge-in cuts the reply rather than mixing streams. Round phases (P4) and the Playwright spoken-turn test are not implemented; both are listed as open in `docs/VOICE.md`.
 
 ---
 

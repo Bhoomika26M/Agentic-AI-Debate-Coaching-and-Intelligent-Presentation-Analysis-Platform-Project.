@@ -4,12 +4,15 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/sync-vad-assets.mjs",
     "dev": "vite --host 127.0.0.1",
+    "prebuild": "node scripts/sync-vad-assets.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@ricky0123/vad-web": "^0.0.31",
     "@supabase/supabase-js": "^2.117.2",
     "framer-motion": "^12.23.0",
     "lucide-react": "^0.468.0",

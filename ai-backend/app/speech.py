@@ -167,7 +167,9 @@ async def transcribe_audio(
     known_duration = probe_duration(data)
     if known_duration is not None:
         check_duration(known_duration)
-    model = _load_model()
+    # Loading (and downloading) the model must not block the event loop: a
+    # voice socket would miss its keepalive and drop mid-turn.
+    model = await asyncio.to_thread(_load_model)
     options = {
         "beam_size": STT_BEAM_SIZE,
         "language": _language(),
@@ -189,7 +191,7 @@ async def transcribe_audio(
         if STT_DEVICE == "cpu" or not _is_missing_cuda_library(error):
             raise
         logger.warning("CUDA libraries unavailable (%s); retrying on CPU int8.", error)
-        model = _load_model(device="cpu", compute_type="int8")
+        model = await asyncio.to_thread(_load_model, device="cpu", compute_type="int8")
         try:
             decoded = await asyncio.wait_for(
                 asyncio.to_thread(_decode, model, data, options),

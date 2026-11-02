@@ -1,0 +1,19 @@
+# Text Whisper invents from silence, music, or a keyboard.
+# One phrase per line, matched after lowercasing, punctuation stripping, and
+# filler removal. Every line must be dropped by the recognition gate.
+thanks for watching
+thank you for watching
+thanks for watching and see you next time
+thank you
+thanks
+you
+ok
+okay
+bye
+bye bye
+goodbye
+please subscribe
+subscribe to my channel
+subtitles by the amara org community
+transcription by
+i'm going to go to the bathroom

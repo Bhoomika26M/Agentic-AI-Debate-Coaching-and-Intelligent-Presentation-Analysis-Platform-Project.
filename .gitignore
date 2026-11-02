@@ -16,6 +16,8 @@ __pycache__/
 
 # Downloaded models and generated output
 models/
+# Copied at dev/build time by web/scripts/sync-vad-assets.mjs
+web/public/vad/
 *.sqlite3
 *.db
 coverage/

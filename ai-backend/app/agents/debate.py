@@ -134,6 +134,7 @@ def guard_diagnostics(
             "memory_used": False,
             "reply_words": len(reply.split()),
             "problems": [],
+            "plan_ms": 0,
             "draft_ms": 0,
             "review_ms": 0,
             "model_ms": 0,
@@ -162,6 +163,10 @@ def _private_context(state: DebateState, history: list[dict]) -> str | None:
     tactic = move_instruction(state.get("tactic"))
     if tactic:
         parts.append(f"For this turn, take this debate move without announcing it: {tactic}")
+    # Voice mode only: an observable delivery pattern, offered at most every third turn.
+    cue = state.get("delivery_cue")
+    if cue:
+        parts.append(str(cue))
     pressure = _pressure_line(history, state.get("latest"))
     if pressure:
         parts.append(pressure)
@@ -219,7 +224,7 @@ async def planner_node(state: DebateState) -> DebateState:
 async def draft_node(state: DebateState) -> DebateState:
     """Draft one in-persona turn, briefed by memory and planner."""
     request = _to_request(state)
-    token_limit = 160 if request.reply_length == "concise" else 240
+    token_limit = {"concise": 160, "voice": 130}.get(request.reply_length, 240)
     reply = await chat(_briefed_messages(state, request), temperature=0.75, num_predict=token_limit)
     reply = strip_markers(reply)
     return {"draft": reply, "reply": reply}
@@ -365,13 +370,15 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
         return
 
     state = {**state, **memory_node(state)}
+    plan_started = perf_counter()
     state = {**state, **await planner_node(state)}
+    plan_ms = round((perf_counter() - plan_started) * 1000)
 
     request = _to_request(state)
     assembled: list[str] = []
     messages = _briefed_messages(state, request)
     scrubber = MarkerStream()
-    token_limit = 160 if request.reply_length == "concise" else 240
+    token_limit = {"concise": 160, "voice": 130}.get(request.reply_length, 240)
     draft_started = perf_counter()
     async for delta in stream(messages, temperature=0.75, num_predict=token_limit):
         clean = scrubber.feed(delta)
@@ -467,6 +474,7 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
                 "memory_used": bool(state.get("memory_brief")),
                 "reply_words": len(final_reply.split()),
                 "problems": problems[:4],
+                "plan_ms": plan_ms,
                 "draft_ms": draft_ms,
                 "review_ms": review_ms,
                 "model_ms": model_ms,

@@ -74,7 +74,7 @@ class DebateRequest(BaseModel):
     memory: list[SessionDigest] = Field(default_factory=list, max_length=12)
     preferences: PracticePreferences | None = None
     adaptive_tactics: bool = True
-    reply_length: Literal["concise", "standard"] = "standard"
+    reply_length: Literal["concise", "standard", "voice"] = "standard"
 
 
 class AnalysisTurn(BaseModel):

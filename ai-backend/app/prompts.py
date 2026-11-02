@@ -104,6 +104,14 @@ def build_messages(request: DebateRequest) -> list[dict[str, str]]:
             "Reply only with what you would say in the debate. Do not add role labels or analysis headings.",
         ]
     )
+    if request.reply_length == "voice":
+        # Spoken turns: the ear, not the page. No headings, no lists, no stage directions.
+        lines.append(
+            "This reply is spoken aloud in a live voice debate. Write for the ear: contractions, "
+            "spoken rhythm, short clauses, no lists, no markdown, and no stage directions. "
+            f"Say two or three sentences and at most {REPLY_LENGTH_LIMITS['voice']} words, "
+            "then one sharp question."
+        )
     system_prompt = "\n".join(lines)
     messages = [{"role": "system", "content": system_prompt}]
     if summary:

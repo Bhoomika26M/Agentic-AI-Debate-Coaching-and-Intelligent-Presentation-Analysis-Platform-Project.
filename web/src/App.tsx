@@ -10,6 +10,7 @@ import {
   CornerDownLeft,
   LoaderCircle,
   LockKeyhole,
+  Mic,
   RotateCcw,
   Send,
   Sparkles,
@@ -17,7 +18,7 @@ import {
   TimerReset,
   X,
 } from "lucide-react";
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Component, Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   streamOpponentReply,
   analyzeDebate,
@@ -47,12 +48,41 @@ import { EmptyCueArt } from "./components/CueArt";
 import { MarkdownText } from "./components/Markdown";
 import type { PresentationResult } from "./services/presentation-api";
 import { stripControlMarkers } from "./utils/text";
+import "./features/voice/voice.css";
 
 const AccountView = lazy(() => import("./features/auth/AccountView").then((m) => ({ default: m.AccountView })));
 const AuthView = lazy(() => import("./features/auth/AuthView").then((m) => ({ default: m.AuthView })));
 const OnboardingFlow = lazy(() => import("./features/onboarding/OnboardingFlow").then((m) => ({ default: m.OnboardingFlow })));
 const DashboardView = lazy(() => import("./features/dashboard/DashboardView").then((m) => ({ default: m.DashboardView })));
 const PresentationRoom = lazy(() => import("./features/presentation/PresentationRoom").then((m) => ({ default: m.PresentationRoom })));
+const VoiceRoom = lazy(() => import("./features/voice/VoiceRoom").then((m) => ({ default: m.VoiceRoom })));
+
+/**
+ * The voice room is a separate chunk that opens a socket and touches audio
+ * devices. If it throws while mounting, the arena must stay usable: without
+ * this boundary the whole page goes blank.
+ */
+class VoiceRoomBoundary extends Component<{ onClose: () => void; children: ReactNode }, { failed: boolean }> {
+  state: { failed: boolean } = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("Voice room failed to start", error);
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="inline-notice" role="alert">
+        The voice room could not start on this device. Typed turns still work.{" "}
+        <button className="dash-text-link" type="button" onClick={this.props.onClose}>Close</button>
+      </div>
+    );
+  }
+}
 
 type View = "landing" | "setup" | "arena" | "verdict" | "auth" | "account" | "present" | "onboarding" | "home";
 
@@ -242,6 +272,7 @@ export default function App() {
   const [challenging, setChallenging] = useState(false);
   const [challengeError, setChallengeError] = useState("");
   const [challengeDone, setChallengeDone] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const [modelStatus, setModelStatus] = useState<ModelStatus>({ status: "unknown" });
   const [modelChecking, setModelChecking] = useState(false);
   const clockPausedRef = useRef(false);
@@ -1438,8 +1469,27 @@ export default function App() {
             <header className="arena-header">
               <button className="arena-brand" onClick={returnHome} aria-label="Return home"><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button>
               <div className="arena-session"><span>{continuation ? "CONTINUED REHEARSAL" : "LIVE REHEARSAL"}</span><i /> <span>ACT / {String(sessionId).slice(-4).padStart(4, "0")}</span></div>
-              <div className="arena-header-actions"><button className={`end-button${confirmEnd ? " armed" : ""}`} onClick={requestEndSession}>{confirmEnd ? "Tap again to end" : "End session"} <X size={15} /></button></div>
+              <div className="arena-header-actions"><button className="voice-open-button" onClick={() => setVoiceOpen(true)} aria-label="Open voice debate" aria-haspopup="dialog"><Mic size={14} /> Voice</button><button className={`end-button${confirmEnd ? " armed" : ""}`} onClick={requestEndSession}>{confirmEnd ? "Tap again to end" : "End session"} <X size={15} /></button></div>
             </header>
+
+            {voiceOpen && (
+              <VoiceRoomBoundary onClose={() => setVoiceOpen(false)}>
+                <Suspense fallback={<div className="inline-notice" role="status">Opening the voice room…</div>}>
+                  <VoiceRoom
+                    topic={activeTopic}
+                    position={position}
+                    persona={persona}
+                    difficulty={difficulty}
+                    preferences={learnerAim()}
+                    accessToken={session?.access_token}
+                    onTurn={(speaker, content) =>
+                      setMessages((current) => [...current, { id: crypto.randomUUID(), speaker, content }])
+                    }
+                    onClose={() => setVoiceOpen(false)}
+                  />
+                </Suspense>
+              </VoiceRoomBoundary>
+            )}
 
             <div className="arena-statusbar" role="status" aria-label="Session status">
               <span className="statusbar-motion">{activeTopic}</span>

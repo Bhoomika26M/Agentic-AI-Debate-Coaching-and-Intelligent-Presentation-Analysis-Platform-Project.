@@ -6,6 +6,8 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": "http://127.0.0.1:8000",
+      // The voice socket has to be proxied as a websocket, not an HTTP request.
+      "/ws": { target: "ws://127.0.0.1:8000", ws: true },
     },
   },
   build: {
