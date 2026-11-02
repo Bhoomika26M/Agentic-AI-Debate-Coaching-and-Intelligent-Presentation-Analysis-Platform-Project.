@@ -1,15 +1,18 @@
 export type ReplyLength = "concise" | "standard";
+export type ThemePreference = "classic" | "new";
 
 export type ApplicationSettings = {
   adaptiveTactics: boolean;
   usePracticeHistory: boolean;
   replyLength: ReplyLength;
+  theme: ThemePreference;
 };
 
 const DEFAULT_SETTINGS: ApplicationSettings = {
   adaptiveTactics: true,
   usePracticeHistory: true,
   replyLength: "standard",
+  theme: "new",
 };
 
 const settingsKey = (userId: string) => `verdict-app-settings-v1-${userId}`;
@@ -22,6 +25,7 @@ export function normalizeApplicationSettings(value: unknown): ApplicationSetting
     adaptiveTactics: typeof raw.adaptiveTactics === "boolean" ? raw.adaptiveTactics : DEFAULT_SETTINGS.adaptiveTactics,
     usePracticeHistory: typeof raw.usePracticeHistory === "boolean" ? raw.usePracticeHistory : DEFAULT_SETTINGS.usePracticeHistory,
     replyLength: raw.replyLength === "concise" ? "concise" : "standard",
+    theme: raw.theme === "classic" ? "classic" : "new",
   };
 }
 
@@ -39,9 +43,10 @@ export function loadApplicationSettings(userId: string): ApplicationSettings {
 }
 
 export function cacheApplicationSettings(userId: string, settings: ApplicationSettings): boolean {
-  memoryCache.set(userId, normalizeApplicationSettings(settings));
+  const normalized = normalizeApplicationSettings(settings);
+  memoryCache.set(userId, normalized);
   try {
-    window.localStorage.setItem(settingsKey(userId), JSON.stringify(settings));
+    window.localStorage.setItem(settingsKey(userId), JSON.stringify(normalized));
     return true;
   } catch {
     return false;

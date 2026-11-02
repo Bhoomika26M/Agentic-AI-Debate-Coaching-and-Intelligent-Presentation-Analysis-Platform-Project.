@@ -37,7 +37,7 @@ import { generateAndSaveLearningPlan, loadSessionDigests } from "./services/plan
 import type { SessionDigest } from "./services/plan-api";
 import { addBankTopic, listBankTopics, type BankTopic } from "./services/topics";
 import { loadProfile } from "./services/profiles";
-import { cacheApplicationSettings, loadApplicationSettings } from "./services/app-settings";
+import { cacheApplicationSettings, loadApplicationSettings, normalizeApplicationSettings, type ApplicationSettings } from "./services/app-settings";
 import { difficultyOptions, personas, starterTopics, type PersonaKey } from "./features/debate-catalog";
 import { buildRecommendation, hydratePrefs, isOnboardingDone, loadPrefs, preferencesFor } from "./services/learner-prefs";
 import type { OnboardingResult } from "./features/onboarding/OnboardingFlow";
@@ -48,6 +48,7 @@ import { EmptyCueArt } from "./components/CueArt";
 import { MarkdownText } from "./components/Markdown";
 import type { PresentationResult } from "./services/presentation-api";
 import { stripControlMarkers } from "./utils/text";
+import { PracticeHeader, PracticeHome } from "./features/home/PracticeHome";
 import "./features/voice/voice.css";
 
 const AccountView = lazy(() => import("./features/auth/AccountView").then((m) => ({ default: m.AccountView })));
@@ -56,6 +57,7 @@ const OnboardingFlow = lazy(() => import("./features/onboarding/OnboardingFlow")
 const DashboardView = lazy(() => import("./features/dashboard/DashboardView").then((m) => ({ default: m.DashboardView })));
 const PresentationRoom = lazy(() => import("./features/presentation/PresentationRoom").then((m) => ({ default: m.PresentationRoom })));
 const VoiceRoom = lazy(() => import("./features/voice/VoiceRoom").then((m) => ({ default: m.VoiceRoom })));
+const SettingsView = lazy(() => import("./features/settings/SettingsView").then((m) => ({ default: m.SettingsView })));
 
 /**
  * The voice room is a separate chunk that opens a socket and touches audio
@@ -84,7 +86,7 @@ class VoiceRoomBoundary extends Component<{ onClose: () => void; children: React
   }
 }
 
-type View = "landing" | "setup" | "arena" | "verdict" | "auth" | "account" | "present" | "onboarding" | "home";
+type View = "landing" | "setup" | "arena" | "verdict" | "auth" | "account" | "settings" | "present" | "onboarding" | "home";
 
 const pageMotion = {
   initial: { opacity: 0, y: 12 },
@@ -145,6 +147,7 @@ function Header({
   onHome,
   onStart,
   onAccount,
+  onSettings,
   accountLabel,
   showNav = true,
   showCta = true,
@@ -152,6 +155,7 @@ function Header({
   onHome: () => void;
   onStart: () => void;
   onAccount: () => void;
+  onSettings: () => void;
   accountLabel: string;
   showNav?: boolean;
   showCta?: boolean;
@@ -170,6 +174,7 @@ function Header({
               <a href="#opponents">Opponents</a>
             </nav>
           )}
+          <button className="header-account-link" onClick={onSettings}>Settings</button>
           <button className="header-account-link" onClick={onAccount}>{accountLabel}</button>
           {showCta && (
             <button className="header-cta" onClick={onStart}>
@@ -190,7 +195,7 @@ function Header({
   );
 }
 
-const HASH_VIEWS: View[] = ["landing", "setup", "present", "auth", "account", "onboarding", "home"];
+const HASH_VIEWS: View[] = ["landing", "setup", "present", "auth", "account", "settings", "onboarding", "home"];
 
 const SNAPSHOT_KEY = "verdict-arena-snapshot";
 const RECENTS_KEY = "verdict-recent-motions";
@@ -230,7 +235,12 @@ function viewFromHash(): View {
 
 export default function App() {
   const { session, user, signOut, loading: authLoading } = useAuth();
-  const [view, setView] = useState<View>(() => viewFromHash());
+  const [appSettings, setAppSettings] = useState<ApplicationSettings>(() => loadApplicationSettings("guest"));
+  const [view, setView] = useState<View>(() => {
+    const initial = viewFromHash();
+    return initial === "landing" && appSettings.theme === "new" ? "home" : initial;
+  });
+  const theme = appSettings.theme;
   const [topicChoice, setTopicChoice] = useState(starterTopics[0]);
   const [customTopic, setCustomTopic] = useState("");
   const [bankTopics, setBankTopics] = useState<BankTopic[]>([]);
@@ -259,6 +269,7 @@ export default function App() {
   const [savedSnapshot, setSavedSnapshot] = useState<ArenaSnapshot | null>(null);
   const [recentMotions, setRecentMotions] = useState<string[]>(() => loadRecentMotions());
   const [learnerName, setLearnerName] = useState<string | null>(null);
+  const [authPurpose, setAuthPurpose] = useState<"voice" | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisReport | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
@@ -288,6 +299,7 @@ export default function App() {
   const planUpdateInFlightRef = useRef(false);
   const savedTurnIds = useRef(new Set<string>());
   const routedForRef = useRef<string | null>(null);
+  const pendingVoiceStartRef = useRef(false);
   const [prefsReady, setPrefsReady] = useState(false);
   // Digests the memory agent turns into the opponent's private brief.
   const memoryRef = useRef<SessionDigest[]>([]);
@@ -316,6 +328,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme === "new" ? "light" : "dark";
+  }, [theme]);
+
+  useEffect(() => {
+    setAppSettings(loadApplicationSettings(user?.id ?? "guest"));
+  }, [user?.id]);
+
+  useEffect(() => {
     if (!user || !supabaseConfigured) {
       setBankTopics([]);
       setPrefsReady(true);
@@ -334,7 +355,11 @@ export default function App() {
       .then((profile) => {
         if (!active) return;
         hydratePrefs(user.id, profile ?? null);
-        if (profile?.app_settings) cacheApplicationSettings(user.id, profile.app_settings);
+        if (profile?.app_settings) {
+          const nextSettings = normalizeApplicationSettings(profile.app_settings);
+          cacheApplicationSettings(user.id, nextSettings);
+          setAppSettings(nextSettings);
+        }
         if (profile?.display_name) setLearnerName(profile.display_name);
       })
       .catch(() => {
@@ -346,23 +371,37 @@ export default function App() {
     return () => { active = false; };
   }, [user]);
 
-  // A signed-in learner lands on the dashboard, or in onboarding on a first visit.
+  // The redesigned theme opens straight into practice; Classic keeps its existing onboarding.
   useEffect(() => {
     if (authLoading || !user || !supabaseConfigured || !prefsReady) return;
+    if (pendingVoiceStartRef.current) {
+      pendingVoiceStartRef.current = false;
+      routedForRef.current = user.id;
+      setAuthPurpose(null);
+      launchVoiceDebate();
+      return;
+    }
     if (routedForRef.current === user.id) return;
     routedForRef.current = user.id;
-    setView(isOnboardingDone(user.id) ? "home" : "onboarding");
-  }, [authLoading, user, prefsReady]);
+    setView(theme === "new" || isOnboardingDone(user.id) ? "home" : "onboarding");
+  }, [authLoading, user, prefsReady, theme]);
 
   useEffect(() => {
-    if (user && view === "landing") setView("home");
-  }, [user, view]);
+    if (view === "landing" && (user || theme === "new")) setView("home");
+  }, [user, view, theme]);
 
-  // The archive is owner-scoped; a guest deep link lands on sign-in instead of an error.
+  // Classic keeps its signed-in archive. The redesigned archive also works as a guest empty state.
   useEffect(() => {
     if (authLoading) return;
-    if (view === "account" && !user) setView("auth");
-  }, [authLoading, user, view]);
+    if (view === "account" && !user && theme === "classic") setView("auth");
+    if ((view === "present" || view === "onboarding") && theme === "new") setView("home");
+  }, [authLoading, user, view, theme]);
+
+  function updateApplicationSettings(next: ApplicationSettings) {
+    const normalized = normalizeApplicationSettings(next);
+    cacheApplicationSettings(user?.id ?? "guest", normalized);
+    setAppSettings(normalized);
+  }
 
   async function saveMotionToBank() {
     const title = customTopic.trim();
@@ -641,13 +680,14 @@ export default function App() {
     persona: PersonaKey;
     difficulty: DebateOptions["difficulty"];
     duration: number;
-  }) {
+  }, openVoiceAfterStart = false) {
     if (startingSession) return;
     const chosenTopic = (prefill?.topic ?? activeTopic).trim();
     const chosenDuration = prefill?.duration ?? duration;
     if (!chosenTopic) return;
     abortRef.current?.abort();
     clearSnapshot();
+    setVoiceOpen(false);
     lastTurnRef.current = null;
     pendingResumeRef.current = null;
     setStartingSession(true);
@@ -666,6 +706,7 @@ export default function App() {
     setJudge(null);
     setJudgeError("");
     setMessages([]);
+    setRecordId(null);
     setContinuation(false);
     setContinuedHistoryCount(0);
     setDraft("");
@@ -690,17 +731,24 @@ export default function App() {
     memoryRef.current = [];
     memoryLoadedRef.current = false;
     if (user && supabaseConfigured) {
-      try {
-        nextRecordId = await createDebateRecord({
+      const recordInput = {
           topic: chosenTopic,
           learner_position: prefill?.position ?? position,
           persona: prefill?.persona ?? persona,
           difficulty: prefill?.difficulty ?? difficulty,
-        }, chosenDuration);
-      } catch {
-        setRecordNotice("The debate can continue, but this session could not be saved to your account. Check your Supabase setup.");
+        };
+      if (openVoiceAfterStart) {
+        void createDebateRecord(recordInput, chosenDuration)
+          .then((id) => setRecordId(id))
+          .catch(() => setRecordNotice("Voice debate is running, but this session could not be saved to your account."));
+      } else {
+        try {
+          nextRecordId = await createDebateRecord(recordInput, chosenDuration);
+        } catch {
+          setRecordNotice("The debate can continue, but this session could not be saved to your account. Check your Supabase setup.");
+        }
       }
-      if (loadApplicationSettings(user.id).usePracticeHistory) {
+      if (!openVoiceAfterStart && loadApplicationSettings(user.id).usePracticeHistory) {
         try {
           memoryRef.current = await loadSessionDigests(12);
         } catch {
@@ -709,7 +757,7 @@ export default function App() {
         memoryLoadedRef.current = true;
       }
     }
-    setRecordId(nextRecordId);
+    if (!openVoiceAfterStart) setRecordId(nextRecordId);
     setSessionId((current) => current + 1);
     const recent = chosenTopic.slice(0, 240);
     if (recent) {
@@ -724,7 +772,51 @@ export default function App() {
       });
     }
     setView("arena");
+    setVoiceOpen(openVoiceAfterStart);
     setStartingSession(false);
+  }
+
+  const sampleMotion = "Should public transit be free for everyone?";
+
+  function openPracticeDebate() {
+    pendingVoiceStartRef.current = false;
+    setAuthPurpose(null);
+    setTopicChoice("");
+    setCustomTopic(sampleMotion);
+    setPosition("for");
+    setPersona("skeptic");
+    setDifficulty("challenge");
+    setDuration(5);
+    setView("setup");
+  }
+
+  function openAnalysis() {
+    pendingVoiceStartRef.current = false;
+    setAuthPurpose(null);
+    setAccountFocusId(null);
+    setView("account");
+  }
+
+  function launchVoiceDebate() {
+    void startSession({
+      topic: sampleMotion,
+      position: "for",
+      persona: "skeptic",
+      difficulty: "challenge",
+      duration: 5,
+    }, true);
+  }
+
+  function startVoiceDebate() {
+    if (!user) {
+      pendingVoiceStartRef.current = true;
+      setAuthPurpose("voice");
+      setView("auth");
+      return;
+    }
+    pendingVoiceStartRef.current = false;
+    setAuthPurpose(null);
+    launchVoiceDebate();
   }
 
   async function updatePlanFromSavedWork() {
@@ -960,6 +1052,8 @@ export default function App() {
   }
 
   function returnHome() {
+    pendingVoiceStartRef.current = false;
+    setAuthPurpose(null);
     const snapshot = persistArenaSnapshot();
     abortRef.current?.abort();
     setStreaming(false);
@@ -972,7 +1066,7 @@ export default function App() {
     setChallengeDone(false);
     setShowJumpToLatest(false);
     setAccountFocusId(null);
-    setView(user ? "home" : "landing");
+    setView(theme === "new" || user ? "home" : "landing");
     setMessages([]);
     setSessionId(0);
     setRecordId(null);
@@ -993,7 +1087,7 @@ export default function App() {
     routedForRef.current = null;
     setPrefsReady(false);
     setLearnerName(null);
-    setView("landing");
+    setView(theme === "new" ? "home" : "landing");
   }
 
   function completeOnboarding(result: OnboardingResult) {
@@ -1115,14 +1209,30 @@ export default function App() {
   return (
     <div className={`app-shell ${view === "setup" ? "app-shell-setup" : ""} ${view === "arena" || view === "verdict" || view === "present" ? "app-shell-room" : ""}`}>
       {view !== "arena" && view !== "verdict" && view !== "onboarding" && (
-        <Header
-          onHome={returnHome}
-          onStart={() => setView("setup")}
-          onAccount={view === "account" ? returnHome : openAccount}
-          accountLabel={view === "account" ? "Dashboard" : authLoading ? "…" : user ? (learnerName ? learnerName.split(/\s+/)[0] : "Learner space") : "Sign in"}
-          showNav={view === "landing"}
-          showCta={view !== "setup"}
-        />
+        theme === "new" ? (
+          <PracticeHeader
+            active={view === "settings" ? "settings" : view === "account" ? "analysis" : "debate"}
+            onHome={returnHome}
+            onDebate={openPracticeDebate}
+            onAnalysis={openAnalysis}
+            onVoice={startVoiceDebate}
+            onSettings={() => {
+              pendingVoiceStartRef.current = false;
+              setAuthPurpose(null);
+              setView("settings");
+            }}
+          />
+        ) : (
+          <Header
+            onHome={returnHome}
+            onStart={() => setView("setup")}
+            onAccount={view === "account" ? returnHome : openAccount}
+            onSettings={() => setView("settings")}
+            accountLabel={view === "account" ? "Dashboard" : authLoading ? "…" : user ? (learnerName ? learnerName.split(/\s+/)[0] : "Learner space") : "Sign in"}
+            showNav={view === "landing"}
+            showCta={view !== "setup"}
+          />
+        )
       )}
 
       <AnimatePresence mode="wait">
@@ -1130,8 +1240,13 @@ export default function App() {
           <motion.div key="auth" className="app-auth-view" {...pageMotion}>
             <Suspense fallback={<div className="inline-notice" role="status">Loading account access…</div>}>
               <AuthView
-                onContinueAsGuest={() => setView("setup")}
-                onAuthenticated={() => setView("onboarding")}
+                purpose={authPurpose}
+                onContinueAsGuest={() => {
+                  pendingVoiceStartRef.current = false;
+                  setAuthPurpose(null);
+                  setView(theme === "new" ? "home" : "setup");
+                }}
+                onAuthenticated={() => setView(theme === "new" ? "home" : "onboarding")}
               />
             </Suspense>
           </motion.div>
@@ -1149,7 +1264,23 @@ export default function App() {
           </motion.div>
         )}
 
-        {view === "home" && (
+        {view === "home" && theme === "new" && (
+          <motion.div key="home-new" className="app-shell-room" {...pageMotion}>
+            <PracticeHome
+              userId={user?.id ?? null}
+              onDebate={openPracticeDebate}
+              onAnalysis={openAnalysis}
+              onVoice={startVoiceDebate}
+              onArchive={openAnalysis}
+              onOpenRecord={(recordIdToOpen) => {
+                setAccountFocusId(recordIdToOpen);
+                setView("account");
+              }}
+            />
+          </motion.div>
+        )}
+
+        {view === "home" && theme === "classic" && (
           <motion.div key="home" className="app-shell-room" {...pageMotion}>
             <Suspense fallback={<div className="inline-notice" role="status">Loading your dashboard…</div>}>
               {authLoading
@@ -1182,6 +1313,14 @@ export default function App() {
           </motion.div>
         )}
 
+        {view === "settings" && (
+          <motion.div key="settings" className="app-shell-room" {...pageMotion}>
+            <Suspense fallback={<div className="inline-notice" role="status">Loading settings…</div>}>
+              <SettingsView settings={appSettings} onChange={updateApplicationSettings} onSignIn={() => setView("auth")} onSignOut={handleSignOut} />
+            </Suspense>
+          </motion.div>
+        )}
+
         {view === "account" && (
           <motion.div key="account" className="app-shell-room" {...pageMotion}>
             <Suspense fallback={<div className="inline-notice" role="status">Loading your archive…</div>}>
@@ -1189,11 +1328,12 @@ export default function App() {
                 ? <div className="inline-notice" role="status">Checking your sign-in…</div>
                 : (
                   <AccountView
-                    onStart={() => setView("setup")}
+                    onStart={openPracticeDebate}
                     onContinue={(record, turns) => void continueSavedDebate(record, turns)}
                     onSignOut={handleSignOut}
                     focusRecordId={accountFocusId}
                     onFocusConsumed={() => setAccountFocusId(null)}
+                    theme={theme}
                   />
                 )}
             </Suspense>
@@ -1486,6 +1626,12 @@ export default function App() {
                       setMessages((current) => [...current, { id: crypto.randomUUID(), speaker, content }])
                     }
                     onClose={() => setVoiceOpen(false)}
+                    onSignIn={() => {
+                      setVoiceOpen(false);
+                      pendingVoiceStartRef.current = true;
+                      setAuthPurpose("voice");
+                      setView("auth");
+                    }}
                   />
                 </Suspense>
               </VoiceRoomBoundary>

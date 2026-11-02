@@ -18,6 +18,7 @@ type Props = {
   accessToken?: string;
   onTurn?: (speaker: "learner" | "opponent", content: string) => void;
   onClose: () => void;
+  onSignIn?: () => void;
 };
 
 type Status = "connecting" | "idle" | "listening" | "thinking" | "speaking" | "interrupted" | "closed";
@@ -51,7 +52,7 @@ const STATUS_COPY: Record<Status, string> = {
 // Close codes are the honest part of a refused room: say which one happened.
 function closeMessage(reason: string, code?: number) {
   if (code === 4401) {
-    return "Voice needs a signed-in account. Sign in and reopen the room, or keep using typed turns.";
+    return "Voice debate needs a signed-in account. Sign in to start, or close this room and continue by text.";
   }
   if (code === 4403) {
     return "The API refused this page's origin. Add it to WEB_ORIGIN and restart the API.";
@@ -79,7 +80,7 @@ function sentencesOf(text: string) {
     .filter(Boolean);
 }
 
-export function VoiceRoom({ topic, position, persona, difficulty, preferences, accessToken, onTurn, onClose }: Props) {
+export function VoiceRoom({ topic, position, persona, difficulty, preferences, accessToken, onTurn, onClose, onSignIn }: Props) {
   const titleId = useId();
   const [status, setStatus] = useState<Status>("connecting");
   const [lines, setLines] = useState<Line[]>([]);
@@ -454,6 +455,9 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
                 <p>{error}</p>
                 {status === "closed" && canReconnect && (
                   <button type="button" className="voice-reconnect" onClick={reconnect}>Reconnect</button>
+                )}
+                {status === "closed" && !canReconnect && error.startsWith("Voice debate needs a signed-in account") && onSignIn && (
+                  <button type="button" className="voice-reconnect" onClick={onSignIn}>Sign in</button>
                 )}
               </div>
             )}

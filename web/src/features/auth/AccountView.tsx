@@ -10,6 +10,7 @@ import { completePlanDrill, listLearningPlans, listPlanDrillCompletions, loadSes
 import { buildArchiveCsv, deleteAccount, deleteAllPracticeData, downloadCsvFile } from "../../services/account-data";
 import { emptyProfile, loadProfile, saveProfile, type LearnerProfile } from "../../services/profiles";
 import { cacheApplicationSettings, loadApplicationSettings, type ApplicationSettings } from "../../services/app-settings";
+import type { ThemePreference } from "../../services/app-settings";
 import { difficultyFor, personaFor, personas } from "../debate-catalog";
 import {
   FOCUS_OPTIONS,
@@ -61,13 +62,15 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onFocusConsumed }: {
+export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onFocusConsumed, theme = "classic" }: {
   onStart: () => void;
   onContinue: (session: DebateRecord, turns: DebateRecordTurn[]) => void;
   onSignOut: () => Promise<void>;
   focusRecordId?: string | null;
   onFocusConsumed?: () => void;
+  theme?: ThemePreference;
 }) {
+  const focusedArchive = theme === "new";
   const { user, session } = useAuth();
   const [records, setRecords] = useState<DebateRecord[]>([]);
   const [selected, setSelected] = useState<{ session: DebateRecord; turns: DebateRecordTurn[]; analysis: AnalysisReport | null } | null>(null);
@@ -86,7 +89,7 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
   const [prefs, setPrefs] = useState<LearnerPrefs>(() => (user ? loadPrefs(user.id) : emptyPrefs()));
   // The learner space opens on progress: the first useful thing to see is
   // whether the practice is actually moving.
-  const [tab, setTab] = useState<TabKey>("progress");
+  const [tab, setTab] = useState<TabKey>(() => focusedArchive ? "archive" : "progress");
   const [showAllRecords, setShowAllRecords] = useState(false);
   const detailRef = useRef<HTMLElement | null>(null);
   const tabsRef = useRef<HTMLDivElement | null>(null);
@@ -117,6 +120,7 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
   const setupComplete = hasAnswers(prefs);
   const recommended = useMemo(() => recommendedTab(prefs), [prefs]);
   const visibleRecords = showAllRecords ? records : records.slice(0, 5);
+  const visibleTabs = focusedArchive ? TABS.filter((item) => item.key === "archive") : TABS;
   const shownCount = Math.min(5, records.length);
   const introLine = useMemo(() => {
     if (!setupComplete) return "Two minutes in your room tunes your opponent, your pressure, and the cue waiting on your dashboard.";
@@ -130,6 +134,13 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
 
   useEffect(() => {
     let active = true;
+    if (!user && focusedArchive) {
+      setRecords([]);
+      setLoading(false);
+      setError("");
+      setAppSettingsReady(true);
+      return () => { active = false; };
+    }
     setLoading(true);
     void listDebateRecords()
       .then((data) => { if (active) setRecords(data); })
@@ -149,7 +160,12 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
       setAppSettingsReady(true);
     }
     return () => { active = false; };
-  }, []);
+  }, [user, focusedArchive]);
+
+  useEffect(() => {
+    if (focusedArchive) setTab("archive");
+    else if (tab === "archive") setTab("progress");
+  }, [focusedArchive]);
 
   useEffect(() => {
     if (tab === "progress") void loadProgress();
@@ -229,12 +245,12 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
     const next = event.key === "Home"
       ? 0
       : event.key === "End"
-        ? TABS.length - 1
+        ? visibleTabs.length - 1
         : event.key === "ArrowLeft"
-          ? (index - 1 + TABS.length) % TABS.length
-          : (index + 1) % TABS.length;
-    selectTab(TABS[next].key);
-    document.getElementById(`account-tab-${TABS[next].key}`)?.focus();
+          ? (index - 1 + visibleTabs.length) % visibleTabs.length
+          : (index + 1) % visibleTabs.length;
+    selectTab(visibleTabs[next].key);
+    document.getElementById(`account-tab-${visibleTabs[next].key}`)?.focus();
   }
 
   function selectTab(next: TabKey) {
@@ -579,29 +595,29 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
   }
 
   return (
-    <main className="account-page">
+    <main className={`account-page${focusedArchive ? " account-page-new" : ""}`}>
       <header className="account-head">
         <div className="account-head-copy">
-          <h1>Your practice, <em>kept in reach.</em></h1>
-          <p className={`account-intro-line${setupComplete ? "" : " is-open"}`}>{introLine}</p>
-          <p className="account-intro-mail">{user?.email ?? "Learner account"}</p>
+          <h1>{focusedArchive ? "Argument analysis" : <>Your practice, <em>kept in reach.</em></>}</h1>
+          <p className={`account-intro-line${setupComplete ? "" : " is-open"}`}>{focusedArchive ? "Open a saved debate to read its transcript and argument review." : introLine}</p>
+          {!focusedArchive && <p className="account-intro-mail">{user?.email ?? "Learner account"}</p>}
         </div>
-        <div className="account-head-actions">
+        {!focusedArchive && user && <div className="account-head-actions">
           <button className="account-signout" onClick={() => void signOut()} disabled={signingOut}>
             {signingOut ? "Signing out…" : "Sign out"}
           </button>
-        </div>
+        </div>}
       </header>
 
-      <section className="account-overview" aria-label="Recent rehearsal summary">
+      {!focusedArchive && <section className="account-overview" aria-label="Recent rehearsal summary">
         <div><span>SAVED SESSIONS</span><b>{loading ? "–" : records.length.toString().padStart(2, "0")}</b><small>Most recent 30</small></div>
         <div><span>COMPLETED</span><b>{loading ? "–" : records.filter((record) => record.status === "completed").length.toString().padStart(2, "0")}</b><small>In recent records</small></div>
         <div><span>IN PROGRESS</span><b>{loading ? "–" : records.filter((record) => record.status === "in_progress").length.toString().padStart(2, "0")}</b><small>Can be continued</small></div>
         <div><span>LATEST REHEARSAL</span><b className="account-latest">{loading ? "Loading" : records[0] ? formatDate(records[0].started_at) : "Not yet"}</b><small>{records[0]?.topic ?? "Your first session will appear here"}</small></div>
-      </section>
+      </section>}
 
-      <div ref={tabsRef} className="account-tabs" role="tablist" aria-label="Account sections">
-        {TABS.map((item, index) => (
+      {!focusedArchive && <div ref={tabsRef} className="account-tabs" role="tablist" aria-label="Account sections">
+        {visibleTabs.map((item, index) => (
           <button
             key={item.key}
             type="button"
@@ -618,7 +634,7 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
             {item.key === recommended && <span className="tab-flag">For you</span>}
           </button>
         ))}
-      </div>
+      </div>}
 
       {tab === "plan" && (
         <section className="account-plan" role="tabpanel" id="account-panel-plan" aria-labelledby="account-tab-plan">
@@ -1041,10 +1057,10 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
       )}
 
       {tab === "archive" && (
-        <div className={`account-layout${selected ? " has-selected" : ""}`} role="tabpanel" id="account-panel-archive" aria-labelledby="account-tab-archive">
+        <div className={`account-layout${selected ? " has-selected" : ""}`} {...(!focusedArchive ? { role: "tabpanel", id: "account-panel-archive", "aria-labelledby": "account-tab-archive" } : { "aria-labelledby": "archive-heading" })}>
           <section className="account-archive" aria-labelledby="archive-heading">
             <div className="archive-heading">
-              <div><h2 id="archive-heading">Rehearsal archive</h2><p>Open a transcript to review it or continue the conversation in the debate room.</p></div>
+              <div><h2 id="archive-heading">{focusedArchive ? "Saved debates" : "Rehearsal archive"}</h2><p>{focusedArchive ? "Open a completed debate to read its argument analysis." : "Open a transcript to review it or continue the conversation in the debate room."}</p></div>
               <span>
                 {loading
                   ? "--"
@@ -1068,8 +1084,8 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
             {!loading && !error && records.length === 0 && (
               <div className="archive-empty">
                 <EmptyCueArt label="No saved rehearsals yet" />
-                <div><b>Your record starts with the next debate.</b><p>{user ? "Start a rehearsal and its transcript will appear here." : "Sign in before a rehearsal and its transcript will appear here."}</p></div>
-                <button className="button button-dark" onClick={onStart}>Open the prompt book <ArrowUpRight size={15} /></button>
+                <div><b>{focusedArchive ? "Your first review starts with a debate." : "Your record starts with the next debate."}</b><p>{user ? "Start a debate and its transcript will appear here." : "Guest debates can be reviewed when you finish. Sign in to keep transcripts in this archive."}</p></div>
+                <button className="button button-dark" onClick={onStart}>{focusedArchive ? "Start a debate" : "Open the prompt book"} <ArrowUpRight size={15} /></button>
               </div>
             )}
 

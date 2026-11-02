@@ -1,4 +1,20 @@
 @font-face {
+  font-family: "Verdict Noto Sans ExtraCondensed";
+  src: url("/fonts/NotoSans-ExtraCondensed-Bold.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Verdict Oswald";
+  src: url("/fonts/Oswald-Variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 200 700;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "Verdict Noto Serif";
   src: url("/fonts/NotoSerif-Variable.ttf") format("truetype");
   font-style: normal;
