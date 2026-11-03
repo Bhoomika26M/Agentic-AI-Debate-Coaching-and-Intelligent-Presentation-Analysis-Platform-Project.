@@ -270,6 +270,7 @@ export default function App() {
   const [cueVisible, setCueVisible] = useState(false);
   const [recordId, setRecordId] = useState<string | null>(null);
   const [accountFocusId, setAccountFocusId] = useState<string | null>(null);
+  const [accountStartSection, setAccountStartSection] = useState<"analysis" | "plan">("analysis");
   const [continuation, setContinuation] = useState(false);
   const [continuedHistoryCount, setContinuedHistoryCount] = useState(0);
   const [recordNotice, setRecordNotice] = useState("");
@@ -308,7 +309,7 @@ export default function App() {
   const planUpdateInFlightRef = useRef(false);
   const savedTurnIds = useRef(new Set<string>());
   const routedForRef = useRef<string | null>(null);
-  const pendingVoiceStartRef = useRef(false);
+  const pendingVoiceStartRef = useRef<"resume" | null>(null);
   const [prefsReady, setPrefsReady] = useState(false);
   // Digests the memory agent turns into the opponent's private brief.
   const memoryRef = useRef<SessionDigest[]>([]);
@@ -383,11 +384,12 @@ export default function App() {
   // The redesigned theme opens straight into practice; Classic keeps its existing onboarding.
   useEffect(() => {
     if (authLoading || !user || !supabaseConfigured || !prefsReady) return;
-    if (pendingVoiceStartRef.current) {
-      pendingVoiceStartRef.current = false;
+    if (pendingVoiceStartRef.current === "resume") {
+      pendingVoiceStartRef.current = null;
       routedForRef.current = user.id;
       setAuthPurpose(null);
-      launchVoiceDebate();
+      setView("arena");
+      setVoiceOpen(true);
       return;
     }
     if (routedForRef.current === user.id) return;
@@ -793,10 +795,10 @@ export default function App() {
   const sampleMotion = "Should public transit be free for everyone?";
 
   function openPracticeDebate() {
-    pendingVoiceStartRef.current = false;
+    pendingVoiceStartRef.current = null;
     setAuthPurpose(null);
-    setTopicChoice("");
-    setCustomTopic(sampleMotion);
+    setTopicChoice(starterTopics[0]);
+    setCustomTopic("");
     setPosition("for");
     setPersona("skeptic");
     setDifficulty("challenge");
@@ -805,32 +807,19 @@ export default function App() {
   }
 
   function openAnalysis() {
-    pendingVoiceStartRef.current = false;
+    pendingVoiceStartRef.current = null;
     setAuthPurpose(null);
     setAccountFocusId(null);
+    setAccountStartSection("analysis");
     setView("account");
   }
 
-  function launchVoiceDebate() {
-    void startSession({
-      topic: sampleMotion,
-      position: "for",
-      persona: "skeptic",
-      difficulty: "challenge",
-      duration: 5,
-    }, true);
-  }
-
-  function startVoiceDebate() {
-    if (!user) {
-      pendingVoiceStartRef.current = true;
-      setAuthPurpose("voice");
-      setView("auth");
-      return;
-    }
-    pendingVoiceStartRef.current = false;
+  function openPlan() {
+    pendingVoiceStartRef.current = null;
     setAuthPurpose(null);
-    launchVoiceDebate();
+    setAccountFocusId(null);
+    setAccountStartSection("plan");
+    setView("account");
   }
 
   async function updatePlanFromSavedWork() {
@@ -1066,7 +1055,7 @@ export default function App() {
   }
 
   function returnHome() {
-    pendingVoiceStartRef.current = false;
+    pendingVoiceStartRef.current = null;
     setAuthPurpose(null);
     const snapshot = persistArenaSnapshot();
     abortRef.current?.abort();
@@ -1225,13 +1214,13 @@ export default function App() {
       {view !== "arena" && view !== "verdict" && view !== "onboarding" && (
         theme === "new" ? (
           <PracticeHeader
-            active={view === "settings" ? "settings" : view === "account" ? "analysis" : "debate"}
+            active={view === "settings" ? "settings" : view === "account" ? accountStartSection : "debate"}
             onHome={returnHome}
             onDebate={openPracticeDebate}
             onAnalysis={openAnalysis}
-            onVoice={startVoiceDebate}
+            onPlan={openPlan}
             onSettings={() => {
-              pendingVoiceStartRef.current = false;
+              pendingVoiceStartRef.current = null;
               setAuthPurpose(null);
               setView("settings");
             }}
@@ -1256,9 +1245,11 @@ export default function App() {
               <AuthView
                 purpose={authPurpose}
                 onContinueAsGuest={() => {
-                  pendingVoiceStartRef.current = false;
+                  const resumeVoice = pendingVoiceStartRef.current === "resume";
+                  pendingVoiceStartRef.current = null;
                   setAuthPurpose(null);
-                  setView(theme === "new" ? "home" : "setup");
+                  setView(resumeVoice ? "arena" : theme === "new" ? "home" : "setup");
+                  if (resumeVoice) setVoiceOpen(true);
                 }}
                 onAuthenticated={() => setView(theme === "new" ? "home" : "onboarding")}
               />
@@ -1282,12 +1273,14 @@ export default function App() {
           <motion.div key="home-new" className="app-shell-room" {...pageMotion}>
             <PracticeHome
               userId={user?.id ?? null}
+              authLoading={authLoading}
               onDebate={openPracticeDebate}
               onAnalysis={openAnalysis}
-              onVoice={startVoiceDebate}
+              onPlan={openPlan}
               onArchive={openAnalysis}
               onOpenRecord={(recordIdToOpen) => {
                 setAccountFocusId(recordIdToOpen);
+                setAccountStartSection("analysis");
                 setView("account");
               }}
             />
@@ -1348,6 +1341,7 @@ export default function App() {
                     focusRecordId={accountFocusId}
                     onFocusConsumed={() => setAccountFocusId(null)}
                     theme={theme}
+                    initialSection={accountStartSection === "plan" ? "plan" : "progress"}
                   />
                 )}
             </Suspense>
@@ -1537,10 +1531,13 @@ export default function App() {
                   id="custom-topic"
                   className="custom-topic-input"
                   value={customTopic}
-                  onChange={(event) => setCustomTopic(event.target.value)}
-                  onFocus={() => setTopicChoice("")}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setCustomTopic(value);
+                    if (value.trim()) setTopicChoice("");
+                  }}
                   maxLength={240}
-                  placeholder="Should we trust an algorithm with hiring?"
+                  placeholder={sampleMotion}
                 />
                 {user && customTopic.trim().length >= 3 && (
                   <button className="bank-save-link" type="button" onClick={() => void saveMotionToBank()}>
@@ -1608,9 +1605,14 @@ export default function App() {
               {setupStep === 1 && <button className="fixture-back" type="button" onClick={returnHome}><ArrowLeft size={18} />Back</button>}
               {setupStep > 1 && <button className="fixture-back" type="button" onClick={() => { setSetupStep((step) => (step - 1) as 1 | 2 | 3 | 4); window.scrollTo(0, 0); }}><ArrowLeft size={18} />Back</button>}
               {setupStep < 4 && <button className="button button-dark setup-submit" type="button" disabled={setupStep === 1 && !activeTopic.trim()} onClick={() => { setSetupStep((step) => (step + 1) as 1 | 2 | 3 | 4); window.scrollTo(0, 0); }}>Continue <ArrowRight size={17} /></button>}
-              {setupStep === 4 && <button className="button button-dark setup-submit" onClick={() => void startSession()} disabled={!activeTopic.trim() || startingSession}>
-                {startingSession ? "Setting up..." : "Start rehearsal"} {!startingSession && <ArrowRight size={17} />}
-              </button>}
+              {setupStep === 4 && <div className="setup-submit-actions">
+                <button className="button button-light setup-submit setup-submit-voice" type="button" onClick={() => void startSession(undefined, true)} disabled={!activeTopic.trim() || startingSession}>
+                  {startingSession ? "Setting up..." : "Start with voice"} {!startingSession && <Mic size={16} />}
+                </button>
+                <button className="button button-dark setup-submit" type="button" onClick={() => void startSession()} disabled={!activeTopic.trim() || startingSession}>
+                  {startingSession ? "Setting up..." : "Start rehearsal"} {!startingSession && <ArrowRight size={17} />}
+                </button>
+              </div>}
             </div>
             {setupStep < 4 && <div className="fixture-next-cue"><span>NEXT</span><b>{["", "Choose your side.", "Meet your opponent.", "Set the round."][setupStep]}</b><small>{["", "Argue for or against the motion.", "Choose the voice that will challenge your case.", "Set the pressure and length of your rehearsal."][setupStep]}</small></div>}
             {!activeTopic.trim() && (
@@ -1637,13 +1639,17 @@ export default function App() {
                     difficulty={difficulty}
                     preferences={learnerAim()}
                     accessToken={session?.access_token}
+                    history={messages
+                      .filter((message) => !message.pending && message.content.trim())
+                      .slice(-200)
+                      .map(({ speaker, content }) => ({ speaker, content }))}
                     onTurn={(speaker, content) =>
                       setMessages((current) => [...current, { id: crypto.randomUUID(), speaker, content }])
                     }
                     onClose={() => setVoiceOpen(false)}
                     onSignIn={() => {
                       setVoiceOpen(false);
-                      pendingVoiceStartRef.current = true;
+                      pendingVoiceStartRef.current = "resume";
                       setAuthPurpose("voice");
                       setView("auth");
                     }}

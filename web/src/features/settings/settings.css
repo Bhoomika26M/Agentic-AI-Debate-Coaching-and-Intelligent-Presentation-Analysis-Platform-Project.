@@ -137,11 +137,11 @@
 .settings-save:disabled { cursor: wait; opacity: .65; }
 
 html[data-theme="new"] .settings-view { width: min(calc(100% - 72px), 1280px); padding: 38px 0 70px; color: var(--ink); }
-html[data-theme="new"] .settings-heading { min-height: 160px; padding-bottom: 24px; border-color: #aeb9b7; }
-html[data-theme="new"] .settings-heading > div:first-child { position: relative; padding-left: 58px; }
-html[data-theme="new"] .settings-heading-mark { position: absolute; left: 0; top: 5px; display: block; color: var(--cue-deep); font: 700 36px/.85 var(--display); letter-spacing: -.03em; }
-html[data-theme="new"] .settings-heading h1 { font: 700 clamp(3.4rem, 6vw, 5rem)/.9 var(--display); letter-spacing: .012em; }
-html[data-theme="new"] .settings-heading p { max-width: 55ch; margin-top: 10px; color: #435867; font-size: 13px; }
+html[data-theme="new"] .settings-heading { min-height: 0; padding-bottom: 20px; border-color: #aeb9b7; }
+html[data-theme="new"] .settings-heading > div:first-child { position: relative; padding-left: 48px; }
+html[data-theme="new"] .settings-heading-mark { position: absolute; left: 0; top: 4px; display: block; color: var(--cue-deep); font: 700 30px/.85 var(--display); letter-spacing: -.03em; }
+html[data-theme="new"] .settings-heading h1 { font: 700 clamp(2.8rem, 5vw, 4.1rem)/.96 var(--display); letter-spacing: .005em; }
+html[data-theme="new"] .settings-heading p { max-width: 55ch; margin-top: 7px; color: #435867; font-size: 13px; }
 html[data-theme="new"] .settings-account-stamp span { color: #506575; }
 html[data-theme="new"] .settings-account-stamp b { color: var(--stage); }
 html[data-theme="new"] .settings-layout { grid-template-columns: 186px minmax(0, 1fr); gap: clamp(30px, 5vw, 76px); }
@@ -213,6 +213,10 @@ html[data-theme="new"] .settings-save:hover:not(:disabled) { border-color: #8b33
   .settings-view { width: calc(100% - 36px); min-height: calc(100vh - 138px); padding: 30px 0 50px; }
   html[data-theme="new"] .settings-view { width: calc(100% - 36px); padding-top: 26px; }
   .settings-heading { min-height: 0; align-items: flex-start; flex-direction: column; gap: 14px; }
+  html[data-theme="new"] .settings-heading { gap: 10px; }
+  html[data-theme="new"] .settings-heading > div:first-child { padding-left: 38px; }
+  html[data-theme="new"] .settings-heading-mark { top: 3px; font-size: 25px; }
+  html[data-theme="new"] .settings-heading h1 { font-size: clamp(2.35rem, 9vw, 3.2rem); }
   .settings-account-stamp { min-width: 0; text-align: left; }
   .settings-nav { position: static; flex-wrap: wrap; overflow: visible; }
   .settings-nav a { min-height: 38px; }

@@ -280,6 +280,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .emblem-mark { display: block; }
 .setup-submit { min-width: 205px; }
 .setup-submit:only-child { margin-inline-start: auto; }
+.setup-submit-actions { margin-inline-start: auto; display: flex; align-items: center; gap: 10px; }
+.setup-submit-actions .setup-submit { min-width: 170px; }
 .fixture-next { min-height: 48px; margin-top: 18px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
 .fixture-next:disabled { opacity: .45; cursor: not-allowed; }
 .fixture-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(245px, .43fr); gap: clamp(24px, 4vw, 48px); align-items: stretch; }
@@ -571,6 +573,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .setup-bottom { position: sticky; bottom: 0; z-index: 20; margin-top: 14px; padding: 10px 0 12px; flex-direction: column; align-items: stretch; gap: 8px; border: 0; border-top: 1px solid #c9bda9; background: var(--paper); box-shadow: none; }
   .setup-bottom .local-note { font-size: 10px; }
   .setup-submit { width: 100%; }
+  .setup-submit-actions { width: 100%; margin-inline-start: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .setup-submit-actions .setup-submit { min-width: 0; padding-inline: 10px; }
 }
 
 @media (max-width: 760px) {

@@ -106,3 +106,14 @@ class VoiceSession:
             self.last_cue_turn = 0
             self.dropped_utterances = 0
             self.interrupted_turns = 0
+        initial_history = payload.get("history")
+        if isinstance(initial_history, list):
+            self.history = []
+            for turn in initial_history[-MAX_SESSION_TURNS:]:
+                if not isinstance(turn, dict) or turn.get("speaker") not in ("learner", "opponent"):
+                    continue
+                content = turn.get("content")
+                if isinstance(content, str) and content.strip():
+                    self._append(turn["speaker"], content)
+            self.learner_turns = sum(turn["speaker"] == "learner" for turn in self.history)
+            self.last_cue_turn = self.learner_turns - (self.learner_turns % DELIVERY_CUE_EVERY)

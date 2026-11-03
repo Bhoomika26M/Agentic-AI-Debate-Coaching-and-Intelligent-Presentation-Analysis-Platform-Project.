@@ -164,7 +164,12 @@ class VoiceConnection:
         elif kind == "announce":
             # Explicit, so an announcement can never race the first turn.
             if self.engine.available and self.session.ready:
-                asyncio.create_task(self._announce("Round one. Opening statements."))
+                line = (
+                    "We’re picking up from the exchange so far."
+                    if payload.get("continuing")
+                    else "Round one. Opening statements."
+                )
+                asyncio.create_task(self._announce(line))
         elif kind == "stop":
             return False
         elif kind == "ping":

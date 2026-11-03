@@ -16,6 +16,7 @@ type Props = {
   difficulty: DebateOptions["difficulty"];
   preferences?: PracticePreferences | null;
   accessToken?: string;
+  history?: Array<{ speaker: "learner" | "opponent"; content: string }>;
   onTurn?: (speaker: "learner" | "opponent", content: string) => void;
   onClose: () => void;
   onSignIn?: () => void;
@@ -80,10 +81,14 @@ function sentencesOf(text: string) {
     .filter(Boolean);
 }
 
-export function VoiceRoom({ topic, position, persona, difficulty, preferences, accessToken, onTurn, onClose, onSignIn }: Props) {
+export function VoiceRoom({ topic, position, persona, difficulty, preferences, accessToken, history = [], onTurn, onClose, onSignIn }: Props) {
   const titleId = useId();
   const [status, setStatus] = useState<Status>("connecting");
-  const [lines, setLines] = useState<Line[]>([]);
+  const [lines, setLines] = useState<Line[]>(() => history.map((line) => ({
+    id: crypto.randomUUID(),
+    speaker: line.speaker,
+    content: line.content,
+  })));
   const [caption, setCaption] = useState("");
   const [delivery, setDelivery] = useState<DeliverySignals | null>(null);
   const [diagnostics, setDiagnostics] = useState<VoiceDiagnostics["turn"] | null>(null);
@@ -107,8 +112,8 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
   const connectedRef = useRef(false);
   const ttsRef = useRef(tts);
   const roomRef = useRef<HTMLDialogElement | null>(null);
-  const configRef = useRef({ topic, position, persona, difficulty, preferences, accessToken });
-  configRef.current = { topic, position, persona, difficulty, preferences, accessToken };
+  const configRef = useRef({ topic, position, persona, difficulty, preferences, accessToken, history });
+  configRef.current = { topic, position, persona, difficulty, preferences, accessToken, history };
   ttsRef.current = tts;
   const chatRef = useRef<HTMLDivElement | null>(null);
   const player = useSpeechPlayer();
@@ -174,7 +179,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
           setStatus("idle");
           player.bell();
           // The fourth voice opens the round; it never argues.
-          clientRef.current?.announce();
+          clientRef.current?.announce(history.length > 0);
           break;
         case "state":
           setStatus(event.state);
@@ -245,7 +250,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
           break;
       }
     },
-    [appendLine, confirmPending, persona, player],
+    [appendLine, confirmPending, history, persona, player],
   );
   const handleEventRef = useRef(handleEvent);
   handleEventRef.current = handleEvent;
@@ -266,6 +271,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
           difficulty: config.difficulty,
           preferences: config.preferences ?? undefined,
           reset: true,
+          history: config.history.slice(-200),
         });
       },
       onEvent: (event) => handleEventRef.current(event),

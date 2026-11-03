@@ -89,6 +89,7 @@ export type VoiceConfig = {
   preferences?: PracticePreferences | null;
   adaptive_tactics?: boolean;
   reset?: boolean;
+  history?: Array<{ speaker: "learner" | "opponent"; content: string }>;
 };
 
 export type UtteranceMode = "push_to_talk" | "hands_free";
@@ -200,9 +201,9 @@ export class VoiceClient {
     this.send({ type: "dismiss" });
   }
 
-  /** Ask the moderator voice to open the round, once the socket is configured. */
-  announce() {
-    this.send({ type: "announce" });
+  /** Ask the moderator voice to open or resume the round after configuration. */
+  announce(continuing = false) {
+    this.send({ type: "announce", continuing });
   }
 
   interrupt(playedCaptions: number) {

@@ -17,6 +17,43 @@ export type PlanDrillCompletion = {
   completed_at: string;
 };
 
+const PLAN_CACHE_PREFIX = "verdict.learning-plan.v1";
+
+function planCacheKey(userId: string) {
+  return `${PLAN_CACHE_PREFIX}:${userId}`;
+}
+
+export function readCachedLearningPlan(userId: string): StoredPlan | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(planCacheKey(userId));
+    if (!raw) return null;
+    const candidate = JSON.parse(raw) as StoredPlan;
+    if (!candidate?.id || !candidate.created_at || !candidate.plan?.headline || !candidate.plan?.next_session || !Array.isArray(candidate.plan.drills)) return null;
+    return candidate;
+  } catch {
+    return null;
+  }
+}
+
+export function cacheLearningPlan(userId: string, plan: StoredPlan) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(planCacheKey(userId), JSON.stringify(plan));
+  } catch {
+    /* The network copy remains available if local storage is unavailable. */
+  }
+}
+
+export function clearCachedLearningPlan(userId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(planCacheKey(userId));
+  } catch {
+    /* Cache cleanup must not interrupt account work. */
+  }
+}
+
 function requireClient() {
   if (!supabase) throw new Error("Account storage is not configured.");
   return supabase;
@@ -74,7 +111,9 @@ export async function saveLearningPlan(
     .select("id, plan, sessions_considered, created_at")
     .single();
   if (error) throw error;
-  return data as StoredPlan;
+  const stored = data as StoredPlan;
+  cacheLearningPlan(userId, stored);
+  return stored;
 }
 
 export async function generateAndSaveLearningPlan(

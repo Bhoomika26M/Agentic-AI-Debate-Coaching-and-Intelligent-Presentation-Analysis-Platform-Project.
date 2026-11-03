@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowRight, ArrowUpRight, Bot, Check, ChevronDown, ChevronUp
 import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
 import { deleteDebateRecord, listDebateRecords, loadDebateAnalysis, loadDebateRecord, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
-import { loadAppCapabilities, requestJudge, type AnalysisReport } from "../../services/debate-api";
+import { loadAppCapabilities, type AnalysisReport } from "../../services/debate-api";
 import { listPresentationFeedbacks } from "../../services/presentation-records";
 import { requestPlan } from "../../services/plan-api";
 import { completePlanDrill, listLearningPlans, listPlanDrillCompletions, loadSessionDigests, saveLearningPlan, uncompletePlanDrill, type StoredPlan } from "../../services/plan-records";
@@ -35,6 +35,59 @@ import { useAuth } from "./AuthProvider";
 import "./account.css";
 
 type TabKey = "archive" | "progress" | "plan" | "settings";
+type ReviewPoint = { at: string; label: string; score: number };
+type PracticeProgress = {
+  sessions: number;
+  completed: number;
+  streakDays: number;
+  avgOverall: number | null;
+  avgDims: { key: string; score: number }[];
+  fillerFirst: number | null;
+  fillerLast: number | null;
+  deliveries: number;
+  weeks: { label: string; count: number }[];
+  reviewTrend: ReviewPoint[];
+};
+
+const PROGRESS_CACHE_PREFIX = "verdict.practice-analysis.v1";
+
+function progressCacheKey(userId: string) {
+  return `${PROGRESS_CACHE_PREFIX}:${userId}`;
+}
+
+function readCachedProgress(userId: string): PracticeProgress | null {
+  try {
+    const raw = window.localStorage.getItem(progressCacheKey(userId));
+    if (!raw) return null;
+    const value = JSON.parse(raw) as PracticeProgress;
+    if (
+      typeof value.sessions !== "number" ||
+      typeof value.completed !== "number" ||
+      !Array.isArray(value.avgDims) ||
+      !Array.isArray(value.weeks) ||
+      !Array.isArray(value.reviewTrend)
+    ) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function cacheProgress(userId: string, progress: PracticeProgress) {
+  try {
+    window.localStorage.setItem(progressCacheKey(userId), JSON.stringify(progress));
+  } catch {
+    /* A full or unavailable cache must not interrupt analysis. */
+  }
+}
+
+function clearCachedProgress(userId: string) {
+  try {
+    window.localStorage.removeItem(progressCacheKey(userId));
+  } catch {
+    /* Cache cleanup must not interrupt account work. */
+  }
+}
 
 // The tab a learner most likely wants first, given what they said practice is for.
 function recommendedTab(prefs: LearnerPrefs): TabKey {
@@ -51,6 +104,14 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "archive", label: "Archive" },
 ];
 
+const DIMENSION_LABELS: Record<string, string> = {
+  argument: "Argument",
+  evidence: "Evidence",
+  logical: "Logic",
+  rebuttal: "Rebuttal",
+  communication: "Communication",
+};
+
 function opponentName(key: string) {
   return personas.find((person) => person.key === key)?.name ?? "Your opponent";
 }
@@ -62,15 +123,16 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onFocusConsumed, theme = "classic" }: {
+export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onFocusConsumed, theme = "classic", initialSection = "progress" }: {
   onStart: () => void;
   onContinue: (session: DebateRecord, turns: DebateRecordTurn[]) => void;
   onSignOut: () => Promise<void>;
   focusRecordId?: string | null;
   onFocusConsumed?: () => void;
   theme?: ThemePreference;
+  initialSection?: "progress" | "plan";
 }) {
-  const focusedArchive = theme === "new";
+  const newTheme = theme === "new";
   const { user, session } = useAuth();
   const [records, setRecords] = useState<DebateRecord[]>([]);
   const [selected, setSelected] = useState<{ session: DebateRecord; turns: DebateRecordTurn[]; analysis: AnalysisReport | null } | null>(null);
@@ -89,7 +151,7 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
   const [prefs, setPrefs] = useState<LearnerPrefs>(() => (user ? loadPrefs(user.id) : emptyPrefs()));
   // The learner space opens on progress: the first useful thing to see is
   // whether the practice is actually moving.
-  const [tab, setTab] = useState<TabKey>(() => focusedArchive ? "archive" : "progress");
+  const [tab, setTab] = useState<TabKey>(initialSection);
   const [showAllRecords, setShowAllRecords] = useState(false);
   const detailRef = useRef<HTMLElement | null>(null);
   const tabsRef = useRef<HTMLDivElement | null>(null);
@@ -108,19 +170,18 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
   const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState("");
   const [planLoaded, setPlanLoaded] = useState(false);
-  const [progress, setProgress] = useState<null | {
-    sessions: number; completed: number; streakDays: number; avgOverall: number | null;
-    avgDims: { key: string; score: number }[]; fillerFirst: number | null; fillerLast: number | null;
-    deliveries: number; weeks: { label: string; count: number }[];
-  }>(null);
-  const [progressLoading, setProgressLoading] = useState(false);
+  const [progress, setProgress] = useState<PracticeProgress | null>(() => user ? readCachedProgress(user.id) : null);
+  const [progressOwnerId, setProgressOwnerId] = useState<string | null>(user?.id ?? null);
+  const [progressLoading, setProgressLoading] = useState(() => Boolean(user && !readCachedProgress(user.id)));
   const [progressError, setProgressError] = useState("");
+  const progressRefreshInFlightRef = useRef<string | null>(null);
+  const currentProgressUserRef = useRef<string | null>(user?.id ?? null);
 
   const recommendation = useMemo(() => buildRecommendation(profile.experience, prefs), [profile.experience, prefs]);
   const setupComplete = hasAnswers(prefs);
   const recommended = useMemo(() => recommendedTab(prefs), [prefs]);
   const visibleRecords = showAllRecords ? records : records.slice(0, 5);
-  const visibleTabs = focusedArchive ? TABS.filter((item) => item.key === "archive") : TABS;
+  const visibleTabs = TABS;
   const shownCount = Math.min(5, records.length);
   const introLine = useMemo(() => {
     if (!setupComplete) return "Two minutes in your room tunes your opponent, your pressure, and the cue waiting on your dashboard.";
@@ -131,10 +192,36 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
     ];
     return `${parts.filter(Boolean).join(" · ")}.`;
   }, [prefs, setupComplete]);
+  const rankedDimensions = (progress?.avgDims ?? []).slice().sort((a, b) => b.score - a.score);
+  const planHasNewerPractice = Boolean(storedPlan && records[0] && new Date(records[0].started_at) > new Date(storedPlan.created_at));
+  const reviewTrend = progress?.reviewTrend ?? [];
+  const reviewChartCoordinates = reviewTrend.map((point, index) => ({
+    ...point,
+    x: reviewTrend.length === 1 ? 306 : 40 + (index / (reviewTrend.length - 1)) * 520,
+    y: 18 + ((5 - Math.max(0, Math.min(5, point.score))) / 5) * 112,
+  }));
+  const reviewChange = reviewTrend.length > 1
+    ? reviewTrend[reviewTrend.length - 1].score - reviewTrend[0].score
+    : null;
+
+  useEffect(() => {
+    tabTouchedRef.current = true;
+    setTab(initialSection);
+  }, [initialSection]);
+
+  useEffect(() => {
+    const userId = user?.id ?? null;
+    currentProgressUserRef.current = userId;
+    const cached = userId ? readCachedProgress(userId) : null;
+    setProgressOwnerId(userId);
+    setProgress(cached);
+    setProgressError("");
+    setProgressLoading(Boolean(userId && !cached));
+  }, [user?.id]);
 
   useEffect(() => {
     let active = true;
-    if (!user && focusedArchive) {
+    if (!user && newTheme) {
       setRecords([]);
       setLoading(false);
       setError("");
@@ -160,17 +247,15 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
       setAppSettingsReady(true);
     }
     return () => { active = false; };
-  }, [user, focusedArchive]);
+  }, [user, newTheme]);
 
   useEffect(() => {
-    if (focusedArchive) setTab("archive");
-    else if (tab === "archive") setTab("progress");
-  }, [focusedArchive]);
-
-  useEffect(() => {
-    if (tab === "progress") void loadProgress();
+    if (tab === "progress") {
+      void loadPlan();
+      if (!loading) void loadProgress();
+    }
     else if (tab === "plan") void loadPlan();
-  }, [tab]);
+  }, [tab, loading]);
 
   useEffect(() => {
     if (!focusRecordId || loading) return;
@@ -356,13 +441,22 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
 
   async function loadPlan() {
     if (planLoaded || planLoading) return;
+    if (!user) {
+      setStoredPlan(null);
+      setPlanLoaded(true);
+      return;
+    }
     setPlanError("");
     setPlanLoaded(true);
+    setPlanLoading(true);
     try {
       const saved = await listLearningPlans(1);
       setStoredPlan(saved[0] ?? null);
     } catch {
       setPlanError("Your plan didn't load. Try again in a moment.");
+      setPlanLoaded(false);
+    } finally {
+      setPlanLoading(false);
     }
   }
 
@@ -400,11 +494,25 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
   }
 
   async function loadProgress() {
-    if (progressLoading || progress) return;
-    setProgressLoading(true);
+    if (!user) {
+      setProgressOwnerId(null);
+      setProgress({ sessions: 0, completed: 0, streakDays: 0, avgOverall: null, avgDims: [], fillerFirst: null, fillerLast: null, deliveries: 0, weeks: [], reviewTrend: [] });
+      setProgressLoading(false);
+      return;
+    }
+    const userId = user.id;
+    if (progressRefreshInFlightRef.current === userId) return;
+    const cached = progressOwnerId === userId ? progress : readCachedProgress(userId);
+    const hasSnapshot = Boolean(cached);
+    if (cached && progressOwnerId !== userId) {
+      setProgressOwnerId(userId);
+      setProgress(cached);
+    }
+    if (!hasSnapshot) setProgressLoading(true);
     setProgressError("");
+    progressRefreshInFlightRef.current = userId;
     try {
-      const sessions = records.length > 0 ? records : await listDebateRecords(30);
+      const sessions = records;
       const withAnalysis = await Promise.all(
         sessions.slice(0, 12).map(async (session) => {
           try {
@@ -417,22 +525,19 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
       );
       const overalls: number[] = [];
       const dimSums: Record<string, { total: number; count: number }> = {};
-      const verdicts = await Promise.all(
-        withAnalysis.map(async ({ analysis }) => {
-          if (!analysis?.ratings) return null;
-          try {
-            // Trends score the saved reviews without reloading every transcript;
-            // the judge omits rebuttal and renormalizes the remaining weights.
-            return await requestJudge(analysis, null, [], session?.access_token);
-          } catch {
-            return null;
-          }
-        }),
-      );
-      for (const verdict of verdicts) {
-        if (!verdict) continue;
-        overalls.push(verdict.overall);
-        for (const dim of verdict.dimensions) {
+      const oneDecimal = (value: number) => Math.round(value * 10) / 10;
+      for (const { analysis } of withAnalysis) {
+        const ratings = analysis?.ratings;
+        if (!ratings) continue;
+        // The dashboard judge uses only these three rubric dimensions when no turns or delivery are supplied.
+        const argument = oneDecimal((ratings.clarity.score + ratings.relevance.score + ratings.persuasiveness.score) / 3);
+        const dimensions = [
+          { key: "argument", score: argument },
+          { key: "evidence", score: ratings.evidence_strength.score },
+          { key: "logical", score: ratings.logical_consistency.score },
+        ];
+        overalls.push(oneDecimal((argument * 30 + ratings.evidence_strength.score * 20 + ratings.logical_consistency.score * 20) / 70));
+        for (const dim of dimensions) {
           dimSums[dim.key] = dimSums[dim.key] ?? { total: 0, count: 0 };
           dimSums[dim.key].total += dim.score;
           dimSums[dim.key].count += 1;
@@ -463,7 +568,7 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
         }).length;
         weeks.push({ label: `${start.getMonth() + 1}/${start.getDate()}`, count });
       }
-      setProgress({
+      const nextProgress: PracticeProgress = {
         sessions: sessions.length,
         completed: sessions.filter((s) => s.status === "completed").length,
         streakDays: currentStreak(days),
@@ -473,11 +578,29 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
         fillerLast: fillers.last,
         deliveries: fillers.deliveries,
         weeks,
-      });
+        reviewTrend: withAnalysis
+          .filter(({ session: record, analysis }) => record.status === "completed" && analysis?.ratings)
+          .map(({ session: record, analysis }) => {
+            const ratings = Object.values(analysis?.ratings ?? {});
+            const values = ratings.map((rating) => rating.score).filter((score) => typeof score === "number");
+            return values.length
+              ? { at: record.started_at, label: new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(record.started_at)), score: values.reduce((sum, score) => sum + score, 0) / values.length }
+              : null;
+          })
+          .filter((point): point is ReviewPoint => point !== null)
+          .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+          .slice(-8),
+      };
+      cacheProgress(userId, nextProgress);
+      if (currentProgressUserRef.current === userId) {
+        setProgressOwnerId(userId);
+        setProgress(nextProgress);
+      }
     } catch {
-      setProgressError("Your trends didn't load. Try again in a moment.");
+      if (currentProgressUserRef.current === userId && !hasSnapshot) setProgressError("Your trends didn't load. Try again in a moment.");
     } finally {
-      setProgressLoading(false);
+      if (progressRefreshInFlightRef.current === userId) progressRefreshInFlightRef.current = null;
+      if (currentProgressUserRef.current === userId && !hasSnapshot) setProgressLoading(false);
     }
   }
 
@@ -529,6 +652,7 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
     try {
       await deleteDebateRecord(sessionId);
       setRecords((current) => current.filter((record) => record.id !== sessionId));
+      if (user) clearCachedProgress(user.id);
       setProgress(null);
       setSelected(null);
       setConfirmDelete(false);
@@ -549,6 +673,7 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
     setDataNotice("");
     try {
       await deleteAllPracticeData(user.id);
+      clearCachedProgress(user.id);
       setRecords([]);
       setSelected(null);
       setShowAllRecords(false);
@@ -595,28 +720,28 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
   }
 
   return (
-    <main className={`account-page${focusedArchive ? " account-page-new" : ""}`}>
+    <main className={`account-page${newTheme ? " account-page-new" : ""}`}>
       <header className="account-head">
         <div className="account-head-copy">
-          <h1>{focusedArchive ? "Argument analysis" : <>Your practice, <em>kept in reach.</em></>}</h1>
-          <p className={`account-intro-line${setupComplete ? "" : " is-open"}`}>{focusedArchive ? "Open a saved debate to read its transcript and argument review." : introLine}</p>
-          {!focusedArchive && <p className="account-intro-mail">{user?.email ?? "Learner account"}</p>}
+          <h1>{newTheme ? "Your progress, in focus." : <>Your practice, <em>kept in reach.</em></>}</h1>
+          <p className={`account-intro-line${setupComplete ? "" : " is-open"}`}>{newTheme ? "See what is working, what to sharpen next, and how your practice is changing." : introLine}</p>
+          <p className="account-intro-mail">{user?.email ?? "Learner account"}</p>
         </div>
-        {!focusedArchive && user && <div className="account-head-actions">
+        {user && <div className="account-head-actions">
           <button className="account-signout" onClick={() => void signOut()} disabled={signingOut}>
             {signingOut ? "Signing out…" : "Sign out"}
           </button>
         </div>}
       </header>
 
-      {!focusedArchive && <section className="account-overview" aria-label="Recent rehearsal summary">
+      {!newTheme && <section className="account-overview" aria-label="Recent rehearsal summary">
         <div><span>SAVED SESSIONS</span><b>{loading ? "–" : records.length.toString().padStart(2, "0")}</b><small>Most recent 30</small></div>
         <div><span>COMPLETED</span><b>{loading ? "–" : records.filter((record) => record.status === "completed").length.toString().padStart(2, "0")}</b><small>In recent records</small></div>
         <div><span>IN PROGRESS</span><b>{loading ? "–" : records.filter((record) => record.status === "in_progress").length.toString().padStart(2, "0")}</b><small>Can be continued</small></div>
         <div><span>LATEST REHEARSAL</span><b className="account-latest">{loading ? "Loading" : records[0] ? formatDate(records[0].started_at) : "Not yet"}</b><small>{records[0]?.topic ?? "Your first session will appear here"}</small></div>
       </section>}
 
-      {!focusedArchive && <div ref={tabsRef} className="account-tabs" role="tablist" aria-label="Account sections">
+      <div ref={tabsRef} className="account-tabs" role="tablist" aria-label="Account sections">
         {visibleTabs.map((item, index) => (
           <button
             key={item.key}
@@ -630,11 +755,11 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
             onKeyDown={(event) => handleTabKey(event, index)}
             onClick={() => selectTab(item.key)}
           >
-            {item.label}
+            {newTheme && item.key === "progress" ? "Analysis" : item.label}
             {item.key === recommended && <span className="tab-flag">For you</span>}
           </button>
         ))}
-      </div>}
+      </div>
 
       {tab === "plan" && (
         <section className="account-plan" role="tabpanel" id="account-panel-plan" aria-labelledby="account-tab-plan">
@@ -732,7 +857,7 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
       {tab === "progress" && (
         <section className="account-progress" role="tabpanel" id="account-panel-progress" aria-labelledby="account-tab-progress">
           <div className="archive-heading">
-            <div><h2 id="progress-heading">Practice trends</h2><p>Computed from your saved sessions. No new models involved.</p></div>
+            <div><h2 id="progress-heading">Your analysis</h2><p>Strengths, focus areas, and change across your saved argument reviews.</p></div>
             <span>{progress?.sessions.toString().padStart(2, "0") ?? "--"}</span>
           </div>
           {progressLoading && <div className="archive-loading"><LoaderCircle className="spin" size={18} /> Reading your trends</div>}
@@ -752,26 +877,77 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
               <div><span>DELIVERY TAKES</span><b>{progress.deliveries}</b></div>
               <div><span>FILLERS / 100W</span><b>{progress.fillerFirst === null ? "–" : `${progress.fillerFirst} → ${progress.fillerLast}`}</b></div>
             </div>
-            {progress.avgDims.length > 0 && (
-              <div className="progress-dims">
-                {progress.avgDims.map((dim) => (
-                  <div key={dim.key} className="progress-dim">
-                    <span>{dim.key.toUpperCase()}</span>
-                    <div className="progress-bar" role="img" aria-label={`${dim.key} averages ${dim.score} of 5`}>
-                      <i style={{ width: `${Math.min(100, dim.score / 5 * 100)}%` }} />
-                    </div>
-                    <b>{dim.score.toFixed(1)}</b>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="progress-weeks" role="img" aria-label="Sessions per week for the last 8 weeks">
-              {progress.weeks.map((week) => (
-                <div key={week.label} className="progress-week">
-                  <i style={{ height: `${Math.min(64, week.count * 16)}px` }} />
-                  <span>{week.label}</span>
+            <div className="analysis-visuals">
+              <section className="analysis-growth" aria-labelledby="analysis-growth-title">
+                <div className="analysis-section-head">
+                  <div><h3 id="analysis-growth-title">Argument review trend</h3><p>Average of scored rubric criteria · out of 5</p></div>
+                  {reviewChange !== null && <b className={reviewChange >= 0 ? "is-up" : "is-down"}>{reviewChange > 0 ? "+" : ""}{reviewChange.toFixed(1)} <small>first to latest</small></b>}
                 </div>
-              ))}
+                {reviewChartCoordinates.length > 0 ? <>
+                  <svg className="analysis-line-chart" viewBox="0 0 600 156" role="img" aria-label={`Argument review rubric average over ${reviewTrend.length} saved reviews, from ${reviewTrend[0].score.toFixed(1)} to ${reviewTrend[reviewTrend.length - 1].score.toFixed(1)} out of 5`}>
+                    {[18, 74, 130].map((y, index) => <g key={y}><line x1="40" x2="580" y1={y} y2={y} /><text x="4" y={y + 4}>{[5, 3, 1][index]}</text></g>)}
+                    {reviewChartCoordinates.length > 1 && <polyline points={reviewChartCoordinates.map((point) => `${point.x},${point.y}`).join(" ")} />}
+                    {reviewChartCoordinates.map((point) => <g key={point.at}><circle cx={point.x} cy={point.y} r="4" /><text className="analysis-point-score" x={point.x} y={Math.max(12, point.y - 10)} textAnchor="middle">{point.score.toFixed(1)}</text></g>)}
+                  </svg>
+                  <div className="analysis-chart-dates"><span>{reviewTrend[0].label}</span><span>{reviewTrend.length > 1 ? reviewTrend[reviewTrend.length - 1].label : "One review so far"}</span></div>
+                  {reviewChange === null && <p className="analysis-chart-note">Complete another scored review to see how your rubric average changes over time.</p>}
+                  {reviewChange !== null && <p className="analysis-chart-note">Direction across your saved reviews; different motions can affect each score.</p>}
+                </> : <p className="analysis-chart-empty">Your first completed argument review will set a baseline here.</p>}
+              </section>
+
+              <section className="analysis-profile" aria-labelledby="analysis-profile-title">
+                <div className="analysis-section-head"><div><h3 id="analysis-profile-title">Your argument profile</h3><p>Average judge scores from reviewed sessions · out of 5</p></div></div>
+                {rankedDimensions.length > 0 ? <>
+                  <div className="analysis-insights">
+                    <div><span>STRONGEST SIGNAL</span><b>{DIMENSION_LABELS[rankedDimensions[0].key] ?? rankedDimensions[0].key} <small>{rankedDimensions[0].score.toFixed(1)}</small></b></div>
+                    {rankedDimensions.length > 1 && <div><span>NEXT AREA TO SHARPEN</span><b>{DIMENSION_LABELS[rankedDimensions[rankedDimensions.length - 1].key] ?? rankedDimensions[rankedDimensions.length - 1].key} <small>{rankedDimensions[rankedDimensions.length - 1].score.toFixed(1)}</small></b></div>}
+                  </div>
+                  <div className="progress-dims">
+                    {rankedDimensions.map((dim) => (
+                      <div key={dim.key} className="progress-dim">
+                        <span>{DIMENSION_LABELS[dim.key] ?? dim.key}</span>
+                        <div className="progress-bar" role="img" aria-label={`${DIMENSION_LABELS[dim.key] ?? dim.key} averages ${dim.score} of 5`}>
+                          <i style={{ width: `${Math.min(100, dim.score / 5 * 100)}%` }} />
+                        </div>
+                        <b>{dim.score.toFixed(1)}</b>
+                      </div>
+                    ))}
+                  </div>
+                </> : <p className="analysis-chart-empty">Your argument profile will appear after your first scored review.</p>}
+              </section>
+            </div>
+
+            <div className="analysis-lower-grid">
+              <section className="analysis-plan-peek" aria-labelledby="analysis-plan-title">
+                <div className="analysis-section-head">
+                  <div><h3 id="analysis-plan-title">Your curated plan</h3><p>Personalized from your saved practice and goals.</p></div>
+                  {storedPlan && <button type="button" className="dash-text-link" onClick={() => selectTab("plan")}>Open full plan <ArrowUpRight size={14} aria-hidden="true" /></button>}
+                </div>
+                {planLoading ? <p className="analysis-chart-empty">Reading your saved plan…</p> : storedPlan ? <>
+                  <b className="analysis-plan-headline">{storedPlan.plan.headline}</b>
+                  <p className="analysis-plan-summary">{storedPlan.plan.summary}</p>
+                  <div className="analysis-plan-next"><span>NEXT REHEARSAL</span><b>{storedPlan.plan.next_session}</b></div>
+                  {storedPlan.plan.drills[0] && <div className="analysis-plan-drill"><span>FIRST DRILL · {storedPlan.plan.drills[0].minutes} MIN</span><b>{storedPlan.plan.drills[0].title}</b></div>}
+                  {planHasNewerPractice && <p className="analysis-plan-stale">You have a newer saved rehearsal. <button type="button" className="dash-text-link" onClick={() => void buildPlan()} disabled={planLoading}>{planLoading ? "Updating…" : "Update plan"}</button></p>}
+                  <button type="button" className="dash-text-link" onClick={() => selectTab("plan")}>Track drills and milestones <ArrowRight size={14} aria-hidden="true" /></button>
+                </> : <div className="analysis-plan-empty">
+                  <p>{user ? "Build a practice plan from your goals and saved reviews, with specific drills and a four-week rhythm." : "Sign in to save a personal practice plan and track your progress across sessions."}</p>
+                  <button className="button button-light" type="button" onClick={() => void buildPlan()} disabled={!user || planLoading}>{planLoading ? "Building plan…" : "Build my plan"} <Sparkles size={14} /></button>
+                </div>}
+                {planError && <div className="archive-error" role="alert">{planError}</div>}
+              </section>
+
+              <section className="analysis-activity" aria-labelledby="analysis-activity-title">
+                <div className="analysis-section-head"><div><h3 id="analysis-activity-title">Practice rhythm</h3><p>Saved sessions over the last 8 weeks</p></div></div>
+                {progress.weeks.length > 0 ? <div className="progress-weeks" role="img" aria-label="Sessions per week for the last 8 weeks">
+                  {progress.weeks.map((week) => (
+                    <div key={week.label} className="progress-week" title={`${week.count} session${week.count === 1 ? "" : "s"}`}>
+                      <i style={{ height: `${Math.min(64, week.count * 16)}px` }} />
+                      <span>{week.label}</span>
+                    </div>
+                  ))}
+                </div> : <p className="analysis-chart-empty">Session activity will appear after you save a rehearsal.</p>}
+              </section>
             </div>
             <div className="progress-actions no-print">
               <button className="button button-light" onClick={() => void downloadCsv()} disabled={progress.sessions === 0 || exporting}><Download size={15} /> {exporting ? "Building archive CSV" : "Download archive CSV"}</button>
@@ -1057,10 +1233,10 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
       )}
 
       {tab === "archive" && (
-        <div className={`account-layout${selected ? " has-selected" : ""}`} {...(!focusedArchive ? { role: "tabpanel", id: "account-panel-archive", "aria-labelledby": "account-tab-archive" } : { "aria-labelledby": "archive-heading" })}>
+        <div className={`account-layout${selected ? " has-selected" : ""}`} role="tabpanel" id="account-panel-archive" aria-labelledby="account-tab-archive">
           <section className="account-archive" aria-labelledby="archive-heading">
             <div className="archive-heading">
-              <div><h2 id="archive-heading">{focusedArchive ? "Saved debates" : "Rehearsal archive"}</h2><p>{focusedArchive ? "Open a completed debate to read its argument analysis." : "Open a transcript to review it or continue the conversation in the debate room."}</p></div>
+              <div><h2 id="archive-heading">{newTheme ? "Saved debates" : "Rehearsal archive"}</h2><p>{newTheme ? "Open a completed debate to read its transcript and review." : "Open a transcript to review it or continue the conversation in the debate room."}</p></div>
               <span>
                 {loading
                   ? "--"
@@ -1084,8 +1260,8 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
             {!loading && !error && records.length === 0 && (
               <div className="archive-empty">
                 <EmptyCueArt label="No saved rehearsals yet" />
-                <div><b>{focusedArchive ? "Your first review starts with a debate." : "Your record starts with the next debate."}</b><p>{user ? "Start a debate and its transcript will appear here." : "Guest debates can be reviewed when you finish. Sign in to keep transcripts in this archive."}</p></div>
-                <button className="button button-dark" onClick={onStart}>{focusedArchive ? "Start a debate" : "Open the prompt book"} <ArrowUpRight size={15} /></button>
+                <div><b>{newTheme ? "Your first review starts with a debate." : "Your record starts with the next debate."}</b><p>{user ? "Start a debate and its transcript will appear here." : "Guest debates can be reviewed when you finish. Sign in to keep transcripts in this archive."}</p></div>
+                <button className="button button-dark" onClick={onStart}>{newTheme ? "Start a debate" : "Open the prompt book"} <ArrowUpRight size={15} /></button>
               </div>
             )}
 
