@@ -38,10 +38,30 @@ export default function PresentationAnalyzer() {
   );
 
   const [showExporter, setShowExporter] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  const handleAnalyze = () => {
-    const res = analyzePresentationText(scriptText, durationSeconds);
-    setMetrics(res);
+  const handleAnalyze = async () => {
+    if (!scriptText.trim()) {
+      setAnalysisError('Enter or record a presentation before analyzing it.');
+      return;
+    }
+    setIsAnalyzing(true);
+    setAnalysisError(null);
+    try {
+      const response = await fetch('/api/presentation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: scriptText, durationSeconds })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Presentation analysis failed');
+      setMetrics(data.metrics);
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : 'Presentation analysis failed');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const toggleRecording = () => {
@@ -142,12 +162,14 @@ export default function PresentationAnalyzer() {
 
               <button
                 onClick={handleAnalyze}
+                disabled={isAnalyzing}
                 className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-emerald-500 transition-all shadow-md shadow-emerald-500/20"
               >
                 <Sparkles className="h-4 w-4" />
-                Analyze Presentation
+                {isAnalyzing ? 'Analyzing...' : 'Analyze Presentation'}
               </button>
             </div>
+            {analysisError && <p className="text-xs font-semibold text-rose-400">{analysisError}</p>}
           </div>
         </div>
 

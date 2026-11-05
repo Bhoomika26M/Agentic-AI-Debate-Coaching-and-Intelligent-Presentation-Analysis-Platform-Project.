@@ -20,6 +20,8 @@ export default function RebuttalLab() {
   const [selectedAnswer, setSelectedAnswer] = useState<FallacyType | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [quizScore, setQuizScore] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   const QUIZ_QUESTIONS: { snippet: string; correctFallacy: FallacyType; explanation: string }[] = [
     {
@@ -44,9 +46,27 @@ export default function RebuttalLab() {
     }
   ];
 
-  const handleGenerate = () => {
-    const res = generateCounterarguments(argumentInput);
-    setCounterarguments(res);
+  const handleGenerate = async () => {
+    if (!argumentInput.trim()) {
+      setGenerationError('Enter an opponent claim before generating rebuttals.');
+      return;
+    }
+    setIsGenerating(true);
+    setGenerationError(null);
+    try {
+      const response = await fetch('/api/rebuttal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ argumentText: argumentInput })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Rebuttal generation failed');
+      setCounterarguments(data.counterarguments);
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : 'Rebuttal generation failed');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleQuizAnswer = (answer: FallacyType) => {
@@ -121,12 +141,14 @@ export default function RebuttalLab() {
             <div className="flex justify-end">
               <button
                 onClick={handleGenerate}
+                disabled={isGenerating}
                 className="flex items-center gap-2 rounded-2xl bg-amber-500 px-6 py-2.5 text-xs font-bold text-slate-950 hover:bg-amber-400 transition-all shadow-lg shadow-amber-500/20"
               >
                 <Zap className="h-4 w-4" />
-                Generate 5 Counterargument Dimensions
+                {isGenerating ? 'Generating...' : 'Generate 5 Counterargument Dimensions'}
               </button>
             </div>
+            {generationError && <p className="text-xs font-semibold text-rose-400">{generationError}</p>}
           </div>
 
           {/* 5 Counterargument Cards */}

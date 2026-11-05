@@ -6,7 +6,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { text } = body;
 
-    if (!text) {
+    if (typeof text !== 'string' || !text.trim()) {
       return NextResponse.json({ error: 'Text content is required' }, { status: 400 });
     }
 
@@ -17,9 +17,10 @@ export async function POST(req: Request) {
       fallaciesCount: fallacies.length,
       fallacies
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to detect fallacies';
     return NextResponse.json(
-      { error: error.message || 'Failed to detect fallacies' },
+      { error: message },
       { status: 500 }
     );
   }

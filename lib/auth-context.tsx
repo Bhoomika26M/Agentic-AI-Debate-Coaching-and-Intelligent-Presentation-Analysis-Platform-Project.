@@ -112,15 +112,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile>(MOCK_PROFILES['learner']);
 
   useEffect(() => {
-    setUser(MOCK_PROFILES[role]);
-  }, [role]);
+    const storedRole = localStorage.getItem('verbal_arena_role') as UserRole | null;
+    const activeRole = storedRole && storedRole in MOCK_PROFILES ? storedRole : 'learner';
+    setRoleState(activeRole);
+    const storedProfile = localStorage.getItem(`verbal_arena_profile_${activeRole}`);
+    if (storedProfile) {
+      try {
+        setUser(JSON.parse(storedProfile) as UserProfile);
+        return;
+      } catch {
+        localStorage.removeItem(`verbal_arena_profile_${activeRole}`);
+      }
+    }
+    setUser(MOCK_PROFILES[activeRole]);
+  }, []);
 
   const setRole = (newRole: UserRole) => {
     setRoleState(newRole);
+    const storedProfile = localStorage.getItem(`verbal_arena_profile_${newRole}`);
+    if (storedProfile) {
+      try {
+        setUser(JSON.parse(storedProfile) as UserProfile);
+      } catch {
+        localStorage.removeItem(`verbal_arena_profile_${newRole}`);
+        setUser(MOCK_PROFILES[newRole]);
+      }
+    } else {
+      setUser(MOCK_PROFILES[newRole]);
+    }
+    localStorage.setItem('verbal_arena_role', newRole);
   };
 
   const updateProfile = (updated: Partial<UserProfile>) => {
-    setUser(prev => ({ ...prev, ...updated }));
+    setUser(prev => {
+      const next = { ...prev, ...updated };
+      localStorage.setItem(`verbal_arena_profile_${next.role}`, JSON.stringify(next));
+      return next;
+    });
   };
 
   return (

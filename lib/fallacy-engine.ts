@@ -44,63 +44,50 @@ export const FALLACY_DEFINITIONS: Record<FallacyType, { description: string; exa
 };
 
 export function detectFallacies(text: string): FallacyMatch[] {
+  const cleanText = text.trim();
+  if (!cleanText) return [];
+
   const matches: FallacyMatch[] = [];
-  const lowerText = text.toLowerCase();
-
-  if (lowerText.includes('you are just') || lowerText.includes('clueless') || lowerText.includes('ignorant') || lowerText.includes('incompetent')) {
+  const lowerText = cleanText.toLowerCase();
+  const quote = cleanText.length > 100 ? `${cleanText.slice(0, 100)}...` : cleanText;
+  const addMatch = (type: FallacyType, explanation: string, severity: FallacyMatch['severity']) => {
     matches.push({
-      id: 'f-adhominem-' + Math.random().toString(36).substring(2, 7),
-      type: 'Ad Hominem',
-      quote: text.substring(0, 80) + '...',
-      explanation: 'Focuses on questioning competence or motive rather than analyzing the empirical evidence provided.',
-      correctionSuggestion: FALLACY_DEFINITIONS['Ad Hominem'].fixAdvice,
-      severity: 'High'
+      id: `fallacy-${type.toLowerCase().replace(/[^a-z]+/g, '-')}-${matches.length + 1}`,
+      type,
+      quote,
+      explanation,
+      correctionSuggestion: FALLACY_DEFINITIONS[type].fixAdvice,
+      severity
     });
+  };
+
+  if (/\b(you are just|clueless|ignorant|incompetent|idiot|stupid)\b/i.test(cleanText)) {
+    addMatch('Ad Hominem', 'Attacks the opponent rather than addressing the evidence or reasoning.', 'High');
   }
 
-  if (lowerText.includes('either we') || lowerText.includes('or we will completely') || lowerText.includes('only two choices')) {
-    matches.push({
-      id: 'f-falsedilemma-' + Math.random().toString(36).substring(2, 7),
-      type: 'False Dilemma',
-      quote: text.substring(0, 80) + '...',
-      explanation: 'Frames the debate as a binary outcome, ignoring nuanced compromise models.',
-      correctionSuggestion: FALLACY_DEFINITIONS['False Dilemma'].fixAdvice,
-      severity: 'Medium'
-    });
+  if (/\b(either .+ or .+|only two choices|the only options are|if we don't .+ then)\b/i.test(cleanText)) {
+    addMatch('False Dilemma', 'Frames the issue as a binary choice while ignoring intermediate options.', 'Medium');
   }
 
-  if (lowerText.includes('will lead to total') || lowerText.includes('inevitably destroy') || lowerText.includes('first step to disaster')) {
-    matches.push({
-      id: 'f-slipperyslope-' + Math.random().toString(36).substring(2, 7),
-      type: 'Slippery Slope',
-      quote: text.substring(0, 80) + '...',
-      explanation: 'Assumes an unchecked catastrophic chain reaction without establishing step-by-step causal links.',
-      correctionSuggestion: FALLACY_DEFINITIONS['Slippery Slope'].fixAdvice,
-      severity: 'Medium'
-    });
+  if (/\b(inevitably|will lead to (total|complete)|first step to disaster|before you know it|then everything will)\b/i.test(cleanText)) {
+    addMatch('Slippery Slope', 'Assumes a catastrophic chain reaction without proving each causal step.', 'Medium');
   }
 
-  if (lowerText.includes('everyone knows') || lowerText.includes('obviously true because') || lowerText.includes('because it is effective')) {
-    matches.push({
-      id: 'f-circular-' + Math.random().toString(36).substring(2, 7),
-      type: 'Circular Reasoning',
-      quote: text.substring(0, 80) + '...',
-      explanation: 'Uses the premise to justify the conclusion without introducing external supporting data.',
-      correctionSuggestion: FALLACY_DEFINITIONS['Circular Reasoning'].fixAdvice,
-      severity: 'Low'
-    });
+  if (/\b(everyone knows|obviously true because|because it is effective|it works because it works)\b/i.test(cleanText)) {
+    addMatch('Circular Reasoning', 'Uses the conclusion as its own supporting premise instead of external evidence.', 'Low');
   }
 
-  if (matches.length === 0 && text.length > 50) {
-    // Add an educational analysis match for comprehensive evaluation
-    matches.push({
-      id: 'f-strawman-' + Math.random().toString(36).substring(2, 7),
-      type: 'Straw Man',
-      quote: text.substring(Math.min(10, text.length / 4), Math.min(90, text.length)),
-      explanation: 'Minor risk of oversimplifying opponent counter-arguments. Ensure exact quotes are referenced.',
-      correctionSuggestion: FALLACY_DEFINITIONS['Straw Man'].fixAdvice,
-      severity: 'Low'
-    });
+  if (/\b(they want to|so you are saying|their plan means|supporting .+ means)\b/i.test(cleanText)) {
+    addMatch('Straw Man', 'Recasts an opponent position into a simpler, more extreme claim.', 'Medium');
+  }
+  if (/\b(expert says|famous .+ says|authority on everything|because .+ said so)\b/i.test(cleanText)) {
+    addMatch('Appeal to Authority', 'Treats an authority’s statement as sufficient proof without relevant evidence.', 'Low');
+  }
+  if (/\b(two examples|one case|everyone|all .+ are|none of them)\b/i.test(cleanText) && !/\bdata|study|sample\b/i.test(lowerText)) {
+    addMatch('Hasty Generalization', 'Makes a broad claim from an explicitly small or unsupported sample.', 'Medium');
+  }
+  if (/\b(anyway|that reminds me|the real issue is|what about .+ instead)\b/i.test(cleanText)) {
+    addMatch('Red Herring', 'Introduces an unrelated issue that diverts attention from the motion.', 'Low');
   }
 
   return matches;

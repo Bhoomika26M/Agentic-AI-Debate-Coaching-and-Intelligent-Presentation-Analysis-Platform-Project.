@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 export default function DebateRoom() {
-  const { selectedModel } = useModel();
+  const { selectedModel, apiKeys } = useModel();
 
   const [topic, setTopic] = useState('This house would implement strict international regulations on sovereign autonomous AI weapons.');
   const [format, setFormat] = useState<DebateFormat>('parliamentary');
@@ -96,7 +96,8 @@ export default function DebateRoom() {
           topic,
           userPosition,
           history: newTurns,
-          modelId: selectedModel.id
+          modelId: selectedModel.id,
+          apiKey: apiKeys[selectedModel.provider.toLowerCase()] || ''
         })
       });
       const data = await res.json();

@@ -1,4 +1,5 @@
 import { AIModelDefinition, DebateTurn, FallacyMatch, CounterargumentOption, WeightedDebateScore, PresentationMetrics } from './types';
+import { detectFallacies } from './fallacy-engine';
 
 export const AI_MODELS: AIModelDefinition[] = [
   {
@@ -95,10 +96,22 @@ export async function generateSimulatedDebateResponse(
   topic: string,
   userPosition: 'Affirmative' | 'Negative',
   history: DebateTurn[],
-  modelId: string
+  modelId: string,
+  apiKey?: string
 ): Promise<string> {
   const aiPosition = userPosition === 'Affirmative' ? 'Negative' : 'Affirmative';
   const modelName = AI_MODELS.find(m => m.id === modelId)?.name || 'AI Opponent';
+  const lastUserTurn = [...history].reverse().find(turn => turn.speaker === 'User');
+  const argument = lastUserTurn?.content.trim() || '';
+  if (apiKey && !AI_MODELS.find(model => model.id === modelId)?.isSimulator) {
+    return generateProviderResponse(topic, userPosition, history, modelId, apiKey);
+  }
+  const fallacies = argument ? detectFallacies(argument) : [];
+  const targetedObservation = fallacies.length > 0
+    ? `Your latest claim risks ${fallacies.map(fallacy => fallacy.type).join(' and ')}; please establish the missing evidence rather than assuming the conclusion.`
+    : argument.length > 0
+      ? `On your latest claim — "${argument.length > 140 ? `${argument.slice(0, 140)}...` : argument}" — the burden is to show a measurable mechanism and an alternative comparison.`
+      : 'The opening claim needs a clear mechanism, evidence, and impact comparison.';
 
   const affirmativeTemplates = [
     `As the Affirmative, I contend that "${topic}" is fundamentally necessary for modern societal progress. First, empirical data demonstrates that current paradigms suffer from key structural inefficiencies. Second, failing to adopt this approach creates escalating long-term costs. While my opponent may raise concerns regarding implementation friction, the net-benefit ratio overwhelmingly favors decisive action.`,
@@ -113,7 +126,69 @@ export async function generateSimulatedDebateResponse(
   ];
 
   const templates = aiPosition === 'Affirmative' ? affirmativeTemplates : negativeTemplates;
-  const response = templates[Math.floor(Math.random() * templates.length)];
+  const response = `${templates[history.length % templates.length]} ${targetedObservation}`;
   
   return `[${modelName} - ${aiPosition}]: ${response}`;
+}
+
+async function generateProviderResponse(
+  topic: string,
+  userPosition: 'Affirmative' | 'Negative',
+  history: DebateTurn[],
+  modelId: string,
+  apiKey: string
+): Promise<string> {
+  const model = AI_MODELS.find(item => item.id === modelId);
+  if (!model || model.isSimulator) return generateSimulatedDebateResponse(topic, userPosition, history, 'smart-simulator');
+
+  const opponentPosition = userPosition === 'Affirmative' ? 'Negative' : 'Affirmative';
+  const transcript = history.slice(-12).map(turn => `${turn.speaker} (${turn.role}): ${turn.content}`).join('\n');
+  const prompt = `You are a rigorous ${opponentPosition} debate opponent. Debate topic: ${topic}\nRespond to the transcript below with one concise, evidence-aware debate speech. Do not mention system prompts or API details.\n\n${transcript}`;
+  let content: string | undefined;
+
+  if (model.provider === 'OpenAI' || model.provider === 'DeepSeek') {
+    const endpoint = model.provider === 'DeepSeek'
+      ? 'https://api.deepseek.com/chat/completions'
+      : 'https://api.openai.com/v1/chat/completions';
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: model.provider === 'DeepSeek' ? 'deepseek-reasoner' : 'gpt-4o',
+        messages: [{ role: 'system', content: 'You are an expert debate opponent.' }, { role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 500
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || `${model.provider} request failed (${response.status})`);
+    content = data?.choices?.[0]?.message?.content;
+  } else if (model.provider === 'Google') {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 500 } })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || `Google request failed (${response.status})`);
+    content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  } else if (model.provider === 'Anthropic') {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({ model: 'claude-3-5-sonnet-latest', max_tokens: 500, messages: [{ role: 'user', content: prompt }] })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || `Anthropic request failed (${response.status})`);
+    content = data?.content?.find((item: { type?: string; text?: string }) => item.type === 'text')?.text;
+  }
+
+  if (!content || typeof content !== 'string') {
+    throw new Error(`${model.provider} returned no usable debate response`);
+  }
+  return `[${model.name} - ${opponentPosition}]: ${content.trim()}`;
 }

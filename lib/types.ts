@@ -139,6 +139,32 @@ export interface PresentationMetrics {
   improvementSuggestions: string[];
 }
 
+export interface ArgumentAnalysis {
+  claim: string;
+  claims: string[];
+  evidence: string[];
+  strengths: string[];
+  weaknesses: string[];
+  scores: {
+    clarity: number;
+    relevance: number;
+    evidenceStrength: number;
+    logicalConsistency: number;
+    persuasiveness: number;
+    overall: number;
+  };
+  fallacies: FallacyMatch[];
+  coachingAdvice: string[];
+}
+
+export interface CoachingPlan {
+  summary: string;
+  prioritySkills: string[];
+  recommendations: string[];
+  exercises: { title: string; objective: string; minutes: number }[];
+  nextMilestone: string;
+}
+
 export interface AIModelDefinition {
   id: string;
   name: string;

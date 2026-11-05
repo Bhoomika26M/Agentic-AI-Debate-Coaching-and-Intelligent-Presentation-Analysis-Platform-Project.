@@ -9,7 +9,10 @@ export function analyzePresentationText(
   const words = cleanText ? cleanText.split(/\s+/) : [];
   const wordCount = words.length;
 
-  const durationInMinutes = Math.max(audioDurationSeconds / 60, 0.5);
+  const safeDurationSeconds = Number.isFinite(audioDurationSeconds) && audioDurationSeconds > 0
+    ? audioDurationSeconds
+    : 60;
+  const durationInMinutes = Math.max(safeDurationSeconds / 60, 0.5);
   const speechPaceWPM = Math.round(wordCount / durationInMinutes);
 
   // Common filler words dictionary

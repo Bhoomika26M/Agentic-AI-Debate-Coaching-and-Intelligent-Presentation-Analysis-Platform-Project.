@@ -29,6 +29,7 @@ export default function Navbar() {
   const navLinks = [
     { href: '/', label: 'OVERVIEW' },
     { href: '/debate', label: 'DEBATE ARENA' },
+    { href: '/analysis', label: 'ARGUMENT AI' },
     { href: '/presentation', label: 'PRESENTATION' },
     { href: '/rebuttal-lab', label: 'REBUTTAL LAB' },
     { href: '/arena', label: 'AI ARENA' },
