@@ -1,6 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-
-const USER_ID = "11111111-1111-4111-8111-111111111111";
+import { USER_ID, goToAccount, goToHome, seedSignedIn } from "./support";
 
 const TOPICS = [
   "Should schools ban phones?",
@@ -57,47 +56,9 @@ const PROFILE = {
   practice_goal: "structure",
   focus_areas: ["argument", "confidence"],
   preferences_updated_at: "2026-10-20T10:00:00.000Z",
+  // No saved settings: the local copy must keep deciding the theme.
   app_settings: null,
 };
-
-async function seedSession(page: Page) {
-  const session = {
-    access_token: "test-access-token",
-    refresh_token: "test-refresh-token",
-    token_type: "bearer",
-    expires_in: 3600,
-    expires_at: Math.floor(Date.now() / 1000) + 3600,
-    user: {
-      id: USER_ID,
-      aud: "authenticated",
-      role: "authenticated",
-      email: "learner-a@example.com",
-      app_metadata: {},
-      user_metadata: {},
-      created_at: "2026-10-01T10:00:00.000Z",
-    },
-  };
-  await page.addInitScript(
-    ([key, value, doneKey, prefsKey, prefs]) => {
-      window.localStorage.setItem(key, value);
-      window.localStorage.setItem(doneKey, "done");
-      window.localStorage.setItem(prefsKey, prefs);
-    },
-    [
-      "sb-test-auth-token",
-      JSON.stringify(session),
-      `verdict-onboarding-v2-${USER_ID}`,
-      `verdict-learner-prefs-v1-${USER_ID}`,
-      JSON.stringify({
-        focus: ["argument", "confidence"],
-        purpose: "university",
-        goal: "structure",
-        experience: "developing",
-        completedAt: "2026-10-20T10:00:00.000Z",
-      }),
-    ],
-  );
-}
 
 async function mockSupabase(page: Page) {
   await page.route("**/rest/v1/**", async (route) => {
@@ -114,24 +75,19 @@ async function mockSupabase(page: Page) {
   });
   await page.route("**/auth/v1/**", (route) => route.fulfill({ json: {} }));
   await page.route("**/api/health", (route) =>
-    route.fulfill({ json: { adaptive_tactics_available: true, laya_available: false } }),
+    route.fulfill({
+      json: { status: "ready", adaptive_tactics_available: true, laya_available: false },
+    }),
   );
 }
 
-async function goToAccount(page: Page) {
-  await page.goto("/");
-  await page.waitForFunction(() => window.location.hash === "#/home");
-  await page.evaluate(() => {
-    window.location.hash = "#/account";
-  });
-  await expect(page.getByRole("heading", { name: /Your practice/ })).toBeVisible();
-}
-
 test("the archive shows five sessions first and expands on demand", async ({ page }) => {
-  await seedSession(page);
+  await seedSignedIn(page);
   await mockSupabase(page);
   await goToAccount(page);
 
+  await page.getByRole("tab", { name: "Archive" }).click();
+  await expect(page.getByRole("heading", { name: "Saved debates" })).toBeVisible();
   await expect(page.locator(".archive-row")).toHaveCount(5);
   await expect(page.getByRole("button", { name: /Show all 8 sessions/ })).toBeVisible();
 
@@ -143,16 +99,15 @@ test("the archive shows five sessions first and expands on demand", async ({ pag
   await expect(page.locator(".archive-row")).toHaveCount(5);
 });
 
-test("opening a session from the dashboard opens that record in the archive", async ({ page }) => {
-  await seedSession(page);
+test("opening a recent round from the home page opens that record in the archive", async ({ page }) => {
+  await seedSignedIn(page);
   await mockSupabase(page);
 
-  await page.goto("/");
-  await page.waitForFunction(() => window.location.hash === "#/home");
-  await expect(page.locator(".programme-list")).toBeVisible();
-  await page.locator(".programme-list").getByRole("button", { name: "Open", exact: true }).first().click();
+  await goToHome(page);
+  await expect(page.locator(".programme-recent-row")).toHaveCount(3);
+  await page.locator(".programme-recent-row").first().click();
 
-  await expect(page.getByRole("heading", { name: /Your practice/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Your progress, in focus\./ })).toBeVisible();
   await expect(
     page.locator(".record-detail").getByRole("heading", { name: TOPICS[0] }),
   ).toBeVisible();
@@ -160,7 +115,7 @@ test("opening a session from the dashboard opens that record in the archive", as
 });
 
 test("settings keeps the profile, coach settings, and data together", async ({ page }) => {
-  await seedSession(page);
+  await seedSignedIn(page);
   await mockSupabase(page);
   await goToAccount(page);
 
@@ -171,11 +126,31 @@ test("settings keeps the profile, coach settings, and data together", async ({ p
   await expect(page.getByRole("heading", { name: "Your data" })).toBeVisible();
 });
 
-test("a guest deep link to the archive lands on sign-in", async ({ page }) => {
+test("a guest deep link to the archive offers sign-in instead of the private view", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => window.location.hash === "#/");
   await page.evaluate(() => {
     window.location.hash = "#/account";
   });
+
+  await expect(page.locator("#welcome-title")).toBeVisible();
+  await page.getByRole("button", { name: "Log in" }).click();
   await expect(page).toHaveURL(/#\/auth$/);
+});
+
+test("opening the account with no saved app settings keeps a classic learner classic", async ({ page }) => {
+  await seedSignedIn(page, "classic");
+  await mockSupabase(page);
+  await goToHome(page);
+
+  await page.evaluate(() => {
+    window.location.hash = "#/account";
+  });
+  await expect(page.getByRole("heading", { name: /Your practice/ })).toBeVisible();
+
+  const theme = await page.evaluate(
+    (key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").theme,
+    `verdict-app-settings-v1-${USER_ID}`,
+  );
+  expect(theme).toBe("classic");
 });

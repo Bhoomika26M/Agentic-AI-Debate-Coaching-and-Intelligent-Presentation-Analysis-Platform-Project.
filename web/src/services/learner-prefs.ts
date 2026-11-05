@@ -148,41 +148,67 @@ export function buildRecommendation(
   experience: LearnerProfile["experience"],
   prefs: Pick<LearnerPrefs, "focus" | "purpose" | "goal">,
 ): Recommendation {
-  const competitive = prefs.purpose === "competition" || prefs.goal === "win";
-  const needsSteadiness = prefs.goal === "nerves" || prefs.focus.includes("confidence");
+  const competitive = prefs.purpose === "competition" || prefs.goal === "win" || prefs.goal === "hostile";
+  const steady = prefs.goal === "nerves" || prefs.focus.includes("confidence");
+  const delivery = prefs.focus.includes("delivery");
+  const buildStructure = prefs.goal === "structure";
+  const evidenceFirst = prefs.goal === "evidence" || prefs.focus.includes("argument");
+  const interview = prefs.purpose === "interview" || prefs.purpose === "confidence";
 
-  if (experience === "new" && !competitive) {
-    return {
-      persona: "diplomat",
-      difficulty: "warm-up",
-      duration: 3,
-      reason: "Gentle pressure and a patient opponent, so you can learn the ropes before the room gets loud.",
-    };
+  let persona: PersonaKey;
+  if (competitive || buildStructure || experience === "confident" && !steady && !delivery) persona = "strategist";
+  else if (steady || delivery || interview) persona = "diplomat";
+  else if (evidenceFirst || prefs.purpose === "school" || prefs.purpose === "university") persona = "skeptic";
+  else if (experience === "new") persona = "diplomat";
+  else persona = "skeptic";
+
+  let difficulty: DifficultyKey;
+  if (competitive) difficulty = "cross-examination";
+  else if (steady || buildStructure || evidenceFirst || prefs.purpose === "school" || prefs.purpose === "university") difficulty = "challenge";
+  else if (experience === "confident") difficulty = "cross-examination";
+  else if (experience === "new" || delivery || interview) difficulty = "warm-up";
+  else difficulty = "challenge";
+
+  const duration = difficulty === "warm-up" ? 3 : difficulty === "cross-examination" && experience === "confident" ? 7 : 5;
+  let reason = "A balanced evidence-first opponent gives a developing case useful pushback.";
+  if (prefs.purpose === "school") reason = "A focused skeptic helps you build clear claims for class debates and school rounds.";
+  if (prefs.purpose === "university") reason = "A focused skeptic tests the reasoning you need for seminars and tutorials.";
+  if (prefs.purpose === "interview") reason = "A patient, people-aware opponent helps you make a clear case about yourself.";
+  if (prefs.purpose === "confidence") reason = "A patient opponent helps you practise speaking up at a manageable pace.";
+  if (prefs.goal === "structure") reason = "A strategic opponent helps you practise building and sustaining a clear case.";
+  if (prefs.goal === "evidence") reason = "An evidence-first skeptic will press you to support each claim.";
+  if (prefs.goal === "nerves" || prefs.focus.includes("confidence")) reason = "The diplomat keeps the exchange measured while you practise holding your nerve.";
+  if (delivery) reason = "A measured exchange leaves room to practise delivery and finish with a closing take.";
+  if (competitive) reason = prefs.purpose === "competition"
+    ? "A strategist and harder questions help you rehearse the pressure of competition rounds."
+    : prefs.goal === "hostile"
+      ? "A strategist will test you with hard questions so you can practise answering the point directly."
+      : "A strategist pushes you to weigh clashes and close the round decisively.";
+  if (!prefs.purpose && !prefs.goal && !prefs.focus.length && experience === "new") {
+    reason = "A patient opponent and a short warm-up make a welcoming first round.";
+  } else if (!prefs.purpose && !prefs.goal && !prefs.focus.length && experience === "confident") {
+    reason = "You said you are ready for real pushback, so the starting round raises the pressure.";
   }
-  if (competitive || experience === "confident") {
-    return {
-      persona: "strategist",
-      difficulty: "cross-examination",
-      duration: 5,
-      reason: competitive
-        ? "Hard questions and a long-game opponent, because you are practising for a competition."
-        : "Hard questions and a long-game opponent, because you said you are ready for real pushback.",
-    };
-  }
-  if (needsSteadiness) {
-    return {
-      persona: "diplomat",
-      difficulty: "challenge",
-      duration: 5,
-      reason: "Balanced pressure against a wide-lens opponent, tuned for holding your nerve under fire.",
-    };
-  }
-  return {
-    persona: "skeptic",
-    difficulty: "challenge",
-    duration: 5,
-    reason: "Balanced pushback from an evidence-first opponent — the fastest way to sharpen a developing case.",
-  };
+
+  return { persona, difficulty, duration, reason };
+}
+
+export function firstPracticeCue(prefs: Pick<LearnerPrefs, "focus" | "purpose" | "goal">): string {
+  const cues: string[] = [];
+  if (prefs.goal === "structure") cues.push("Build a clear claim line before adding a second point.");
+  if (prefs.goal === "evidence") cues.push("Attach one concrete proof point to each major claim.");
+  if (prefs.goal === "nerves") cues.push("Pause once before answering your opponent’s first challenge.");
+  if (prefs.goal === "hostile") cues.push("Answer the hardest question first, then explain why.");
+  if (prefs.goal === "win") cues.push("Close by weighing the strongest clash in your favor.");
+  if (prefs.focus.includes("argument") && prefs.goal !== "evidence" && prefs.goal !== "structure") cues.push("Make each claim specific, then show why it follows.");
+  if (prefs.focus.includes("delivery")) cues.push("Record a closing take after the round to review pace and pauses.");
+  if (prefs.focus.includes("confidence") && prefs.goal !== "nerves") cues.push("Take one beat before your first reply and keep your case moving.");
+  if (prefs.purpose === "school") cues.push("Lead with one clear claim you can defend in class.");
+  if (prefs.purpose === "university") cues.push("Name the assumption your argument depends on.");
+  if (prefs.purpose === "interview") cues.push("Connect each point to one concrete example from your experience.");
+  if (prefs.purpose === "confidence") cues.push("Start with a short opening and let yourself pause.");
+  if (prefs.purpose === "competition") cues.push("Practise weighing both sides before you close.");
+  return cues.length ? cues.join(" ") : "Run one round and review it to get your first personal cue.";
 }
 
 export function purposeLine(prefs: LearnerPrefs): string {

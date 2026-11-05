@@ -18,6 +18,7 @@ import {
   PURPOSE_OPTIONS,
   buildRecommendation,
   emptyPrefs,
+  firstPracticeCue,
   focusLabels,
   goalLine,
   hasAnswers,
@@ -238,8 +239,12 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
         .then((data) => {
           if (!active || !data) return;
           setProfile(data);
-          setAppSettings(data.app_settings);
-          cacheApplicationSettings(user.id, data.app_settings);
+          // No saved settings is not the same as saved defaults: leave the
+          // learner's current theme and local cache untouched.
+          if (data.app_settings) {
+            setAppSettings(data.app_settings);
+            cacheApplicationSettings(user.id, data.app_settings);
+          }
         })
         .catch(() => {})
         .finally(() => { if (active) setAppSettingsReady(true); });
@@ -1010,7 +1015,7 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
           <div className="archive-heading">
             <div>
               <h2 id="room-heading">{setupComplete ? "Your room" : "Set your room"}</h2>
-              <p>These answers choose your opponent, your pressure, and the cue waiting on your dashboard.</p>
+              <p>Preview updates as you choose. Save your room to apply these defaults and refresh your dashboard cue.</p>
             </div>
           </div>
 
@@ -1084,6 +1089,7 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
               <div><span>Clock</span><b>{recommendation.duration} min</b></div>
             </div>
             <p>{recommendation.reason}</p>
+            <p className="room-effect-cue"><b>Dashboard cue</b>{firstPracticeCue(prefs)}</p>
           </div>
 
           <div className="account-setup-foot">

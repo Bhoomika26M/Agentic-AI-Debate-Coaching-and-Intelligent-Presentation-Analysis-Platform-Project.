@@ -10,7 +10,9 @@ export type LearnerProfile = {
   practice_goal: string | null;
   focus_areas: string[];
   preferences_updated_at: string | null;
-  app_settings: ApplicationSettings;
+  // Null means the database has no saved settings yet. Callers must not turn
+  // that into "theme: new" and overwrite a learner's existing choice.
+  app_settings: ApplicationSettings | null;
 };
 
 const COLUMNS = "display_name, experience, goals, retain_audio, purpose, practice_goal, focus_areas, preferences_updated_at, app_settings";
@@ -48,7 +50,7 @@ export async function loadProfile(userId: string): Promise<LearnerProfile | null
   return {
     ...row,
     focus_areas: row.focus_areas ?? [],
-    app_settings: normalizeApplicationSettings(row.app_settings),
+    app_settings: row.app_settings == null ? null : normalizeApplicationSettings(row.app_settings),
   };
 }
 

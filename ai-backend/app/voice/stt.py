@@ -20,6 +20,7 @@ import os
 
 from ..speech import (
     STT_LANGUAGE,
+    AudioValidationError,
     TranscriptionTimeoutError,
     TranscriptionUnavailableError,
     probe_duration,
@@ -35,7 +36,10 @@ logger = logging.getLogger(__name__)
 VOICE_STT_MODEL = os.getenv("VOICE_STT_MODEL", "").strip() or "base.en"
 VOICE_STT_DEVICE = os.getenv("VOICE_STT_DEVICE", "cpu").strip().lower() or "cpu"
 VOICE_STT_BEAM_SIZE = max(1, int(os.getenv("VOICE_STT_BEAM_SIZE", "1")))
-MAX_UTTERANCE_SEC = max(5, int(os.getenv("VOICE_MAX_SEC", "45")))
+# A voice turn is conversational but can still run long. The cap is generous
+# enough for a thoughtful opening case, and the shared audio error type lets
+# the socket report a recoverable validation failure rather than an outage.
+MAX_UTTERANCE_SEC = max(5, int(os.getenv("VOICE_MAX_SEC", "120")))
 MAX_VOICE_TRANSCRIBE_SEC = max(5, int(os.getenv("VOICE_TRANSCRIBE_SEC", "30")))
 
 _model = None
@@ -132,7 +136,7 @@ async def transcribe_utterance(
     validate_audio(filename, content_type, data)
     known = probe_duration(data)
     if known is not None and known > MAX_UTTERANCE_SEC:
-        raise TranscriptionUnavailableError(
+        raise AudioValidationError(
             f"That turn is {known:.0f}s long. Keep spoken turns under {MAX_UTTERANCE_SEC}s."
         )
     # In a thread: the first load downloads and initialises a checkpoint, and a

@@ -1,5 +1,6 @@
 import asyncio
 import os
+from typing import Annotated
 
 import jwt
 from fastapi import Depends, HTTPException
@@ -14,7 +15,7 @@ JWKS_URL = os.getenv("SUPABASE_JWKS_URL", "").strip() or (
 JWT_ISSUER = os.getenv("SUPABASE_JWT_ISSUER", "").strip() or (
     f"{SUPABASE_URL}/auth/v1" if SUPABASE_URL else ""
 )
-REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").strip().lower() == "true"
+REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "true").strip().lower() == "true"
 bearer = HTTPBearer(auto_error=False)
 jwks_client = PyJWKClient(JWKS_URL, cache_jwk_set=True, lifespan=3600) if JWKS_URL else None
 
@@ -25,7 +26,7 @@ if REQUIRE_AUTH and (not JWKS_URL or not JWT_ISSUER):
 
 
 async def authenticate_request(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
 ) -> str | None:
     """Return the verified subject, or None for a guest when guest mode is allowed."""
     return await require_token(credentials.credentials if credentials else None)

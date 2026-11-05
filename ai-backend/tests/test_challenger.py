@@ -12,7 +12,10 @@ from app.agents import challenger
 from app.schemas import ChallengeRequest
 from app.usage_limits import TurnFollowUpLimiter
 
-REPLY = '{"target_sentence": "Because traffic hurts people.", "follow_up": "Which study shows that?"}'
+REPLY = (
+    '{"target_sentence": "Because traffic hurts people.", '
+    '"follow_up": "Which study shows that?"}'
+)
 LATEST = "Because traffic hurts people."
 
 

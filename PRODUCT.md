@@ -21,24 +21,24 @@ Learners can choose a curated or custom motion, their side, an opponent persona,
 ## Operating Context
 
 - The frontend is React, TypeScript, and Vite. AI and ML orchestration stays in Python 3.12 with FastAPI and `uv`; AI decisions and model calls stay in Python.
-- Inference runs through Ollama (`qwen3.5:4b` by default) on the operator's machine or a host they control. Vite forwards `/api` to the API during development.
-- Learner accounts and persistence use Supabase Free (confirmed): Supabase Auth for identity, Postgres with row-level security for learner-owned records. Guest practice continues when Supabase is unconfigured or persistence fails.
+- Inference runs through Ollama (`qwen3.5:4b` by default) or an OpenAI-compatible endpoint selected by the operator. The API holds any provider key; the browser never receives it. Vite forwards `/api` to the API during development.
+- Learner accounts and persistence use Supabase Free (confirmed): Supabase Auth for identity, Postgres with row-level security for learner-owned records. Visitors can read the public overview; debate, analysis, and account screens require sign-in.
 - Desktop receives the strongest visual polish, while core flows remain usable on mobile.
-- The project runs on free tools and hosting tiers: Supabase Free for auth and storage, and the static frontend on Vercel or Render. The API runs on a host that can reach a model endpoint.
+- The project is developed with free tools and tiers where available: Supabase Free for auth and storage, and static hosting such as Vercel or Render. The API runs on a host that can reach its configured model endpoint. There is no public deployment.
 - The app behaves as a real product: no placeholder shortcuts, no demo-only copy in product truth.
 
 ## Capabilities and Constraints
 
 - Implemented: learner accounts and AI Debate Simulation plus argument intelligence.
 - Debate setup supports curated and custom topics, for/against side, personas (`strategist`, `skeptic`, `diplomat`), difficulty (`warm-up`, `challenge`, `cross-examination`), and session duration 2–10 minutes. Replies stream over SSE.
-- Account supports email/password sign-up and sign-in with validation (12+ characters with uppercase, lowercase, number), Google OAuth, email verification, password visibility, and a guest route. Passwords are handled by Supabase Auth; Verdict never sees or stores them.
+- Account supports email/password sign-up and sign-in with validation (12+ characters with uppercase, lowercase, and number), Google OAuth, email verification, password visibility, and password recovery. Passwords are handled by Supabase Auth; Verdict never sees or stores them. Practice routes in the browser require sign-in; the public overview remains available without an account.
 - Saved work is owner-scoped with RLS: debate sessions and turns, completion/resume, learner archive with transcript viewing, and saved argument reviews.
-- Argument intelligence reviews the transcript against five named rubric criteria (`clarity`, `relevance`, `evidence_strength`, `logical_consistency`, `persuasiveness`), checks eight documented fallacy types against exact transcript text, and generates five planned counterpoint styles. Incomplete model replies are retried with a repair turn (up to three attempts); a report that stays incomplete ends in a clear error, not a partial review. Limits are stated as text-only.
+- Argument intelligence reviews the transcript against five named rubric criteria (`clarity`, `relevance`, `evidence_strength`, `logical_consistency`, `persuasiveness`), checks eight documented fallacy types against exact transcript text, and generates five planned counterpoint styles. Incomplete branches get bounded repair attempts; a report that remains incomplete discloses the affected branches and available results as a partial review. Limits are stated as text-only.
 - Delivery review reports four transcript-based pace and pause patterns (fast pace, hesitant patch, long pause, steady pace) with explainable scores, recommendations, the learner dashboard and progress, reports, and in-app milestones. The labels do not diagnose emotion, stress, or ability. Categorical emotion recognition stays local-only opt-in; hosted review uses delivery proxies only. Other account roles and debate formats are out of scope for v1.
-- Local inference uses Ollama. Local speech uses faster-whisper `distil-large-v3.5` by default (configurable with `STT_MODEL`, downloaded on first transcription). Hosted transcription and provider-key routing are not implemented; provider keys are rejected. Do not persist or log provider keys, expose them to browser code, use a project-owned paid key, or fall back to paid inference.
+- Debate voice mode uses local faster-whisper transcription (`base.en` by default) and local Kokoro speech synthesis when its optional dependencies and model files are installed. Delivery review uses faster-whisper `distil-large-v3.5` by default. Hosted transcription is not implemented. Hosted model generation is supported through an operator-configured OpenAI-compatible endpoint; keys stay server-side and are not supplied per learner.
 - Recorded audio is discarded immediately by default (10MB / 180s caps). Retention is available only through an explicit learner setting.
 - Keep Python modules focused, code readable, and comments minimal.
-- Backend requires explicit `WEB_ORIGIN` and `ALLOWED_HOSTS`, applies no-store/security response headers, validates request sizes, and caps simultaneous streams (`MAX_ACTIVE_STREAMS=2`). `REQUIRE_AUTH=false` keeps guest practice open; any hosted deployment sets `REQUIRE_AUTH=true` with Supabase JWKS verification.
+- Backend requires explicit `WEB_ORIGIN` and `ALLOWED_HOSTS`, applies no-store/security response headers, validates request sizes, and caps simultaneous streams (`MAX_ACTIVE_STREAMS=2`). `REQUIRE_AUTH=true` is the default and verifies signed-in users with Supabase JWKS; an explicit local API guest override does not unlock guest practice in the browser app.
 - Keyboard access, visible focus, and reduced-motion CSS support are implemented across the practice flow.
 
 ## Brand Commitments
@@ -49,8 +49,8 @@ Learners can choose a curated or custom motion, their side, an opponent persona,
 
 ## Evidence on Hand
 
-- The repository contains a runnable React/Vite frontend and a Python/FastAPI service that streams responses from a local Ollama model.
-- Replies stream from the Qwen3.5 4B model through the API, which is the only component that talks to a model.
+- The repository contains a runnable React/Vite frontend and a Python/FastAPI service that streams responses from the default local Ollama model or an operator-configured OpenAI-compatible endpoint.
+- Replies stream through the API, which is the only component that talks to a model. Ollama uses Qwen3.5 4B by default.
 - Argument analysis returns all five ratings, all five counterargument kinds, and grounded coaching from a single review request.
 - The Supabase schema lives in `supabase/migrations/` (`debate_sessions`, `debate_turns`, `debate_analyses`) with explicit grants and owner-scoped RLS policies. Account and archive flows need the operator's own Supabase credentials to run.
 - No learner research, validated coaching outcomes, testimonials, or comparative benchmarks are recorded. Do not invent or imply them.

@@ -1,5 +1,6 @@
-# Whole stack on one command: docker compose up --build, then open http://localhost:8080.
-# Accounts are optional; set the Supabase values in a root .env (see .env.docker.example).
+# Configure Supabase in the root .env before starting; REQUIRE_AUTH=true is the default.
+# Start with docker compose up --build, then open http://localhost:8080.
+# REQUIRE_AUTH=false permits local API requests without a token but does not unlock browser practice.
 services:
   ollama:
     image: ollama/ollama:latest
@@ -51,7 +52,7 @@ services:
       ENABLE_LAYA_TACTICS: ${ENABLE_LAYA_TACTICS:-false}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8080}
       ALLOWED_HOSTS: localhost,127.0.0.1,api
-      REQUIRE_AUTH: ${REQUIRE_AUTH:-false}
+      REQUIRE_AUTH: ${REQUIRE_AUTH:-true}
       # "public" refuses to start without REQUIRE_AUTH=true and explicit https origins.
       DEPLOYMENT_ENV: ${DEPLOYMENT_ENV:-local}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}

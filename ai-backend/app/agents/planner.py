@@ -8,7 +8,9 @@ logger = logging.getLogger(__name__)
 EVERY_N_TURNS = max(1, int(os.getenv("PLANNER_EVERY_N_TURNS", "2")))
 
 
-EVIDENCE_MARKS = ("because", "study", "studies", "data", "example", "evidence", "research", "statistic")
+EVIDENCE_MARKS = (
+    "because", "study", "studies", "data", "example", "evidence", "research", "statistic"
+)
 
 
 def learner_turn_count(history: list[dict], latest: str | None) -> int:

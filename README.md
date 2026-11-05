@@ -4,7 +4,7 @@
 
 Verdict is an AI debate coach for students and self-directed learners. Choose a motion, take a side, and argue it live against an opponent with a distinct personality — then get coaching on both what you argued and how you sounded saying it.
 
-No account is required. Open the app, finish a practice round in a few minutes, and leave with clear next steps for your next debate.
+Visitors can explore the public overview. A Supabase account is required to enter Debate, Analysis, the practice plan, and saved work.
 
 > **Status:** a complete local product with real AI orchestration, not a deployed service. It runs on your machine against Ollama, or against any OpenAI-compatible endpoint you configure. There is no public demo URL. Roughly half the modules in the original course spec are done, several are partial, and some are absent; the [spec coverage](#spec-coverage) table below says which is which instead of claiming the whole brief.
 
@@ -16,7 +16,7 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 **Rehearse a live debate.** Choose a motion from your topic bank or write your own, argue for or against, pick one of three opponents (Strategist, Skeptic, Diplomat), set the pressure and a 2–10 minute clock, then trade turns. Each model-written opponent reply is drafted in full and reviewed before display; a guard redirect is sent immediately and labelled on-motion. The room shows a drafting-and-checking state while it waits, and labels the result as checked, recovered after review, or a deliberate on-motion redirect. The opponent plans against your weakest joint, remembers what your saved sessions showed was weak, adapts its pressure to how you argue, and can press Socratic follow-ups two deep per learner turn.
 
-**Speak a turn.** Voice mode lets you hold a key to talk, or switch on hands-free and just speak. Your words are transcribed on this machine, checked for recognition noise before anything else sees them, and shown for 1.5 s so you can fix or discard them. Then the same guard, planner and verifier that review a typed turn run, and the opponent answers out loud in one of three distinct voices — one sentence at a time, with live captions. You can interrupt mid-reply; only the words you actually heard are kept. Every spoken turn also shows pace, fillers and pauses as chips. Speech synthesis is on the CPU so the 4B model keeps the GPU. Measured on the development laptop: the opponent's voice starts answering in 0.81 s p50 (a pre-rendered opener), and its first real sentence arrives at 4.56 s p50 — slower than the 2 s target, and [docs/VOICE.md](docs/VOICE.md) says so with the numbers. Nothing is sent to a hosted speech service, and no browser `SpeechRecognition` is used. Without the TTS model the browser reads replies; without a microphone, typed turns still work.
+**Speak a turn.** Voice mode lets you hold a key to talk, or switch on hands-free and just speak. Your words are transcribed on this machine and checked for recognition noise before anything else sees them. In hands-free mode, the transcript is shown for 1.5 s so you can fix or discard it; push-to-talk sends it immediately. Then the same guard, planner and verifier that review a typed turn run, and the opponent answers out loud in one of three distinct voices — one sentence at a time, with live captions. You can interrupt mid-reply; only the words you actually heard are kept. Every spoken turn also shows pace, fillers and pauses as chips. Speech synthesis is on the CPU so the 4B model keeps the GPU. Measured on the development laptop: the opponent's voice starts answering in 0.81 s p50 (a pre-rendered opener), and its first real sentence arrives at 4.56 s p50 — slower than the 2 s target, and [docs/VOICE.md](docs/VOICE.md) says so with the numbers. Nothing is sent to a hosted speech service, and no browser `SpeechRecognition` is used. Without the TTS model the browser reads replies; without a microphone, typed turns still work.
 
 **Review your arguments.** A rehearsal with learner turns can be reviewed for ratings on clarity, relevance, evidence, logic, and persuasion, fallacy flags quoted from your exact words, and five counterpoint styles that test your case from other angles. Any branch the model cannot complete is disclosed as a partial review rather than silently filled in.
 
@@ -32,7 +32,7 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 *This view is shown with the seeded sample sessions and test account from the browser test fixture, not a real learner's record. The other screenshots and the demo are unedited captures of the local app.*
 
-**Keep your work.** A free account with email or Google saves transcripts and reviews to your archive; password recovery is built in. A guest rehearsal lives only in the current browser tab and is cleared when the session ends.
+**Get started in the open.** The public overview explains the rehearsal and review flow before you create an account. Sign in or register to enter Debate, Analysis, your plan, and saved work. Email/password and Google sign-in are supported, with verification and password recovery.
 
 ---
 
@@ -50,7 +50,7 @@ No account is required. Open the app, finish a practice round in a few minutes, 
 
 ![The weighted verdict with its scored dimensions](docs/screenshots/verdict.png)
 
-The screenshot above is a real guest round against the local model, with no delivery take recorded: communication is left out, the other four weights are renormalized to 100%, and the gap is disclosed. [Watch the screen recording of that round and its review](docs/demo.webm) (68 seconds, no audio; the review wait is included). The recording and screenshot come from the same Playwright-driven run against the real local model; no score, text, or timing was edited.
+The screenshot above and [screen recording](docs/demo.webm) (68 seconds, no audio; review wait included) show a local guest-mode run captured before browser practice became account-gated. Current browser practice requires sign-in. The round has no delivery take, so communication is left out, the other four weights are renormalized to 100%, and the gap is disclosed. The recording and screenshot came from the same Playwright-driven run against the real local model; no score, text, or timing was edited.
 
 ---
 
@@ -74,7 +74,7 @@ The language model only ever receives text through the API. The browser never ta
 | API | Python 3.12/3.13, FastAPI, Pydantic, LangGraph | All model calls, orchestration, and validation live here |
 | Inference | Ollama (`qwen3.5:4b` by default), or any OpenAI-compatible API | One transport in `app/providers.py`; `LLM_PROVIDER` chooses, and a key alone switches to hosted |
 | Debate move selection | Deterministic argument-shape policy, plus Laya as an opt-in local PyTorch checkpoint | Clear turns are routed by policy; Laya chooses an ambiguous five-way vulnerability when enabled. The configured model still writes the reply |
-| Speech | `faster-whisper` | Local transcription for delivery review; `distil-large-v3.5` by default |
+| Speech | `faster-whisper`, Kokoro | Local transcription for delivery review (`distil-large-v3.5`) and voice debate (`base.en`); optional local speech synthesis |
 | Accounts and storage | Supabase (free tier) | Auth, Postgres with row level security, private audio bucket |
 
 ---
@@ -137,7 +137,7 @@ The language model only ever receives text through the API. The browser never ta
 - **Tasks**
   - [x] Implement the presentation analysis engine: transcript-based pace, fillers, pauses, and drills. **No confidence, engagement, or prosody scoring**, and no slides or video.
   - [x] Add reports and visualization modules. **CSV and browser print only; no native PDF or Excel export.**
-  - [x] Implement testing and validations: 301 backend tests and 11 Playwright tests, plus a GitHub Actions workflow for pytest, the fallacy-set check, the typecheck, and a build. The workflow has not yet run on a GitHub runner.
+  - [x] Implement testing and validations: 390 backend tests and 13 Playwright tests, plus a GitHub Actions workflow for pytest, the fallacy-set check, the typecheck, and a build. The workflow has not yet run on a GitHub runner.
   - [ ] Deploy the platform to a public host. Dockerfiles, compose, a Render blueprint, and hosted-provider routing exist, but nothing is deployed and there is no monitoring.
   - [x] Prepare final documentation and presentation. Documentation, the milestone audit, and a recorded walkthrough are in the repository; **no slide deck is included**.
 - **Outcomes**
@@ -189,6 +189,10 @@ ollama pull qwen3.5:4b
 
 If Ollama does not start on its own, run `ollama serve` in a terminal and leave it open. Confirm it with `curl http://127.0.0.1:11434/api/tags`.
 
+**Before starting the API: configure accounts**
+
+Create a Supabase project, put its project URL and publishable key in `web/.env`, put the project URL in `ai-backend/.env` as `SUPABASE_URL`, and run the SQL files in `supabase/migrations/` in filename order. Keep email confirmation on, set the password rule to 12 or more characters with uppercase, lowercase, and numbers, and add `http://127.0.0.1:5173` to the redirect allowlist. Google sign-in is configured in the Supabase provider settings, where the client secret stays. `REQUIRE_AUTH=true` is the default, so configure Supabase before starting the API. In-app account deletion is optional: deploy the `supabase/functions/delete-account` Edge Function with `supabase functions deploy delete-account` and set its `APP_ORIGIN` secret to the web origin. Without it, learners can still delete their practice data and are told that account removal needs the operator.
+
 **2. Start the API**
 
 ```bash
@@ -233,23 +237,17 @@ uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 `auto` (the default) picks the hosted path as soon as `OPENAI_API_KEY` is set, and keeps Ollama otherwise. The key stays on the server; it is never sent to the browser. `GET /api/health` reports which provider and model are in use. If your endpoint does not support JSON schemas, set `OPENAI_JSON_MODE=json_object`; the app validates every reply itself and repairs invalid ones either way.
 
-**5. Optional: enable accounts**
-
-Practice works without this. To save sessions to an archive, create a Supabase project, put its project URL and publishable key in `web/.env`, put the project URL in `ai-backend/.env` as `SUPABASE_URL`, and run the SQL files in `supabase/migrations/` in filename order. Keep email confirmation on, set the password rule to 12 or more characters with uppercase, lowercase, and numbers, and add `http://127.0.0.1:5173` to the redirect allowlist. Google sign-in is configured in the Supabase provider settings, where the client secret stays. In-app account deletion is optional: deploy the `supabase/functions/delete-account` Edge Function with `supabase functions deploy delete-account` and set its `APP_ORIGIN` secret to the web origin. Without it, learners can still delete their practice data and are told that account removal needs the operator.
-
----
-
 ## Docker
 
 The standard API image excludes Laya. To opt in, copy `.env.docker.example` to `.env`, set `EXTRAS=--extra laya`, and set `ENABLE_LAYA_TACTICS=true` before building.
 
-One command starts the API, the web app, and an Ollama service with the model pulled:
+After copying `.env.docker.example` to `.env` and configuring Supabase, one command starts the API, the web app, and an Ollama service with the model pulled. The default `REQUIRE_AUTH=true` requires `SUPABASE_URL`; the API will not start without it. Setting `REQUIRE_AUTH=false` permits unauthenticated local API requests, but the browser app still requires sign-in for practice.
 
 ```bash
 docker compose up --build          # then open http://localhost:8080
 ```
 
-The first run downloads the Ollama image and about 3.4 GB of model. If Laya is opted in, the first ambiguous debate move also downloads its checkpoint (about 808 MB) into the persistent `hf-cache` volume. Accounts stay optional; fill in the Supabase values in `.env` to enable them.
+The first run downloads the Ollama image and about 3.4 GB of model. If Laya is opted in, the first ambiguous debate move also downloads its checkpoint (about 808 MB) into the persistent `hf-cache` volume.
 
 Compose builds the `runtime` target, so `docker compose up` does not run the backend tests. Run `make test`, `uv run pytest` in `ai-backend`, or `docker build --target test ai-backend` when you want the suite exercised.
 
@@ -295,7 +293,7 @@ Running it needs more than `uv sync`:
 2. The two Kokoro files in `ai-backend/models/kokoro/` (`kokoro-v1.0.onnx`, `voices-v1.0.bin`); links are in [docs/VOICE.md](docs/VOICE.md).
 3. `espeak-ng` on the system (Kokoro's phonemiser, GPL-3.0).
 4. `ollama serve` with `qwen3.5:4b` pulled, and the API on port 8000, because `vite.config.ts` proxies `/ws` there.
-5. A signed-in account when `REQUIRE_AUTH=true`: the voice socket authenticates with the session token and closes with 4401 without one. Typed turns in a guest session do not need it.
+5. A signed-in account: the browser app requires one for practice, and the voice socket authenticates with its session token. Without a valid token the socket closes with 4401.
 
 The API also checks the page's origin against `WEB_ORIGIN` (default `http://127.0.0.1:5173,http://localhost:5173`) and closes with 4403 otherwise. If the Voice button opens a room that immediately reports a failure, that close code now says which of the three it was; a blank page would mean the room itself crashed, which the arena now contains instead of taking the whole app down.
 
@@ -303,9 +301,9 @@ The API also checks the page's origin against `WEB_ORIGIN` (default `http://127.
 - Speech synthesis is `kokoro-onnx` in process on the CPU. It adds **0 MiB** of VRAM, which is what keeps the 4B model resident in 6 GB. Kokoro needs **espeak-ng (GPL-3.0)**, the one non-permissive dependency in the stack.
 - `VOICE_TTS=off` disables server speech; the browser then uses `speechSynthesis` at the same pace. `GET /api/health` does not report speech state — the socket's `ready` event does (`tts: "kokoro-82m-cpu"` or `"none"`).
 - Setup, licences, per-persona voices, VRAM numbers, and measured p50/p95 over 20 turns are in [docs/VOICE.md](docs/VOICE.md). Raw per-turn data is in [docs/voice-measurements.json](docs/voice-measurements.json).
-- 371 backend tests pass, 70 of them new for voice mode.
+- The backend suite has 390 passing tests. The Playwright suite also covers a complete spoken turn using Chromium's fake microphone and the mocked API.
 
-Voice mode is **not** real-time or full duplex: you cannot talk over the opponent, and barge-in cuts the reply rather than mixing streams. Round phases (P4) and the Playwright spoken-turn test are not implemented; both are listed as open in `docs/VOICE.md`.
+Voice mode is **not** real-time or full duplex: you cannot talk over the opponent, and barge-in cuts the reply rather than mixing streams. Round phases (P4) are not implemented. The Playwright suite covers a mocked spoken turn, while real-device barge-in latency still needs measurement; see [docs/VOICE.md](docs/VOICE.md).
 
 ---
 
@@ -340,11 +338,11 @@ Set these in `ai-backend/.env` (see `.env.example`) unless noted.
 | `OLLAMA_MODEL` | `qwen3.5:4b` | Local model name to expect and request |
 | `WEB_ORIGIN` | `http://127.0.0.1:5173` | Exact allowed browser origins, comma separated; wildcards are rejected |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1,0.0.0.0` | Hosts the API will answer for |
-| `REQUIRE_AUTH` | `false` | Set to `true` with Supabase configured before any public deployment |
-| `DEPLOYMENT_ENV` | `local` | `local` allows guest mode. `public` refuses to start unless auth is required, every origin is `https`, and hosts are not loopback |
+| `REQUIRE_AUTH` | `true` | Supabase must be configured for the API to start; `false` permits unauthenticated local API requests but does not unlock browser practice |
+| `DEPLOYMENT_ENV` | `local` | `public` refuses to start unless auth is required, every origin is `https`, and hosts are not loopback |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Per-IP API requests per minute, per process; `/api/health` is exempt |
-| `MODEL_RATE_LIMIT_PER_MINUTE` | `12` | Per-learner (or guest IP) model-backed requests per minute, per process |
-| `SUPABASE_URL` | empty | Enables token verification for signed-in requests |
+| `MODEL_RATE_LIMIT_PER_MINUTE` | `12` | Per-learner or unauthenticated local API request IP, per process |
+| `SUPABASE_URL` | empty | Required for token verification when `REQUIRE_AUTH=true` (the default) |
 | `SUPABASE_JWKS_URL` | derived | Override only if you serve JWKS elsewhere |
 | `SUPABASE_JWT_ISSUER` | derived | Override only if your tokens use a different issuer |
 | `MAX_ACTIVE_STREAMS` | `2` | Concurrent model streams per process before requests are answered with 429 |
@@ -377,7 +375,7 @@ In `web/.env`: `VITE_API_BASE_URL` (blank uses the dev proxy or a same-origin `/
 | `POST /api/coach/plan` | Practice plan from your own record, grounded in diagnosed weak spots |
 | `POST /api/presentation/analyze` | Audio upload plus optional motion; returns transcript, delivery signals, and drills |
 
-With `REQUIRE_AUTH=true`, every endpoint except health requires a signed-in token. In guest mode, model-backed endpoints are capped by client IP; signed-in requests are capped per learner. Both limits are process-local.
+With `REQUIRE_AUTH=true` (the default), every endpoint except health requires a signed-in token. If `REQUIRE_AUTH=false` is explicitly set for isolated local API development, unauthenticated model-backed requests are capped by client IP; signed-in requests are capped per learner. Both limits are process-local. This API setting does not remove the browser app's sign-in requirement.
 
 ---
 
@@ -385,7 +383,7 @@ With `REQUIRE_AUTH=true`, every endpoint except health requires a signed-in toke
 
 The web app builds to static files, so it can be hosted anywhere. A Render blueprint is included as `render.yaml`, and `web/vercel.json` carries the same headers for Vercel, including a content security policy, immutable caching for hashed assets, and `microphone=(self)` for recording.
 
-The API needs a host that can run a container and either reach a model endpoint or call a hosted one. Point `VITE_API_BASE_URL` at its HTTPS origin, set `WEB_ORIGIN` and `ALLOWED_HOSTS` to the exact origins you serve from, then set `DEPLOYMENT_ENV=public` and `REQUIRE_AUTH=true` with Supabase configured. `DEPLOYMENT_ENV=public` makes the API refuse to start with guest mode, an `http` origin, or a loopback host; it is a startup guard, not a substitute for a proxy-level limiter.
+The API needs a host that can run a container and either reach a model endpoint or call a hosted one. Point `VITE_API_BASE_URL` at its HTTPS origin, set `WEB_ORIGIN` and `ALLOWED_HOSTS` to the exact origins you serve from, then set `DEPLOYMENT_ENV=public` and `REQUIRE_AUTH=true` with Supabase configured. `DEPLOYMENT_ENV=public` makes the API refuse to start with `REQUIRE_AUTH=false`, an `http` origin, or a loopback host; it is a startup guard, not a substitute for a proxy-level limiter.
 
 With a hosted provider the API holds no model in memory, so a small instance works:
 
@@ -404,11 +402,11 @@ The image also ships local transcription, whose Whisper model downloads on the f
 
 Rate limits are held in each API process. If you run more than one instance, add a shared rate limiter at the proxy or a shared store; the in-process counters do not coordinate across workers.
 
-Hosted generation is supported with one server-side provider key, so a demo does not need a GPU machine. Two things are still deliberately out of scope: managed multi-tenant inference, and per-learner provider keys. Set `REQUIRE_AUTH=true` on anything public; guest mode is for a machine only you can reach.
+Hosted generation is supported with one server-side provider key, so a host does not need a GPU machine. Managed multi-tenant inference and per-learner provider keys are out of scope. Set `REQUIRE_AUTH=true` on anything public; unauthenticated API access is for isolated local development only.
 
 **No public deployment exists.** The current state is: both images build, compose is the documented local path, and the API can call a hosted endpoint, but nobody has deployed it. That is also why nothing is monitored.
 
-Behind the bundled nginx proxy, uvicorn is started without proxy-header trust, so the guest rate limiter sees the proxy's address rather than each client's. If you run this behind a trusted proxy, start uvicorn with `--proxy-headers --forwarded-allow-ips` set to that proxy; otherwise keep `REQUIRE_AUTH=true` so limits key on the signed-in learner.
+Behind the bundled nginx proxy, uvicorn is started without proxy-header trust, so the unauthenticated API rate limiter sees the proxy's address rather than each client's. If you run this behind a trusted proxy, start uvicorn with `--proxy-headers --forwarded-allow-ips` set to that proxy; otherwise keep `REQUIRE_AUTH=true` so limits key on the signed-in learner.
 
 ---
 

@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 
 
 def make_chat(replies: list[str]):
-    """Return an async `chat` that answers with the given replies in order, then repeats the last."""
+    """Return an async `chat` that answers with replies in order, then repeats the last."""
     calls: list[list[dict[str, str]]] = []
 
     async def chat(messages, **_kwargs):

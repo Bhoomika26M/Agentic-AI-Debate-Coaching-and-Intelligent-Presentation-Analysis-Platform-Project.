@@ -8,14 +8,16 @@ event shape. Nothing here needs Ollama, faster-whisper, or Kokoro.
 import json
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app import main
 from app.auth import require_token
-from app.rate_limit import model_limiter, request_limiter, SlidingWindowLimiter
+from app.rate_limit import SlidingWindowLimiter, model_limiter, request_limiter
 from app.voice import routes
 from app.voice.openers import OpenerCache
+from app.voice.pipeline import run_turn as run_voice_turn
 from app.voice.tts import AudioClip
 
 REPLY = "You want the levy. But who audits it? And what happens in year three?"
@@ -95,12 +97,10 @@ def _fake_responder(monkeypatch):
     monkeypatch.setattr(routes, "run_turn", _wrap_run_turn(monkeypatch, respond))
 
 
-def _wrap_run_turn(monkeypatch, respond):
-    original = routes.run_turn
-
+def _wrap_run_turn(_monkeypatch, respond):
     async def wrapper(*args, **kwargs):
         kwargs["respond"] = respond
-        return await original(*args, **kwargs)
+        return await run_voice_turn(*args, **kwargs)
 
     return wrapper
 
@@ -263,7 +263,11 @@ def test_one_spoken_turn_returns_captions_in_order_with_their_audio(client, monk
 
 def test_the_recognition_gate_drops_silence_without_calling_the_model(client, monkeypatch):
     _prepare(monkeypatch)
-    monkeypatch.setattr(routes, "transcribe_utterance", _fake_transcription("Thank you for watching."))
+    monkeypatch.setattr(
+        routes,
+        "transcribe_utterance",
+        _fake_transcription("Thank you for watching."),
+    )
     calls: list[dict] = []
 
     async def spy(state):
@@ -316,6 +320,47 @@ def test_a_typed_turn_works_without_a_microphone(client, monkeypatch):
     assert any(event["type"] == "caption" for event in events)
 
 
+def test_a_typed_turn_reaches_the_opponent_history_exactly_once(client, monkeypatch):
+    _prepare(monkeypatch)
+    states: list[dict] = []
+
+    async def spy(state):
+        states.append(state)
+        yield ("final_delta", REPLY)
+        yield ("diagnostics", "{}")
+
+    monkeypatch.setattr(routes, "run_turn", _wrap_run_turn(monkeypatch, spy))
+    with _connect(client) as socket:
+        _start(socket)
+        socket.send_json({"type": "text", "text": "Parking is a subsidy for drivers."})
+        _drain(socket)
+
+    learner_turns = [
+        turn["content"] for turn in states[0]["history"] if turn["speaker"] == "learner"
+    ]
+    assert learner_turns == ["Parking is a subsidy for drivers."]
+
+
+def test_a_spoken_turn_is_recorded_before_the_reply_is_built(client, monkeypatch):
+    _prepare(monkeypatch)
+    states: list[dict] = []
+
+    async def spy(state):
+        states.append(state)
+        yield ("final_delta", REPLY)
+        yield ("diagnostics", "{}")
+
+    monkeypatch.setattr(routes, "run_turn", _wrap_run_turn(monkeypatch, spy))
+    with _connect(client) as socket:
+        _start(socket)
+        _speak(socket)
+
+    learner_turns = [
+        turn["content"] for turn in states[0]["history"] if turn["speaker"] == "learner"
+    ]
+    assert learner_turns == ["Parking is a subsidy for drivers, so who pays?"]
+
+
 def test_the_model_rate_limit_applies_per_turn(client, monkeypatch):
     _prepare(monkeypatch)
     limiter = SlidingWindowLimiter(1)
@@ -349,7 +394,8 @@ def test_an_interrupt_stores_only_the_words_that_were_played(client, monkeypatch
             if frame.get("bytes"):
                 captions += 1
                 if captions == 1:
-                    socket.send_json({"type": "interrupt", "played": 0})
+                    # One caption finished, so the learner heard the first sentence.
+                    socket.send_json({"type": "interrupt", "played": 1})
                 continue
             event = json.loads(frame["text"])
             events.append(event)
@@ -395,7 +441,8 @@ def test_require_token_still_rejects_an_empty_token(monkeypatch):
     import app.auth as auth
 
     monkeypatch.setattr(auth, "REQUIRE_AUTH", True)
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException) as raised:
         import asyncio
 
         asyncio.run(require_token(None))
+    assert raised.value.status_code == 401

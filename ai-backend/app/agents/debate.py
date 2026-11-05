@@ -92,23 +92,24 @@ def check_reply(reply: str, topic: str) -> str | None:
     return None
 
 
-_FALLBACK_LINES = (
-    'Let\'s stay on "{topic}". Which claim in your last turn would you defend first?',
-    'Back to "{topic}" — what is the strongest evidence behind your latest point?',
-    'We\'re still debating "{topic}". Which part of your case would survive a direct examination?',
-)
-
-
 def fallback_reply(topic: str, latest: str | None = None) -> str:
-    """A neutral in-character turn for a draft the review could not repair.
+    """A transparent, point-aware recovery when the opponent cannot answer.
 
-    This is not a guard refusal: the learner did nothing wrong. It keeps the
-    exchange on the motion with a short question rather than accusing them.
+    This is not a guard refusal: the learner did nothing wrong. Preserve the
+    learner's point in the recovery so a verifier issue cannot look like their
+    argument was rejected.
     """
-    clean = " ".join(strip_markers(topic).split()) or "the motion"
-    seed = latest or clean
-    index = sum(ord(char) for char in seed) % len(_FALLBACK_LINES)
-    return _FALLBACK_LINES[index].format(topic=clean)
+    clean_latest = " ".join(strip_markers(latest or "").split())
+    if clean_latest:
+        claim = clean_latest.rstrip(".!? ")
+        if len(claim) > 150:
+            claim = claim[:147].rsplit(" ", 1)[0] + "…"
+        return (
+            f"I heard your point: ‘{claim}.’ I need a moment to form a fair response. "
+            "Could you explain how it supports your side?"
+        )
+    clean_topic = " ".join(strip_markers(topic).split()) or "the motion"
+    return f"Let's stay with {clean_topic}. What is the first point you want to defend?"
 
 
 def guard_diagnostics(
@@ -262,6 +263,7 @@ async def reviser_node(state: DebateState) -> DebateState:
         topic=state.get("topic", ""),
         persona=state.get("persona", "skeptic"),
         learner_position=state.get("learner_position", "for"),
+        difficulty=state.get("difficulty", "challenge"),
         latest=state.get("latest"),
         max_words=REPLY_LENGTH_LIMITS.get(state.get("reply_length", "standard"), 110),
     )
@@ -414,6 +416,7 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
                 topic=state.get("topic", ""),
                 persona=state.get("persona", "skeptic"),
                 learner_position=state.get("learner_position", "for"),
+                difficulty=state.get("difficulty", "challenge"),
                 latest=state.get("latest"),
                 max_words=word_limit,
             )
@@ -448,7 +451,7 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
             fallback_used = True
             logger.info(
                 "Verifier rejected the turn after %d repair attempt(s); "
-                "using the neutral on-motion reply.",
+                "using a point-aware recovery reply.",
                 revision_attempts,
             )
     review_ms = round((perf_counter() - review_started) * 1000)

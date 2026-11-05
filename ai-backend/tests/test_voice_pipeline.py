@@ -167,15 +167,16 @@ def test_an_interrupt_stores_only_the_sentences_actually_played():
 
     def cancel_on_second(index: int) -> None:
         if index == 2:
-            control.cancel(played=0)
+            # Two sentences had played before the third was synthesised.
+            control.cancel(played=2)
 
     engine.on_call = cancel_on_second
     recorder = Recorder()
     result = _run(recorder, engine=engine, control=control, openers=None, respond=_responder())
 
     assert result.interrupted is True
-    assert result.spoken == "Fine. You want the levy. [interrupted]"
-    assert "But who audits it?" not in result.spoken
+    assert result.spoken == "Fine. You want the levy. But who audits it? [interrupted]"
+    assert "year three" not in result.spoken
     transcript = next(
         event for event in recorder.events if event["type"] == "transcript"
     )
@@ -190,7 +191,8 @@ def test_an_interrupt_between_playback_and_synthesis_keeps_the_played_count():
     async def audio(clip: AudioClip, caption: dict) -> None:
         await recorder.audio(clip, caption)
         if caption.get("index") == 1:
-            control.cancel(played=1)
+            # The client reports how many captions it finished, not the last index.
+            control.cancel(played=2)
 
     hooks = TurnHooks(emit=recorder.emit, audio=audio)
     result = asyncio.run(
@@ -209,6 +211,19 @@ def test_an_interrupt_between_playback_and_synthesis_keeps_the_played_count():
     assert result.spoken.startswith("Fine. You want the levy.")
     assert "But who audits it?" in result.spoken
     assert "year three" not in result.spoken
+
+
+def test_the_played_count_is_not_used_as_a_sentence_index():
+    control = TurnControl()
+    control.cancel(played=1)
+
+    heard = voice_pipeline._heard(
+        ["One.", "Two.", "Three."],
+        ["One.", "Two.", "Three."],
+        control,
+    )
+
+    assert heard == "One."
 
 
 def test_an_interrupt_during_the_graph_never_invents_a_reply():

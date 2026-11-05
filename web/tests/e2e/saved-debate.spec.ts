@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { goToAccount, mockHealth, seedSignedIn } from "./support";
 
-const USER_ID = "11111111-1111-4111-8111-111111111111";
 const SESSION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TOPIC = "Should schools ban phones?";
 
@@ -38,19 +38,6 @@ const TURNS = [
   },
 ];
 
-const PROFILE = {
-  user_id: USER_ID,
-  display_name: "Learner A",
-  experience: "developing",
-  goals: null,
-  retain_audio: false,
-  purpose: null,
-  practice_goal: null,
-  focus_areas: [],
-  preferences_updated_at: null,
-  app_settings: null,
-};
-
 const ANALYSIS = {
   report: {
     ratings: {
@@ -68,40 +55,34 @@ const ANALYSIS = {
   },
 };
 
-async function seedSession(page: Page) {
-  const session = {
-    access_token: "test-access-token",
-    refresh_token: "test-refresh-token",
-    token_type: "bearer",
-    expires_in: 3600,
-    expires_at: Math.floor(Date.now() / 1000) + 3600,
-    user: {
-      id: USER_ID,
-      aud: "authenticated",
-      role: "authenticated",
-      email: "learner-a@example.com",
-      app_metadata: {},
-      user_metadata: {},
-      created_at: "2026-10-01T10:00:00.000Z",
-    },
-  };
-  await page.addInitScript(
-    ([key, value, doneKey]) => {
-      window.localStorage.setItem(key, value);
-      window.localStorage.setItem(doneKey, "done");
-    },
-    ["sb-test-auth-token", JSON.stringify(session), `verdict-onboarding-v2-${USER_ID}`],
-  );
-}
-
 async function mockSupabase(page: Page, streamRequests: string[]) {
   await page.route("**/rest/v1/**", async (route) => {
-    if (route.request().method() !== "GET") {
+    const request = route.request();
+    if (request.method() !== "GET") {
+      const table = new URL(request.url()).pathname.split("/").pop();
+      if (table === "debate_sessions" && request.method() === "POST") {
+        return route.fulfill({ status: 201, json: { id: SESSION_ID } });
+      }
       return route.fulfill({ status: 204 });
     }
     const url = new URL(route.request().url());
     const table = url.pathname.split("/").pop();
-    if (table === "profiles") return route.fulfill({ json: PROFILE });
+    if (table === "profiles") {
+      return route.fulfill({
+        json: {
+          user_id: "11111111-1111-4111-8111-111111111111",
+          display_name: "Learner A",
+          experience: "developing",
+          goals: null,
+          retain_audio: false,
+          purpose: null,
+          practice_goal: null,
+          focus_areas: [],
+          preferences_updated_at: null,
+          app_settings: null,
+        },
+      });
+    }
     if (table === "debate_sessions") {
       return route.fulfill({ json: url.search.includes("id=eq.") ? SESSION : [SESSION] });
     }
@@ -135,16 +116,14 @@ async function mockSupabase(page: Page, streamRequests: string[]) {
 
 test("a saved debate reopens with its follow-up metadata and can continue", async ({ page }) => {
   const streamRequests: string[] = [];
-  await seedSession(page);
+  await seedSignedIn(page);
   await mockSupabase(page, streamRequests);
+  await mockHealth(page);
 
-  await page.goto("/");
-  await page.waitForFunction(() => window.location.hash === "#/home");
-  // Navigate by hash after the signed-in routing effect has chosen the home view.
-  await page.evaluate(() => {
-    window.location.hash = "#/account";
-  });
-  const record = page.getByRole("button", { name: new RegExp(TOPIC) });
+  await goToAccount(page);
+  await page.getByRole("tab", { name: "Archive" }).click();
+  await expect(page.getByRole("heading", { name: "Saved debates" })).toBeVisible();
+  const record = page.locator(".archive-row").filter({ hasText: TOPIC });
   await expect(record).toBeVisible();
   await record.click();
 

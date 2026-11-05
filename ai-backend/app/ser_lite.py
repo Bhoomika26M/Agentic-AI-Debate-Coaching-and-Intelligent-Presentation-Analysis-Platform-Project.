@@ -34,6 +34,11 @@ def analyze_emotion_windows(
         raise ValueError("Audio and sample rate are required.")
     _load_model()
     return [
-        {"start": s, "end": e, "label": "reflection-only", "note": "Acted-data model; use for reflection only."}
+        {
+            "start": s,
+            "end": e,
+            "label": "reflection-only",
+            "note": "Acted-data model; use for reflection only.",
+        }
         for s, e in windows[:8]
     ]

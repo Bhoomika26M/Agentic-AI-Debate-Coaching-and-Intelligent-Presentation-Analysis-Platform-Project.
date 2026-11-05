@@ -1,7 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 
 const PORT = 4173;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
+const FAKE_MIC_AUDIO = fileURLToPath(new URL("./tests/e2e/fixtures/spoken.wav", import.meta.url));
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -13,6 +15,13 @@ export default defineConfig({
   use: {
     baseURL: ORIGIN,
     trace: "retain-on-failure",
+    launchOptions: {
+      args: [
+        "--use-fake-device-for-media-stream",
+        "--use-fake-ui-for-media-stream",
+        `--use-file-for-fake-audio-capture=${FAKE_MIC_AUDIO}`,
+      ],
+    },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {

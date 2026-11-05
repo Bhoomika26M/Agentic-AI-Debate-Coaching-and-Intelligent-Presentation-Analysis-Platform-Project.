@@ -83,19 +83,48 @@ _HARD = [
         ),
     ),
     (
+        # The polite request, with the helpers people actually use: "Could you
+        # help me write an essay?", "I'd like you to write a function", or
+        # "Would you mind writing me a poem?". The object still has to be a
+        # generated artefact, so "help me build a stronger case" is untouched.
+        "assisted_generation_request",
+        re.compile(
+            r"^\s*(?:please\s+)?(?:"
+            r"(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:mind\s+)?"
+            r"|i(?:'d|\s+would)?\s+(?:like|need|want)\s+"
+            r"|help\s+me\s+"
+            r")"
+            r"(?:you\s+to\s+|me\s+to\s+|us\s+to\s+|to\s+)?"
+            r"(?:some\s+|any\s+|a\s+bit\s+of\s+)?"
+            r"(?:help\s+(?:me\s+)?(?:to\s+|with\s+|in\s+)?)?"
+            r"(?:write|writing|draft|drafting|generate|generating|produce|producing|"
+            r"create|creating|build|building|implement|implementing|code|make|making|"
+            r"give|show|provide)\s+"
+            r"(?:me\s+|us\s+|for\s+me\s+)?(?:an?\s+)?"
+            r"(?:[a-z0-9+#.'-]+\s+){0,3}"
+            r"(?:code|function|script|algorithm|snippet|essay|poem|story|email|letter|program)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
         "leetcode_request",
         re.compile(r"\bsolve\b[^.!?\n]{0,40}\b(?:leetcode|2\s?sum)\b", re.IGNORECASE),
     ),
     (
         "prompt_exfiltration",
-        re.compile(r"\byour\s+system\s+prompt\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:reveal|show|print|repeat|tell|give|share|disclose|explain)\s+"
+            r"(?:me\s+)?(?:your\s+(?:system\s+|hidden\s+|private\s+)?(?:prompt|instructions)|"
+            r"the\s+(?:system\s+prompt|hidden\s+prompt))\b",
+            re.IGNORECASE,
+        ),
     ),
     (
         "prompt_exfiltration",
         re.compile(
-            r"\b(?:reveal|show|print|repeat|tell|give|share)\s+(?:me\s+)?"
-            r"(?:your\s+(?:system\s+)?(?:prompt|instructions)|"
-            r"the\s+(?:system\s+prompt|hidden\s+prompt))\b",
+            r"\b(?:reveal|show|print|repeat|tell|give|share|disclose|explain)\s+"
+            r"(?:me\s+)?what\s+(?:your|the)\s+(?:system\s+|hidden\s+|private\s+)?"
+            r"(?:prompt|instructions)\b",
             re.IGNORECASE,
         ),
     ),

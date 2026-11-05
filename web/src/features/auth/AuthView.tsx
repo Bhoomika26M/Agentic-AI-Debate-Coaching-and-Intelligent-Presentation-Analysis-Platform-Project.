@@ -37,15 +37,21 @@ function GoogleMark() {
 
 export function AuthView({
   purpose,
-  onContinueAsGuest,
-  onAuthenticated,
+  initialMode = "sign-in",
+  initialRecovering = false,
+  redirectTo,
+  onRecoveryChange,
+  onBack,
 }: {
   purpose?: "voice" | null;
-  onContinueAsGuest: () => void;
-  onAuthenticated: () => void;
+  initialMode?: AuthMode;
+  initialRecovering?: boolean;
+  redirectTo: string;
+  onRecoveryChange: (recovering: boolean) => void;
+  onBack: () => void;
 }) {
-  const [mode, setMode] = useState<AuthMode>("sign-in");
-  const [recovering, setRecovering] = useState(false);
+  const [mode, setMode] = useState<AuthMode>(initialMode);
+  const [recovering, setRecovering] = useState(initialRecovering);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -75,7 +81,7 @@ export function AuthView({
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
     if (!supabase) {
-      setError("Account access isn't available right now. You can still continue as a guest.");
+      setError("Account access is not configured on this site. Try again later or contact the site owner.");
       return;
     }
 
@@ -85,12 +91,10 @@ export function AuthView({
         const { data, error: authError } = await supabase.auth.signUp({
           email: validEmail,
           password: validPassword,
-          options: { emailRedirectTo: window.location.origin },
+          options: { emailRedirectTo: redirectTo },
         });
         if (authError) throw authError;
-        if (data.session) {
-          onAuthenticated();
-        } else {
+        if (!data.session) {
           setNotice("Check your inbox for a verification link. After you confirm your email, return here to sign in.");
           setMode("sign-in");
           setPassword("");
@@ -102,7 +106,6 @@ export function AuthView({
           password: validPassword,
         });
         if (authError) throw authError;
-        onAuthenticated();
       }
     } catch (authError) {
       setError(getAuthMessage(authError instanceof Error ? authError.message : "unknown"));
@@ -115,14 +118,14 @@ export function AuthView({
     setError("");
     setNotice("");
     if (!supabase) {
-      setError("Account access isn't available right now. You can still continue as a guest.");
+      setError("Account access is not configured on this site. Try again later or contact the site owner.");
       return;
     }
     setSubmitting(true);
     try {
       const { error: authError } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: window.location.origin },
+        options: { redirectTo },
       });
       if (authError) throw authError;
     } catch (authError) {
@@ -136,6 +139,7 @@ export function AuthView({
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
         setRecovering(true);
+        onRecoveryChange(true);
         setError("");
         setNotice("");
       }
@@ -143,7 +147,7 @@ export function AuthView({
     return () => {
       data.subscription.unsubscribe();
     };
-  }, []);
+  }, [onRecoveryChange]);
 
   async function submitRecovery(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -163,6 +167,7 @@ export function AuthView({
       if (updateError) throw updateError;
       setNotice("Password updated. Sign in with your new password.");
       setRecovering(false);
+      onRecoveryChange(false);
       setMode("sign-in");
       setPassword("");
       setConfirmation("");
@@ -191,7 +196,7 @@ export function AuthView({
       return;
     }
     if (!supabase) {
-      setError("Account access isn't available right now. You can still continue as a guest.");
+      setError("Account access is not configured on this site. Try again later or contact the site owner.");
       return;
     }
     setSubmitting(true);
@@ -211,10 +216,11 @@ export function AuthView({
   return (
     <main className="auth-page">
       <section className="auth-welcome">
-        <h1>Keep your<br /><em>practice close.</em></h1>
+        <button className="auth-back" type="button" onClick={onBack}><ArrowLeft size={15} /> Back to overview</button>
+        <h1>Make your case.<br /><em>Keep your progress.</em></h1>
         <p>{purpose === "voice"
-          ? "Voice debate needs a signed-in account. Sign in to open the room; guest text practice is still available."
-          : "Sign in to keep your transcripts, argument reviews, and progress. As a guest you can rehearse in this tab; its transcript is cleared when you end the session."}</p>
+          ? "Sign in to continue this rehearsal in the voice room."
+          : "Create an account to start a rehearsal and keep your debates, reviews, and practice plan together."}</p>
       </section>
 
       <section className="auth-workspace" aria-labelledby="auth-heading">
@@ -274,7 +280,7 @@ export function AuthView({
           </AnimatePresence>
         </div>
 
-        <button className="auth-google-button" type="button" onClick={() => void continueWithGoogle()} disabled={submitting}>
+        <button className="auth-google-button" type="button" onClick={() => void continueWithGoogle()} disabled={submitting || !supabase}>
           {submitting ? <LoaderCircle className="spin" size={16} /> : <GoogleMark />}
           Continue with Google
         </button>
@@ -342,9 +348,9 @@ export function AuthView({
           {error && <div className="auth-feedback is-error" role="alert">{error}</div>}
           {notice && <div className="auth-feedback is-success" role="status">{notice}</div>}
           {!supabaseConfigured && (
-            <div className="auth-config-note" role="status">Accounts aren't available right now. Guest practice is ready when you are.</div>
+            <div className="auth-config-note" role="status">Account access is not configured on this site. Debate and Analysis stay locked until the site owner connects authentication.</div>
           )}
-          <button className="auth-submit" type="submit" disabled={submitting}>
+          <button className="auth-submit" type="submit" disabled={submitting || !supabase}>
             {submitting ? <LoaderCircle className="spin" size={16} /> : null}
             <AnimatePresence mode="wait" initial={false}>
               <motion.span
@@ -379,9 +385,6 @@ export function AuthView({
           </>
         )}
 
-        <button className="auth-guest-button" type="button" onClick={onContinueAsGuest}>
-          <ArrowLeft size={15} /> Continue as a guest — no account needed
-        </button>
         <p className="auth-privacy">Passwords are handled by Supabase Auth. Verdict never sees or stores them.</p>
       </section>
     </main>

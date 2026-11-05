@@ -567,6 +567,7 @@ html[data-theme="new"] .account-page-new .room-effect-grid > div { border-color:
 html[data-theme="new"] .account-page-new .room-effect-grid span,
 html[data-theme="new"] .account-page-new .room-effect p,
 html[data-theme="new"] .account-page-new .account-setup-foot p { color: #526575; }
+html[data-theme="new"] .account-page-new .room-effect .room-effect-cue { color: #405568; background: #ece8dd; }
 html[data-theme="new"] .account-page-new .room-effect-grid b { color: var(--stage); font: 600 15px/1.25 var(--display); }
 html[data-theme="new"] .account-page-new .account-setup-foot { border-color: #c4ccca; }
 html[data-theme="new"] .account-page-new .plan-body { margin-top: 20px; gap: 26px; }
@@ -666,6 +667,13 @@ html[data-theme="new"] .auth-form-head h2,
 html[data-theme="new"] .settings-heading h1,
 html[data-theme="new"] .settings-section-heading h2,
 html[data-theme="new"] .theme-option-copy b { font-family: var(--display); font-weight: 700; }
+html[data-theme="new"] .auth-page { color: var(--ink); }
+html[data-theme="new"] .auth-welcome h1 { color: var(--ink); }
+html[data-theme="new"] .auth-welcome h1 em { color: var(--cue-deep); }
+html[data-theme="new"] .auth-welcome > p { color: #435867; }
+html[data-theme="new"] .auth-back { color: #405568; }
+html[data-theme="new"] .auth-back:hover { color: var(--cue-deep); }
+html[data-theme="new"] .auth-workspace { border-color: #aeb9bb; background: var(--paper-light); box-shadow: 0 18px 42px -30px rgba(23, 41, 60, .45); }
 html[data-theme="new"] .voice-dialog :is(button,input,textarea):focus-visible { outline-color: var(--brass); }
 
 @media (max-width: 760px) {

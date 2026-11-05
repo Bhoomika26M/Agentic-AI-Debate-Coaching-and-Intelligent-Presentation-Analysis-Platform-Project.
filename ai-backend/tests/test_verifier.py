@@ -42,7 +42,11 @@ def _plan(**overrides) -> dict:
 
 
 def test_a_clean_turn_passes():
-    problems = inspect_reply(GOOD_REPLY, latest=GOOD_LATEST, brief="Private coaching brief: press the evidence gap.")
+    problems = inspect_reply(
+        GOOD_REPLY,
+        latest=GOOD_LATEST,
+        brief="Private coaching brief: press the evidence gap.",
+    )
     assert problems == []
 
 
@@ -185,7 +189,10 @@ def test_a_leaked_tactic_is_rejected_even_without_a_planner_brief():
 
 
 def test_a_turn_must_engage_the_latest_point():
-    reply = "That is an interesting view and I will consider the wider question. Which part matters most to you?"
+    reply = (
+        "That is an interesting view and I will consider the wider question. "
+        "Which part matters most to you?"
+    )
     assert any("does not engage" in p for p in inspect_reply(reply, latest=GOOD_LATEST))
     assert engagement_ratio(GOOD_LATEST, GOOD_REPLY) > 0.08
 
@@ -286,8 +293,18 @@ def test_a_thin_next_session_line_is_rejected():
 def test_duplicate_weeks_and_missing_milestones_are_rejected():
     doubled = _plan(
         milestones=[
-            {"week": 1, "focus": ["evidence_strength"], "practice": "Two rehearsals.", "win_condition": "Better sources."},
-            {"week": 1, "focus": ["evidence_strength"], "practice": "Two rehearsals.", "win_condition": "Better sources."},
+            {
+                "week": 1,
+                "focus": ["evidence_strength"],
+                "practice": "Two rehearsals.",
+                "win_condition": "Better sources.",
+            },
+            {
+                "week": 1,
+                "focus": ["evidence_strength"],
+                "practice": "Two rehearsals.",
+                "win_condition": "Better sources.",
+            },
         ]
     )
     problems = inspect_plan(

@@ -9,7 +9,6 @@ import {
   Clock3,
   CornerDownLeft,
   LoaderCircle,
-  LockKeyhole,
   Mic,
   RotateCcw,
   Send,
@@ -39,7 +38,7 @@ import { addBankTopic, listBankTopics, type BankTopic } from "./services/topics"
 import { loadProfile } from "./services/profiles";
 import { cacheApplicationSettings, loadApplicationSettings, normalizeApplicationSettings, type ApplicationSettings } from "./services/app-settings";
 import { difficultyOptions, personas, starterTopics, type PersonaKey } from "./features/debate-catalog";
-import { buildRecommendation, hydratePrefs, isOnboardingDone, loadPrefs, preferencesFor } from "./services/learner-prefs";
+import { buildRecommendation, hydratePrefs, isOnboardingDone, loadPrefs, orderedStarterTopics, preferencesFor } from "./services/learner-prefs";
 import type { OnboardingResult } from "./features/onboarding/OnboardingFlow";
 import { useAuth } from "./features/auth/AuthProvider";
 import { supabaseConfigured } from "./features/auth/supabase";
@@ -48,7 +47,7 @@ import { EmptyCueArt } from "./components/CueArt";
 import { MarkdownText } from "./components/Markdown";
 import type { PresentationResult } from "./services/presentation-api";
 import { stripControlMarkers } from "./utils/text";
-import { PracticeHeader, PracticeHome } from "./features/home/PracticeHome";
+import { PracticeHeader, PracticeHome, PublicWelcome } from "./features/home/PracticeHome";
 import "./features/voice/voice.css";
 
 const AccountView = lazy(() => import("./features/auth/AccountView").then((m) => ({ default: m.AccountView })));
@@ -196,6 +195,7 @@ function Header({
 }
 
 const HASH_VIEWS: View[] = ["landing", "setup", "present", "auth", "account", "settings", "onboarding", "home"];
+const PROTECTED_VIEWS = new Set<View>(["setup", "arena", "verdict", "present", "account", "settings", "onboarding", "home"]);
 const SETTINGS_SECTION_IDS = new Set([
   "settings-profile",
   "settings-practice",
@@ -241,12 +241,38 @@ function viewFromHash(): View {
   return (HASH_VIEWS as string[]).includes(hash) ? (hash as View) : "landing";
 }
 
+function isPasswordRecoveryCallback() {
+  return /(?:[?#&])type=recovery(?:[=&]|$)/i.test(`${window.location.search}${window.location.hash}`);
+}
+
+function isSupabaseAuthCallback() {
+  return /(?:access_token|refresh_token)=/i.test(window.location.hash) || new URLSearchParams(window.location.search).has("code");
+}
+
+function requiresAccount(view: View) {
+  return PROTECTED_VIEWS.has(view);
+}
+
+function readPendingAuthDestination(): View | null {
+  try {
+    const destination = new URLSearchParams(window.location.search).get("next")
+      ?? window.sessionStorage.getItem("verdict-auth-destination");
+    return destination && PROTECTED_VIEWS.has(destination as View) ? destination as View : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const { session, user, signOut, loading: authLoading } = useAuth();
   const [appSettings, setAppSettings] = useState<ApplicationSettings>(() => loadApplicationSettings("guest"));
-  const [view, setView] = useState<View>(() => {
+  const [authCallbackPending, setAuthCallbackPending] = useState(() => isSupabaseAuthCallback());
+  const [authRecoveryFlow, setAuthRecoveryFlow] = useState(() => isPasswordRecoveryCallback());
+  const [view, setView] = useState<View>(() => isPasswordRecoveryCallback() ? "auth" : viewFromHash());
+  const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
+  const [authDestination, setAuthDestination] = useState<View | null>(() => {
     const initial = viewFromHash();
-    return initial === "landing" && appSettings.theme === "new" ? "home" : initial;
+    return requiresAccount(initial) ? initial : readPendingAuthDestination();
   });
   const theme = appSettings.theme;
   const [topicChoice, setTopicChoice] = useState(starterTopics[0]);
@@ -315,6 +341,16 @@ export default function App() {
   const memoryRef = useRef<SessionDigest[]>([]);
   const memoryLoadedRef = useRef(false);
 
+  function rememberAuthDestination(destination: View | null) {
+    setAuthDestination(destination);
+    try {
+      if (destination) window.sessionStorage.setItem("verdict-auth-destination", destination);
+      else window.sessionStorage.removeItem("verdict-auth-destination");
+    } catch {
+      // The in-memory destination remains available when storage is blocked.
+    }
+  }
+
   const activePersona = useMemo(
     () => personas.find((candidate) => candidate.key === persona) ?? personas[0],
     [persona],
@@ -381,9 +417,9 @@ export default function App() {
     return () => { active = false; };
   }, [user]);
 
-  // The redesigned theme opens straight into practice; Classic keeps its existing onboarding.
+  // After auth resolves, land in the requested protected screen or the learner's home.
   useEffect(() => {
-    if (authLoading || !user || !supabaseConfigured || !prefsReady) return;
+    if (authLoading || authRecoveryFlow || !user || !supabaseConfigured || !prefsReady) return;
     if (pendingVoiceStartRef.current === "resume") {
       pendingVoiceStartRef.current = null;
       routedForRef.current = user.id;
@@ -394,19 +430,24 @@ export default function App() {
     }
     if (routedForRef.current === user.id) return;
     routedForRef.current = user.id;
-    setView(theme === "new" || isOnboardingDone(user.id) ? "home" : "onboarding");
-  }, [authLoading, user, prefsReady, theme]);
+    if (authDestination) {
+      setView(authDestination);
+      rememberAuthDestination(null);
+    } else if (view === "landing" || view === "auth") {
+      setView(theme === "new" || isOnboardingDone(user.id) ? "home" : "onboarding");
+    }
+  }, [authLoading, authRecoveryFlow, user, prefsReady, theme, view, authDestination]);
 
   useEffect(() => {
-    if (view === "landing" && (user || theme === "new")) setView("home");
-  }, [user, view, theme]);
-
-  // Classic keeps its signed-in archive. The redesigned archive also works as a guest empty state.
-  useEffect(() => {
-    if (authLoading) return;
-    if (view === "account" && !user && theme === "classic") setView("auth");
-    if ((view === "present" || view === "onboarding") && theme === "new") setView("home");
-  }, [authLoading, user, view, theme]);
+    if (authLoading || user || !requiresAccount(view)) return;
+    setAuthDestination((current) => {
+      const destination = current ?? view;
+      try { window.sessionStorage.setItem("verdict-auth-destination", destination); } catch { /* memory fallback */ }
+      return destination;
+    });
+    setAuthPurpose(null);
+    setView("landing");
+  }, [authLoading, user, view]);
 
   function updateApplicationSettings(next: ApplicationSettings) {
     const normalized = normalizeApplicationSettings(next);
@@ -450,6 +491,7 @@ export default function App() {
   }, [streaming, challenging]);
 
   useEffect(() => {
+    if (authCallbackPending) return;
     const sectionHash = window.location.hash.replace(/^#/, "");
     if (view === "settings" && SETTINGS_SECTION_IDS.has(sectionHash)) {
       window.requestAnimationFrame(() => document.getElementById(sectionHash)?.scrollIntoView({ block: "start" }));
@@ -458,7 +500,17 @@ export default function App() {
     const hash = view === "landing" ? "#/" : `#/${view}`;
     if (window.location.hash !== hash) window.history.replaceState(null, "", hash);
     window.scrollTo(0, 0);
-  }, [view]);
+  }, [view, authCallbackPending]);
+
+  useEffect(() => {
+    if (authLoading || !authCallbackPending) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("code");
+    url.searchParams.delete("next");
+    const route = view === "landing" ? "#/" : `#/${view}`;
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${route}`);
+    setAuthCallbackPending(false);
+  }, [authLoading, authCallbackPending, view]);
 
   // The learner's own answers, read fresh so a change in Learner space applies to the next turn.
   function learnerAim() {
@@ -794,19 +846,41 @@ export default function App() {
 
   const sampleMotion = "Should public transit be free for everyone?";
 
+  function openAuth(mode: "sign-in" | "sign-up", destination?: View | null) {
+    setAuthMode(mode);
+    if (destination !== undefined) rememberAuthDestination(destination);
+    routedForRef.current = null;
+    setAuthPurpose(null);
+    pendingVoiceStartRef.current = null;
+    setView("auth");
+  }
+
   function openPracticeDebate() {
+    if (!user) {
+      openAuth("sign-up", "setup");
+      return;
+    }
+    const learnerPrefs = loadPrefs(user.id);
+    const recommendation = buildRecommendation(learnerPrefs.experience, learnerPrefs);
+    const orderedTopics = orderedStarterTopics(starterTopics, learnerPrefs);
     pendingVoiceStartRef.current = null;
     setAuthPurpose(null);
-    setTopicChoice(starterTopics[0]);
+    setTopicChoice(orderedTopics[0] ?? starterTopics[0]);
     setCustomTopic("");
     setPosition("for");
-    setPersona("skeptic");
-    setDifficulty("challenge");
-    setDuration(5);
+    setPersona(recommendation.persona);
+    setDifficulty(recommendation.difficulty);
+    setDuration(recommendation.duration);
+    setSecondsLeft(recommendation.duration * 60);
     setView("setup");
   }
 
   function openAnalysis() {
+    if (!user) {
+      setAccountStartSection("analysis");
+      openAuth("sign-up", "account");
+      return;
+    }
     pendingVoiceStartRef.current = null;
     setAuthPurpose(null);
     setAccountFocusId(null);
@@ -815,6 +889,11 @@ export default function App() {
   }
 
   function openPlan() {
+    if (!user) {
+      setAccountStartSection("plan");
+      openAuth("sign-up", "account");
+      return;
+    }
     pendingVoiceStartRef.current = null;
     setAuthPurpose(null);
     setAccountFocusId(null);
@@ -1069,7 +1148,7 @@ export default function App() {
     setChallengeDone(false);
     setShowJumpToLatest(false);
     setAccountFocusId(null);
-    setView(theme === "new" || user ? "home" : "landing");
+    setView(user ? "home" : "landing");
     setMessages([]);
     setSessionId(0);
     setRecordId(null);
@@ -1081,7 +1160,18 @@ export default function App() {
   function openAccount() {
     if (authLoading) return;
     setAccountFocusId(null);
-    setView(user ? "account" : "auth");
+    if (user) setView("account");
+    else openAuth("sign-in", "account");
+  }
+
+  function openSettings() {
+    if (user) setView("settings");
+    else openAuth("sign-in", "settings");
+  }
+
+  function openDeliveryPractice() {
+    if (user) setView("present");
+    else openAuth("sign-up", "present");
   }
 
   async function handleSignOut() {
@@ -1090,7 +1180,7 @@ export default function App() {
     routedForRef.current = null;
     setPrefsReady(false);
     setLearnerName(null);
-    setView(theme === "new" ? "home" : "landing");
+    setView("landing");
   }
 
   function completeOnboarding(result: OnboardingResult) {
@@ -1209,9 +1299,26 @@ export default function App() {
   const elapsed = startedAt ? Math.max(0, Math.floor((endedOrNow - startedAt) / 1000)) : 0;
   const modelOffline = modelStatus.status === "model_unavailable";
 
+  if (requiresAccount(view) && authLoading) {
+    return <div className="protected-route-loading" role="status">Checking your sign-in…</div>;
+  }
+
+  if (requiresAccount(view) && !user) {
+    return (
+      <div className="app-shell">
+        <PublicWelcome
+          onSignIn={() => openAuth("sign-in")}
+          onRegister={() => openAuth("sign-up")}
+          onStart={() => openAuth("sign-up", "setup")}
+          accountAvailable={supabaseConfigured}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className={`app-shell ${view === "setup" ? "app-shell-setup" : ""} ${view === "arena" || view === "verdict" || view === "present" ? "app-shell-room" : ""}`}>
-      {view !== "arena" && view !== "verdict" && view !== "onboarding" && (
+      {view !== "arena" && view !== "verdict" && view !== "onboarding" && view !== "landing" && view !== "auth" && (
         theme === "new" ? (
           <PracticeHeader
             active={view === "settings" ? "settings" : view === "account" ? accountStartSection : "debate"}
@@ -1219,20 +1326,15 @@ export default function App() {
             onDebate={openPracticeDebate}
             onAnalysis={openAnalysis}
             onPlan={openPlan}
-            onSettings={() => {
-              pendingVoiceStartRef.current = null;
-              setAuthPurpose(null);
-              setView("settings");
-            }}
+            onSettings={openSettings}
           />
         ) : (
           <Header
             onHome={returnHome}
-            onStart={() => setView("setup")}
+            onStart={openPracticeDebate}
             onAccount={view === "account" ? returnHome : openAccount}
-            onSettings={() => setView("settings")}
+            onSettings={openSettings}
             accountLabel={view === "account" ? "Dashboard" : authLoading ? "…" : user ? (learnerName ? learnerName.split(/\s+/)[0] : "Learner space") : "Sign in"}
-            showNav={view === "landing"}
             showCta={view !== "setup"}
           />
         )
@@ -1244,14 +1346,17 @@ export default function App() {
             <Suspense fallback={<div className="inline-notice" role="status">Loading account access…</div>}>
               <AuthView
                 purpose={authPurpose}
-                onContinueAsGuest={() => {
-                  const resumeVoice = pendingVoiceStartRef.current === "resume";
+                initialMode={authMode}
+                initialRecovering={authRecoveryFlow}
+                redirectTo={authDestination ? `${window.location.origin}/?next=${encodeURIComponent(authDestination)}` : window.location.origin}
+                onRecoveryChange={setAuthRecoveryFlow}
+                onBack={() => {
+                  rememberAuthDestination(null);
                   pendingVoiceStartRef.current = null;
+                  setAuthRecoveryFlow(false);
                   setAuthPurpose(null);
-                  setView(resumeVoice ? "arena" : theme === "new" ? "home" : "setup");
-                  if (resumeVoice) setVoiceOpen(true);
+                  setView("landing");
                 }}
-                onAuthenticated={() => setView(theme === "new" ? "home" : "onboarding")}
               />
             </Suspense>
           </motion.div>
@@ -1264,7 +1369,7 @@ export default function App() {
                 ? <div className="inline-notice" role="status">Checking your sign-in…</div>
                 : user
                   ? <OnboardingFlow userId={user.id} onComplete={completeOnboarding} onSkip={skipOnboarding} />
-                  : <AuthView onContinueAsGuest={() => setView("setup")} onAuthenticated={() => setView("onboarding")} />}
+                  : null}
             </Suspense>
           </motion.div>
         )}
@@ -1274,6 +1379,12 @@ export default function App() {
             <PracticeHome
               userId={user?.id ?? null}
               authLoading={authLoading}
+              resume={savedSnapshot && savedSnapshot.messages.length > 0 ? {
+                turns: savedSnapshot.messages.filter((message) => message.speaker === "learner").length,
+                topic: savedSnapshot.customTopic.trim() || savedSnapshot.topicChoice,
+                onResume: () => resumeSnapshot(savedSnapshot),
+                onDiscard: clearSnapshot,
+              } : null}
               onDebate={openPracticeDebate}
               onAnalysis={openAnalysis}
               onPlan={openPlan}
@@ -1315,7 +1426,7 @@ export default function App() {
                       }}
                     />
                   )
-                  : <AuthView onContinueAsGuest={() => setView("setup")} onAuthenticated={() => setView("onboarding")} />}
+                  : null}
             </Suspense>
           </motion.div>
         )}
@@ -1349,137 +1460,14 @@ export default function App() {
         )}
 
         {view === "landing" && (
-          <motion.main key="landing" className="landing" {...pageMotion}>
-            <section className="hero-section">
-              <div className="hero-copy">
-                <h1>Test your argument<br /><span className="hero-accent">before the room does.</span></h1>
-                <p className="hero-intro">
-                  Pick a motion and a side, debate a live AI opponent in your own words, then read a plain-language review of what you argued and how you said it.
-                </p>
-                {savedSnapshot && savedSnapshot.messages.length > 0 && (
-                  <div className="resume-banner" role="status">
-                    <div><span>REHEARSAL IN PROGRESS</span><p>{savedSnapshot.messages.filter((message) => message.speaker === "learner").length} of your turns on “{(savedSnapshot.customTopic.trim() || savedSnapshot.topicChoice).slice(0, 80)}” are still here.</p></div>
-                    <div className="resume-actions"><button className="button button-dark" onClick={() => resumeSnapshot(savedSnapshot)}>Resume rehearsal</button><button className="button button-outline" onClick={clearSnapshot}>Discard</button></div>
-                  </div>
-                )}
-                <div className="hero-actions">
-                  <button className="button button-primary" onClick={() => setView("setup")}>
-                    Start a rehearsal <ArrowUpRight size={17} />
-                  </button>
-                  <a className="text-link" href="#how-it-works">See how it works <ArrowDownRight size={16} /></a>
-                </div>
-                <div className="hero-footnote"><LockKeyhole size={13} /> No account needed — sign in only to save your work</div>
-              </div>
-
-              <div className="hero-scene" role="img" aria-label="A sample page from a live debate prompt book">
-                <div className="scene-grid" />
-                <div className="scene-vertical-label">PROMPT BOOK / ACT I</div>
-                <span className="scene-stamp">CUE<br />01</span>
-                <motion.div
-                  className="case-preview"
-                  initial={{ opacity: 0, rotate: 1, y: 18 }}
-                  animate={{ opacity: 1, rotate: 0, y: 0 }}
-                  transition={{ delay: 0.18, duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-                >
-                  <div className="case-topline"><span>VERDICT · REHEARSAL COPY</span><span>ACT I / CUE 01</span></div>
-                  <div className="case-art">
-                    <div className="prompt-page">
-                      <div className="prompt-page-top"><span>THE MOTION</span><span>OPENING / 01</span></div>
-                      <span className="prompt-entrance">OPPONENT ENTERS</span>
-                      <h2>Should social<br />platforms verify<br />every user?</h2>
-                      <div className="prompt-stage-direction">[ The room goes quiet. Your opening begins. ]</div>
-                      <div className="prompt-rule" />
-                      <div className="prompt-page-bottom"><span>YOUR SIDE / FOR</span><span>THE FLOOR IS YOURS</span></div>
-                    </div>
-                  </div>
-                  <div className="cue-preview-row">
-                    <span className="cue-preview-mark"><BookOpenText size={15} /></span>
-                    <div><span className="case-label">LIVE CUE / 01</span><b>Your opening argument</b></div>
-                    <span className="cue-preview-state"><i /> READY</span>
-                  </div>
-                  <div className="case-bottomline"><span>RESPONSE AFTER REVIEW</span><span>AI OPPONENT / FINAL</span></div>
-                </motion.div>
-              </div>
-            </section>
-
-            <section className="format-section" id="how-it-works">
-              <div className="section-heading">
-                <h2>How a rehearsal<br /><span>runs.</span></h2>
-                <p className="section-subtitle">Three steps, and you set every one of them: the motion, the opponent, the pressure, and the clock.</p>
-              </div>
-              <div className="format-outcomes">
-                <span><b>A live opponent</b> that answers your actual argument</span>
-                <span><b>An argument review</b> across five criteria</span>
-                <span><b>A weighted verdict</b> plus drills for your delivery</span>
-              </div>
-              <div className="cue-ledger" role="list" aria-label="How a rehearsal runs">
-                <motion.article className="cue-row" role="listitem" whileHover={{ x: 4 }} transition={{ duration: 0.22 }}>
-                  <span className="cue-row-index" aria-hidden="true">01</span>
-                  <div className="cue-row-main">
-                    <h3>Set it up.</h3>
-                    <p>Pick a motion, choose for or against, then choose who argues against you and how long the round runs.</p>
-                  </div>
-                </motion.article>
-                <motion.article className="cue-row" role="listitem" whileHover={{ x: 4 }} transition={{ duration: 0.22 }}>
-                  <span className="cue-row-index" aria-hidden="true">02</span>
-                  <div className="cue-row-main">
-                    <h3>Argue it out.</h3>
-                    <p>Write one claim at a time. Your opponent replies as you watch, and presses wherever your case is thinnest.</p>
-                  </div>
-                </motion.article>
-                <motion.article className="cue-row" role="listitem" whileHover={{ x: 4 }} transition={{ duration: 0.22 }}>
-                  <span className="cue-row-index" aria-hidden="true">03</span>
-                  <div className="cue-row-main">
-                    <h3>Read the review.</h3>
-                    <p>Get scores for your argument, the counterpoints you missed, and the one thing to fix next.</p>
-                  </div>
-                </motion.article>
-              </div>
-            </section>
-
-            <section className="opponents-section" id="opponents">
-              <div className="opponents-copy">
-                <h2>Choose who is<br /><span>across the table.</span></h2>
-                <p>Each opponent argues the same motion differently. Pick one here and you land straight in the setup with them chosen.</p>
-              </div>
-              <div className="opponent-stack">
-                {personas.map((person, index) => (
-                  <motion.button
-                    type="button"
-                    className={`opponent-tile tone-${person.color}`}
-                    key={person.key}
-                    initial={{ opacity: 0, x: 30 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true, amount: 0.35 }}
-                    transition={{ delay: index * 0.1, duration: 0.45 }}
-                    onClick={() => { setPersona(person.key); setView("setup"); }}
-                    aria-label={`Choose ${person.name} — ${person.title}`}
-                  >
-                    <span className="tile-sigil" aria-hidden="true"><OpponentEmblem persona={person.key} label={`${person.name} emblem`} /></span>
-                    <span className="tile-copy"><b>{person.name}</b><small>{person.title} — {person.line}</small></span>
-                    <span className="tile-index" aria-hidden="true">0{index + 1}</span>
-                    <span className="tile-slash" aria-hidden="true" />
-                  </motion.button>
-                ))}
-              </div>
-            </section>
-
-            <section className="closing-section">
-              <div className="closing-content">
-                <h2>Ready to make<br /><span>your case?</span></h2>
-                <p className="closing-note">Rehearse against an opponent, or practise a closing take on your own.</p>
-                <div className="closing-actions">
-                  <button className="button button-dark" onClick={() => setView("setup")}>
-                    Start a rehearsal <ArrowUpRight size={17} />
-                  </button>
-                  <button className="button button-outline" onClick={() => setView("present")}>
-                    Practice delivery solo <ArrowUpRight size={16} />
-                  </button>
-                </div>
-              </div>
-            </section>
-            <footer className="site-footer"><span>VERDICT<span className="brand-period">.</span></span><span>THINK CLEAR. SPEAK SHARP.</span><span>AI PRACTICE ROOM</span></footer>
-          </motion.main>
+          <motion.div key="landing" {...pageMotion}>
+            <PublicWelcome
+              onSignIn={() => openAuth("sign-in")}
+              onRegister={() => openAuth("sign-up")}
+              onStart={() => openAuth("sign-up", "setup")}
+              accountAvailable={supabaseConfigured}
+            />
+          </motion.div>
         )}
 
         {view === "setup" && (
@@ -1649,6 +1637,7 @@ export default function App() {
                     onClose={() => setVoiceOpen(false)}
                     onSignIn={() => {
                       setVoiceOpen(false);
+                      routedForRef.current = null;
                       pendingVoiceStartRef.current = "resume";
                       setAuthPurpose("voice");
                       setView("auth");
@@ -1849,7 +1838,6 @@ export default function App() {
                 </div>
                 <div className="record-card"><div className="record-number">{learnerTurns.length.toString().padStart(2, "0")}</div><span>YOUR TURNS</span></div>
                 <div className="record-card"><div className="record-number">{totalWords.toString().padStart(2, "0")}</div><span>YOUR WORDS</span></div>
-                {!user && <div className="room-guest"><span>GUEST REHEARSAL</span><p>This transcript lives only in this browser tab and is cleared when the rehearsal ends. Sign in to keep it in your archive.</p></div>}
               </aside>
             </div>
             <div className="arena-bottomline"><span>VERDICT / PRACTICE ROOM</span><span>AI RESPONSE / FINAL AFTER REVIEW</span><span>SESSION LENGTH {duration} MIN</span></div>
@@ -2031,10 +2019,10 @@ export default function App() {
                   <Suspense fallback={<div className="inline-notice" role="status">Loading delivery review…</div>}>
                     <PresentationRoom topic={activeTopic} sessionId={recordId} compact onResult={(next) => { setDeliveryResult(next); void runJudge(analysis, next); }} />
                   </Suspense>
-                  <button className="text-link step-aside" type="button" onClick={() => setView("present")}>Or practise a take on its own <ArrowUpRight size={15} /></button>
+                  <button className="text-link step-aside" type="button" onClick={openDeliveryPractice}>Or practise a take on its own <ArrowUpRight size={15} /></button>
                 </div>
               </details>
-              <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>{user ? "This transcript, its review, and any completed delivery take stay in your learner archive." : "This transcript and review are kept only for this tab and disappear when you close it. Sign in before a rehearsal to save it to your archive."}</p></div>
+              <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>This transcript, its review, and any completed delivery take stay in your learner archive.</p></div>
               <div className="verdict-actions">
                 <button className="button button-dark" onClick={() => setView("setup")}>Start a new rehearsal <ArrowUpRight size={16} /></button>
                 <button className="button button-light" onClick={() => void resumeSession()}><RotateCcw size={16} /> Return to the room</button>

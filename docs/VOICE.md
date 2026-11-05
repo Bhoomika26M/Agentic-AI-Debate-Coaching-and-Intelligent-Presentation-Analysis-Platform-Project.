@@ -121,8 +121,8 @@ Two things the socket checks before it will talk:
   exact origin.
 - **Auth.** The socket authenticates with the session token in the query string,
   because a WebSocket cannot send an `Authorization` header. With
-  `REQUIRE_AUTH=true` (the default in a local `.env`) a guest gets close code
-  4401, and the room says so instead of pretending. Typed turns are unaffected.
+  `REQUIRE_AUTH=true` (the default in a local `.env`) a request without a valid
+  token gets close code 4401, and the room reports the sign-in requirement.
 
 `VITE_API_BASE_URL` may stay blank: the client then resolves `/ws/voice`
 against the page, which is what makes the Vite proxy work. Set it only when the
@@ -138,7 +138,7 @@ API lives on another origin.
 | `VOICE_STT_MODEL` | `base.en` | voice-path checkpoint |
 | `VOICE_STT_DEVICE` | `cpu` | left on CPU on purpose |
 | `VOICE_STT_BEAM_SIZE` | `1` | short turns do not need a wide beam |
-| `VOICE_MAX_SEC` | `45` | longest accepted utterance |
+| `VOICE_MAX_SEC` | `120` | longest accepted utterance |
 | `VOICE_EDIT_WINDOW_MS` | `1500` | how long the recognised turn can be corrected |
 | `VOICE_TURN_END_MS` | `1100` | VAD silence before a turn ends (client) |
 | `MODEL_WARMUP` | `on` | `off` skips the startup model load (tests, tiny machines) |
@@ -282,8 +282,7 @@ audio asset and no licence to track.
 
 ## Tests
 
-371 tests pass (`cd ai-backend && uv run pytest`), 70 of them new for voice
-mode:
+The current backend suite has 390 passing tests. Voice-path coverage includes:
 
 - `tests/test_voice_recognition.py` — every fixture hallucination, word counts,
   confidence gates, stutter collapsing, filler stripping for matching only.
@@ -298,13 +297,12 @@ mode:
   four reach the opponent, three unpunctuated requests still redirect. No new
   false positives.
 
-`ruff check app/voice scripts` is clean; the repository's pre-existing ruff
-findings in older test files are untouched.
+`ruff check app tests` passes with no findings.
 
-**Not done: the Playwright spoken turn.** The brief asks for one full spoken
-turn with Chromium's fake audio device against a mocked API. That test does not
-exist. It is the first thing to add, because it is also the only way to prove
-the barge-in latency target (< 300 ms) automatically rather than by argument.
+The Playwright suite includes a full spoken turn using Chromium's fake audio
+device against the mocked API. This checks microphone capture, the voice socket
+turn, and both transcript lines in the room. It does not measure real-device
+barge-in latency; that still needs a human/device measurement.
 
 ## When the room will not open
 
@@ -312,7 +310,7 @@ The room reports the socket's close code, so the failure is never a mystery:
 
 | What you see | What it means |
 | --- | --- |
-| "Voice needs a signed-in account" (4401) | the socket had no valid session token; sign in, or set `REQUIRE_AUTH=false` for a local-only run |
+| "Voice needs a signed-in account" (4401) | the socket had no valid session token; sign in. `REQUIRE_AUTH=false` only changes API authentication for isolated local development and does not unlock the browser practice routes. |
 | "The API refused this page's origin" (4403) | add the page's exact origin to `WEB_ORIGIN` and restart the API |
 | "Account token verification is temporarily unavailable" (4503) | the API could not reach its configured Supabase key service; restore that connection and reconnect |
 | "The voice service failed while opening the room" (1011) | inspect the API log for the startup or turn error, then reconnect |
@@ -338,7 +336,7 @@ intact.
 - **The opener is one clip per turn.** If synthesis of the first sentence takes
   longer than the opener, there is a silent gap after it. Nothing loops the
   opener on purpose.
-- **Voice needs a signed-in session** when `REQUIRE_AUTH=true`. A guest can rehearse by typing but cannot open the voice socket.
+- **Voice needs a signed-in session** in the browser app. The backend also requires a valid Supabase token by default; setting `REQUIRE_AUTH=false` for local API development does not remove the browser sign-in gate.
 - **Safari/Firefox are untested.** Chromium is the target; the AudioContext and
   ScriptProcessor paths are standard but not exercised elsewhere.
 - **Round format (P4) is not implemented.** The clock pauses while the opponent

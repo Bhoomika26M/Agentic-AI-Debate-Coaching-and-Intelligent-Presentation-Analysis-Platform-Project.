@@ -56,7 +56,7 @@ scores directly, with the gap disclosed to the learner.
 |---|---|---|
 | Presentation analysis engine | Partial | `delivery_graph.py` (transcribe → signals → coach), `speech.py`, `delivery.py`. Pace, fillers, pauses and repeats only; no confidence, engagement, or prosody, and no slides or video |
 | Reports and visualization modules | Partial | Verdict delivery section, signal rows, drills, archive CSV, print. No native PDF or Excel export |
-| Testing and validations | Done | `ai-backend/tests/` (301 tests) covers the deterministic gates, the agent graphs and the request contracts with deterministic model fakes, so no Ollama is needed; 11 Playwright tests cover the browser paths. `.github/workflows/ci.yml` defines pytest, the fallacy-set check, the typecheck and a build; it has not yet run on a GitHub runner |
+| Testing and validations | Done | `ai-backend/tests/` (390 tests) covers the deterministic gates, the agent graphs and the request contracts with deterministic model fakes, so no Ollama is needed; 13 Playwright tests cover the browser paths, including a full spoken turn. `.github/workflows/ci.yml` defines pytest, the fallacy-set check, the typecheck and a build; it has not yet run on a GitHub runner |
 | Deploy with Docker and cloud services | Partial | `ai-backend/Dockerfile` (runtime + test stages), `web/Dockerfile` + `nginx.conf`, `docker-compose.yml`, `.env.docker.example`, and hosted OpenAI-compatible routing in `app/providers.py`. **No public deployment exists.** |
 | Final documentation and presentation | Partial | `README.md`, `PROGRESS.md`, this file, and `docs/demo.webm`; documentation and a recorded walkthrough exist, but there is no slide deck |
 
@@ -112,12 +112,10 @@ window. Those are the next architectural steps, not gaps against the milestones.
 4. Fallacy recall is weak: 35–45% at 73.7–77.8% precision on 50 author-labelled snippets with one
    local model. The set is small and author-labelled, only one model was measured, and a correct
    label does not prove the quote is the best span. Raw runs are in `ai-backend/evals/`.
-5. `ruff check app` still reports 45 long-line findings, concentrated in prompt strings in
-   `prompts.py`, `analysis_graph.py` and `presentation.py`. The modules and tests added or
-   rewritten here (`providers.py`, `judge.py`, `delivery.py`) pass `ruff check` with no findings.
+5. `ruff check app tests` passes with no findings.
 6. The learner-space screenshot in the README is the seeded browser-test fixture, not a real
    learner's account; its caption says so. The setup, arena, verdict, and demo artifacts come from
-   real local runs against `qwen3.5:4b`.
+   real local runs against `qwen3.5:4b`. The recorded round predates the browser sign-in gate.
 7. The reply verifier is a heuristic, not a fact-check. A draft that addresses the learner
    directly ("you should…") can pass the engagement check without sharing the latest point's
    vocabulary. "Checked" in the room means the deterministic form checks passed; it does not

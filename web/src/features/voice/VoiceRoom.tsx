@@ -111,6 +111,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
   const connectionEpochRef = useRef(0);
   const connectedRef = useRef(false);
   const ttsRef = useRef(tts);
+  const recoveryNoticeRef = useRef(false);
   const roomRef = useRef<HTMLDialogElement | null>(null);
   const configRef = useRef({ topic, position, persona, difficulty, preferences, accessToken, history });
   configRef.current = { topic, position, persona, difficulty, preferences, accessToken, history };
@@ -134,6 +135,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
     turnEndMs,
     onUtterance: ({ blob, mode }) => {
       setNotice("");
+      recoveryNoticeRef.current = false;
       setError("");
       player.resetPlayed();
       setStatus("thinking");
@@ -207,6 +209,10 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
             }
           } else {
             appendLine("opponent", event.content, event.interrupted);
+            if (recoveryNoticeRef.current) {
+              setNotice("Your point was received. The opponent needed to reset its reply; your turn was not rejected.");
+              recoveryNoticeRef.current = false;
+            }
             if (event.interrupted) {
               setStatus("interrupted");
               player.stop();
@@ -220,6 +226,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
           break;
         case "reply":
           setReply(event.text);
+          recoveryNoticeRef.current = event.redirect_reason === "review";
           if (ttsRef.current === "none") {
             // No server voice: the browser speaks, one sentence at a time.
             const parts = sentencesOf(event.text);

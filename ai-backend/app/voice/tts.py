@@ -250,8 +250,9 @@ class KokoroEngine:
             duration_ms = int(round(len(samples) / rate * 1000)) if rate else 0
             return AudioClip(data=data, text=spoken, sample_rate=rate, duration_ms=duration_ms)
         except Exception as error:  # noqa: BLE001 - speech must never break a turn
+            # One bad sentence must not switch off speech for the whole process:
+            # a later clip may still render, and the browser fallback remains.
             logger.warning("Kokoro synthesis failed (%s); continuing without audio.", error)
-            self.available = False
             return None
 
 

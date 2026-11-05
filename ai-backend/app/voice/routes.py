@@ -244,6 +244,9 @@ class VoiceConnection:
         if self.busy:
             await self.send({"type": "notice", "message": BUSY_TURN, "reason": "busy"})
             return
+        # Record before the graph runs: the opponent must read the same history
+        # a typed turn would, and a failed turn still belongs to the transcript.
+        self.session.record_learner(text)
         self._turn = asyncio.create_task(self._answer(text))
 
     async def _listen(self, audio: bytes, meta: dict[str, Any]) -> None:
@@ -329,6 +332,7 @@ class VoiceConnection:
             }
         )
         await self.send({"type": "delivery", "signals": delivery_summary(signals)})
+        self.session.record_learner(verdict.text)
         await self._answer(
             verdict.text,
             speech_end_ms=prepared["speech_end_ms"],
@@ -336,7 +340,6 @@ class VoiceConnection:
             delivery_cue=cue,
             stt_ms=stt_ms,
         )
-        self.session.record_learner(verdict.text)
 
     async def _answer(
         self,
@@ -459,7 +462,10 @@ async def voice_socket(websocket: WebSocket) -> None:
     except Exception:  # noqa: BLE001 - log, never leak internals to the browser
         logger.exception("Voice socket failed")
         try:
-            await websocket.close(code=1011, reason="The voice service failed while opening the room.")
+            await websocket.close(
+                code=1011,
+                reason="The voice service failed while opening the room.",
+            )
         except RuntimeError:
             pass
     finally:

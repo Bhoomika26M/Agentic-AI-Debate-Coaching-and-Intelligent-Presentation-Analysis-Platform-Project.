@@ -183,6 +183,7 @@ def _repair_messages(
     topic: str,
     persona: str,
     learner_position: str,
+    difficulty: str,
     latest: str | None,
     max_words: int,
 ) -> list[dict[str, str]]:
@@ -201,9 +202,11 @@ def _repair_messages(
                         f"the opponent argues {opponent_position}."
                     ),
                     PERSONAS.get(persona, PERSONAS["skeptic"]),
-                    DIFFICULTIES.get("challenge", ""),
-                    "Rewrite the opponent's draft so it fixes the listed problems without changing "
-                    "the position.",
+                    DIFFICULTIES.get(difficulty, DIFFICULTIES["challenge"]),
+                    "Write a fresh, direct answer to the learner's latest point. You may keep any "
+                    "useful idea from the draft, but do not preserve wording that caused a "
+                    "failure. "
+                    "Address a specific claim from the latest turn before asking your question.",
                     "Reply with the rewritten turn only: under "
                     f"{max_words} words, in character, no labels, "
                     "no headings, and one pointed question at the end.",
@@ -229,6 +232,7 @@ async def repair_reply(
     topic: str,
     persona: str,
     learner_position: str,
+    difficulty: str = "challenge",
     latest: str | None,
     max_words: int = 110,
 ) -> str | None:
@@ -241,6 +245,7 @@ async def repair_reply(
                 topic=topic,
                 persona=persona,
                 learner_position=learner_position,
+                difficulty=difficulty,
                 latest=latest,
                 max_words=max_words,
             ),

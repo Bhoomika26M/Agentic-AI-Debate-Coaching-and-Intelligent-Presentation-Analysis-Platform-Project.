@@ -32,7 +32,8 @@ COACH_SYSTEM = "\n".join(
     ]
 )
 
-# One sentence appended to the deterministic next rehearsal, so a baseline plan still answers the aim.
+# One sentence appended to the deterministic next rehearsal, so a baseline plan still
+# answers the aim.
 GOAL_NUDGE = {
     "structure": "Build the case as claim, reasoning, then conclusion.",
     "evidence": "Attach one source or example to every claim you make.",

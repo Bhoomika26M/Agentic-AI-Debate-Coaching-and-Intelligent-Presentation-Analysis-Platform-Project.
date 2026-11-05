@@ -122,7 +122,10 @@ def test_the_learners_aim_reaches_the_coach_as_context(monkeypatch):
 
 def test_a_baseline_plan_still_answers_the_learner_goal():
     plan, _gaps = asyncio.run(
-        coach_plan(_request(digests=[], preferences=PracticePreferences(goal="evidence")), use_model=False)
+        coach_plan(
+            _request(digests=[], preferences=PracticePreferences(goal="evidence")),
+            use_model=False,
+        )
     )
     assert plan["weak_spots"][0]["key"] == "practice_volume"
     assert "source or example" in plan["next_session"]

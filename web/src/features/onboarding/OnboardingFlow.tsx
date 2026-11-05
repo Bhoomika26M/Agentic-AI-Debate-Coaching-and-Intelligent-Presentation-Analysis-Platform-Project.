@@ -82,8 +82,10 @@ export function OnboardingFlow({
         }
         if (data.goals) setGoalNote(data.goals);
         setRetainAudio(data.retain_audio);
-        setAppSettings(data.app_settings);
-        cacheApplicationSettings(userId, data.app_settings);
+        if (data.app_settings) {
+          setAppSettings(data.app_settings);
+          cacheApplicationSettings(userId, data.app_settings);
+        }
       })
       .catch(() => {})
       .finally(() => {

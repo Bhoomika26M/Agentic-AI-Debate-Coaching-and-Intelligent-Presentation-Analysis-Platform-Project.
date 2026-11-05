@@ -101,14 +101,33 @@ def test_prioritize_keeps_the_severity_order_without_answers():
 
 
 def test_prioritize_never_adds_a_weak_spot_the_record_lacks():
-    spots = diagnose([digest(clarity=2, relevance=4, evidence_strength=4, logical_consistency=4, persuasiveness=4)])
+    spots = diagnose(
+        [
+            digest(
+                clarity=2,
+                relevance=4,
+                evidence_strength=4,
+                logical_consistency=4,
+                persuasiveness=4,
+            )
+        ]
+    )
     assert [spot["key"] for spot in spots] == ["clarity", "practice_volume"]
     reordered = prioritize(spots, {"goal": "evidence", "focus": ["confidence"]})
     assert [spot["key"] for spot in reordered] == ["clarity", "practice_volume"]
 
 
 def test_a_strong_archive_still_gets_a_harder_next_step():
-    digests = [digest(clarity=5, relevance=5, evidence_strength=5, logical_consistency=5, persuasiveness=5) for _ in range(4)]
+    digests = [
+        digest(
+            clarity=5,
+            relevance=5,
+            evidence_strength=5,
+            logical_consistency=5,
+            persuasiveness=5,
+        )
+        for _ in range(4)
+    ]
     spots = diagnose(digests)
     assert [spot["key"] for spot in spots] == ["practice_volume"]
     assert "cross-examination" in spots[0]["first_step"]

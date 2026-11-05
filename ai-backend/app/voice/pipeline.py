@@ -245,9 +245,13 @@ async def _send_caption(hooks: TurnHooks, clip: AudioClip, meta: dict) -> None:
 
 
 def _heard(sentences: list[str], spoken: list[str], control: TurnControl) -> str:
-    """Only what reached the learner's ears, by their own playback report."""
+    """Only what reached the learner's ears, by their own playback report.
+
+    ``played`` is a count, not the last index: the client reports how many
+    captions it finished, so one played sentence is ``played == 1``.
+    """
     if control.played is not None:
-        return " ".join(sentences[: control.played + 1]).strip()
+        return " ".join(sentences[: control.played]).strip()
     return " ".join(spoken).strip()
 
 

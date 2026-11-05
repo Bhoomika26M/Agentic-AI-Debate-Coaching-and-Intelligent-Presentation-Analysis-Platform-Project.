@@ -70,7 +70,10 @@ async def llm_assist(text: str, provider_key: str | None = None) -> list[str]:
         ],
         temperature=0.0,
         num_predict=400,
-        json_schema={"type": "object", "properties": {"spans": {"type": "array", "items": {"type": "string"}}}},
+        json_schema={
+            "type": "object",
+            "properties": {"spans": {"type": "array", "items": {"type": "string"}}},
+        },
     )
     import json
 
