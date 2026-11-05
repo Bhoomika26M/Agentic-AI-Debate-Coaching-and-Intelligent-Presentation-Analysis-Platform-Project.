@@ -377,6 +377,15 @@
   border-right: 0;
 }
 
+/* Keep the dashboard Focus item separate from the setup page's .fixture-next button. */
+.fixture-line > .fixture-next {
+  min-height: 0;
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .fixture-next span,
 .fixture-sample span {
   overflow: hidden;
@@ -717,6 +726,7 @@
   .fixture-current { min-height: 50px; }
   .fixture-pair { min-height: 50px; padding-inline: 12px; }
   .fixture-next { flex-basis: 100%; min-height: 42px; border-top: 1px solid #aab0ae; }
+  .fixture-line > .fixture-next { min-height: 42px; }
   .fixture-sample { display: none; }
   .programme-main { margin-top: 18px; grid-template-columns: minmax(0, 1fr); gap: 22px; }
   .programme-modes { min-height: 0; padding: 0 22px 0 10px; }
@@ -748,6 +758,7 @@
   .fixture-pair small { font-size: 9px; }
   .fixture-pair b, .fixture-pair strong { font-size: 11px; }
   .fixture-next { grid-column: 1 / -1; min-height: 40px; padding-inline: 12px; }
+  .fixture-line > .fixture-next { min-height: 40px; }
   .fixture-next span { font-size: 12px; }
   .programme-main { margin-top: 16px; gap: 22px; }
   .programme-modes { padding: 0 14px 0 10px; }
