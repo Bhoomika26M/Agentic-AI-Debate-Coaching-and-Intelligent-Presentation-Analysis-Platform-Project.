@@ -210,7 +210,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .setup-progress .is-set { color: var(--ink); font-weight: 700; }
 .setup-progress .is-missing { color: #8d4035; font-weight: 700; }
 .fixture-steps { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 0; color: #33475c; font: 600 11px/1.3 "Verdict Red Hat Text", Helvetica, Arial, sans-serif; }
-.fixture-steps > span:not(.fixture-connector) { display: inline-flex; align-items: center; gap: 9px; }
+.fixture-steps > button { padding: 4px; display: inline-flex; align-items: center; gap: 9px; border: 0; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+.fixture-steps > button:hover { color: var(--cue-deep); }
+.fixture-steps > button:focus-visible { outline: 2px solid var(--cue); outline-offset: 3px; }
+.fixture-steps > button > span { white-space: nowrap; }
 .fixture-steps i { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid #536578; border-radius: 50%; color: #33475c; font: normal 11px var(--mono); }
 .fixture-steps .current { color: var(--ink); }
 .fixture-steps .current i { color: var(--paper-light); border-color: var(--cue-deep); background: var(--cue-deep); }

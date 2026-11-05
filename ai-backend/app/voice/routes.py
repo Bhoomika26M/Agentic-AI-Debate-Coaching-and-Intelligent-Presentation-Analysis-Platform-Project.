@@ -144,6 +144,10 @@ class VoiceConnection:
                     "moderator": self.engine.available,
                 }
             )
+            # The For side opens. For a fresh Against session, let the
+            # opponent make that opening before accepting the learner's turn.
+            if self.session.learner_position == "against" and not self.session.history:
+                self._turn = asyncio.create_task(self._answer(None))
 
         elif kind == "utterance_start":
             self._utterance_meta = payload

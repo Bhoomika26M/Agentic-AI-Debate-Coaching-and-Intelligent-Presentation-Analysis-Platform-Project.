@@ -10,14 +10,13 @@ import {
   CornerDownLeft,
   LoaderCircle,
   Mic,
-  RotateCcw,
   Send,
   Sparkles,
   Swords,
   TimerReset,
   X,
 } from "lucide-react";
-import { Component, Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Component, Fragment, Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   streamOpponentReply,
   analyzeDebate,
@@ -31,7 +30,7 @@ import {
   type ModelStatus,
   type TurnDiagnostics,
 } from "./services/debate-api";
-import { createDebateRecord, deleteDebateAnalysis, finishDebateRecord, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn, type DebateRecord, type DebateRecordTurn } from "./services/debate-records";
+import { createDebateRecord, deleteDebateAnalysis, finishDebateRecord, loadDebateVerdictRank, resumeDebateRecord, saveDebateAnalysis, saveDebateTurn, saveDebateVerdict, type DebateRecord, type DebateRecordTurn } from "./services/debate-records";
 import { generateAndSaveLearningPlan, loadSessionDigests } from "./services/plan-records";
 import type { SessionDigest } from "./services/plan-api";
 import { addBankTopic, listBankTopics, type BankTopic } from "./services/topics";
@@ -98,6 +97,12 @@ function formatTime(seconds: number) {
   const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
   const remainder = (seconds % 60).toString().padStart(2, "0");
   return `${minutes}:${remainder}`;
+}
+
+function formatOrdinal(value: number) {
+  const tail = value % 100;
+  const suffix = tail >= 11 && tail <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[value % 10] ?? "th";
+  return `${value}${suffix}`;
 }
 
 function diagnosticsLabel(diagnostics: TurnDiagnostics) {
@@ -206,7 +211,14 @@ const SETTINGS_SECTION_IDS = new Set([
 
 const SNAPSHOT_KEY = "verdict-arena-snapshot";
 const RECENTS_KEY = "verdict-recent-motions";
-
+const SCORE_DIMENSION_ORDER = ["argument", "evidence", "logical", "rebuttal", "communication"] as const;
+const SCORE_DIMENSION_LABELS = {
+  argument: "ARGUMENT QUALITY",
+  evidence: "EVIDENCE & SUPPORT",
+  logical: "LOGIC",
+  rebuttal: "REBUTTAL",
+  communication: "DELIVERY",
+} as const;
 type ArenaSnapshot = {
   messages: DebateMessage[];
   draft: string;
@@ -263,6 +275,54 @@ function readPendingAuthDestination(): View | null {
   }
 }
 
+function VerdictScoreSkeleton() {
+  return (
+    <div className="score-summary verdict-skeleton-score" aria-hidden="true">
+      <div className="score-figure"><span>WEIGHTED SCORE</span><i className="verdict-skeleton-value" /><i className="verdict-skeleton-copy" /></div>
+      <div className="score-bars">
+        {["ARGUMENT QUALITY", "EVIDENCE & SUPPORT", "LOGIC", "REBUTTAL", "DELIVERY"].map((label) => (
+          <div className="score-bar" key={label}><span>{label}</span><i className="verdict-skeleton-track" /><i className="verdict-skeleton-number" /></div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VerdictScoreUnavailable() {
+  return (
+    <div className="score-summary verdict-score-unavailable">
+      <div className="score-figure"><span>WEIGHTED SCORE</span><b>—<small> / 100</small></b><p>A weighted score is not available for this review.</p></div>
+      <div className="score-bars">
+        {["CASE STRUCTURE", "EVIDENCE & SUPPORT", "REBUTTAL", "PERSUASION", "DELIVERY"].map((label) => (
+          <div className="score-bar is-unrated" key={label}><span>{label}</span><div className="score-track is-unrated" /><b>—</b></div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VerdictLoadingPreview() {
+  return (
+    <div className="verdict-loading-preview" aria-hidden="true">
+      <div className="verdict-review-columns">
+        <VerdictScoreSkeleton />
+        <div className="analysis-coaching-grid">
+          {["WHAT WORKED WELL", "TOP AREAS TO IMPROVE"].map((label) => (
+            <section className="analysis-coaching-card verdict-skeleton-card" key={label}>
+              <span>{label}</span><i /><i /><i />
+            </section>
+          ))}
+        </div>
+      </div>
+      <div className="verdict-skeleton-disclosures">
+        {["Argument scores", "Logic watch", "Counterpoints", "Score weights", "Transcript", "Delivery review"].map((label) => (
+          <div className="verdict-skeleton-disclosure" key={label}><span>{label}</span><i /></div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const { session, user, signOut, loading: authLoading } = useAuth();
   const [appSettings, setAppSettings] = useState<ApplicationSettings>(() => loadApplicationSettings("guest"));
@@ -316,6 +376,9 @@ export default function App() {
   const [judge, setJudge] = useState<JudgeVerdict | null>(null);
   const [judgeLoading, setJudgeLoading] = useState(false);
   const [judgeError, setJudgeError] = useState("");
+  const [verdictRank, setVerdictRank] = useState<{ rank: number; total: number } | null>(null);
+  const [verdictRankLoading, setVerdictRankLoading] = useState(false);
+  const [pendingArchiveVerdict, setPendingArchiveVerdict] = useState<{ record: DebateRecord; turns: DebateMessage[]; analysis: AnalysisReport | null; verdict: JudgeVerdict | null; delivery: PresentationResult | null } | null>(null);
   const [challenging, setChallenging] = useState(false);
   const [challengeError, setChallengeError] = useState("");
   const [challengeDone, setChallengeDone] = useState(false);
@@ -362,6 +425,10 @@ export default function App() {
     (count, message) => count + message.content.trim().split(/\s+/).filter(Boolean).length,
     0,
   );
+  const unavailableJudgeDimensions = judge
+    ? SCORE_DIMENSION_ORDER.filter((key) => !judge.dimensions.some((dimension) => dimension.key === key)).map((key) => SCORE_DIMENSION_LABELS[key].toLowerCase())
+    : [];
+  const verdictComputing = analysisLoading || judgeLoading;
   useEffect(() => {
     const initial = viewFromHash();
     if (initial !== view) setView(initial);
@@ -610,10 +677,13 @@ export default function App() {
   }, [cueSequence, cueVisible]);
 
   useEffect(() => {
-    if (view === "arena" && sessionId > 0 && messages.length === 0) {
+    // The affirmative (For) side opens. When the learner chose Against, the
+    // opponent is For and makes the opening statement; otherwise the learner
+    // gets the first turn.
+    if (view === "arena" && sessionId > 0 && messages.length === 0 && position === "against") {
       void requestOpponentReply([], null);
     }
-  }, [view, sessionId]);
+  }, [view, sessionId, position]);
 
   // A restored transcript can end on the learner's turn when the tab closed
   // mid-reply. Ask the opponent to finish that turn once, instead of leaving it
@@ -772,6 +842,8 @@ export default function App() {
     setPlanUpdateError("");
     setDeliveryResult(null);
     setJudge(null);
+    setVerdictRank(null);
+    setVerdictRankLoading(false);
     setJudgeError("");
     setMessages([]);
     setRecordId(null);
@@ -930,6 +1002,8 @@ export default function App() {
     setAnalysisError("");
     setAnalysisSaved(false);
     setJudge(null);
+    setVerdictRank(null);
+    setVerdictRankLoading(false);
     setJudgeError("");
     try {
       const report = await analyzeDebate({
@@ -965,19 +1039,118 @@ export default function App() {
     }
   }
 
-  async function runJudge(report: AnalysisReport | null, delivery: PresentationResult | null) {
+  async function runJudge(report: AnalysisReport | null, delivery: PresentationResult | null, debateTurns = messages, targetRecordId = recordId) {
     if (!report?.ratings) return;
     setJudgeLoading(true);
     setJudgeError("");
+    if (delivery?.transcript.trim()) {
+      setJudge(null);
+      setVerdictRank(null);
+    }
+    if (targetRecordId) {
+      setVerdictRank(null);
+      setVerdictRankLoading(true);
+    }
     try {
-      const verdict = await requestJudge(report, delivery, messages, session?.access_token);
+      let scoredReport = report;
+      if (delivery?.transcript.trim()) {
+        scoredReport = await analyzeDebate({
+          topic: activeTopic,
+          learner_position: position,
+          persona,
+          difficulty,
+        }, debateTurns, session?.access_token, delivery.transcript);
+        setAnalysis(scoredReport);
+        if (targetRecordId) {
+          try {
+            await saveDebateAnalysis(targetRecordId, scoredReport);
+            setAnalysisSaved(true);
+          } catch {
+            setAnalysisError("The closing take was scored, but the updated review could not be saved to your archive.");
+          }
+        }
+      }
+      const verdict = await requestJudge(scoredReport, delivery, debateTurns, session?.access_token);
       setJudge(verdict);
+      if (targetRecordId) {
+        let verdictSaved = false;
+        setVerdictRankLoading(true);
+        try {
+          await saveDebateVerdict(targetRecordId, verdict);
+          verdictSaved = true;
+        } catch {
+          setJudgeError("The score is ready, but could not be saved to your archive. Try scoring it again.");
+        }
+        if (verdictSaved) {
+          try {
+            setVerdictRank(await loadDebateVerdictRank(targetRecordId));
+          } catch {
+            setVerdictRank(null);
+          }
+        }
+        setVerdictRankLoading(false);
+      }
     } catch (error) {
       setJudgeError(error instanceof Error ? error.message : "The judge could not score this rehearsal. Try again.");
     } finally {
       setJudgeLoading(false);
+      setVerdictRankLoading(false);
     }
   }
+
+  function openArchivedVerdict(record: DebateRecord, turns: DebateRecordTurn[], report: AnalysisReport | null, savedVerdict: JudgeVerdict | null, delivery: PresentationResult | null) {
+    const debateTurns: DebateMessage[] = turns.map((turn) => ({
+      id: turn.id,
+      speaker: turn.speaker,
+      content: turn.content,
+      kind: turn.kind,
+      challengeDepth: turn.challenge_depth ?? undefined,
+      challengeTarget: turn.challenge_target ?? undefined,
+    }));
+    applyRecentMotion(record.topic);
+    setPosition(record.learner_position);
+    setPersona(record.persona);
+    setDifficulty(record.difficulty);
+    setDuration(record.duration_minutes);
+    setSecondsLeft(record.duration_minutes * 60);
+    setMessages(debateTurns);
+    setRecordId(record.id);
+    setStartedAt(new Date(record.started_at).getTime());
+    setEndedAt(record.finished_at ? new Date(record.finished_at).getTime() : Date.now());
+    setAnalysis(report);
+    setAnalysisSaved(Boolean(report));
+    setAnalysisLoading(false);
+    setAnalysisError("");
+    setJudge(savedVerdict);
+    setVerdictRank(null);
+    setVerdictRankLoading(Boolean(savedVerdict));
+    if (savedVerdict) {
+      void loadDebateVerdictRank(record.id)
+        .then(setVerdictRank)
+        .catch(() => setVerdictRank(null))
+        .finally(() => setVerdictRankLoading(false));
+    }
+    setJudgeLoading(false);
+    setJudgeError("");
+    setPlanUpdateStatus("idle");
+    setPlanUpdateError("");
+    setDeliveryResult(delivery);
+    setPendingArchiveVerdict({ record, turns: debateTurns, analysis: report, verdict: savedVerdict, delivery });
+    setView("verdict");
+  }
+
+  useEffect(() => {
+    if (!pendingArchiveVerdict || view !== "verdict") return;
+    const pending = pendingArchiveVerdict;
+    setPendingArchiveVerdict(null);
+    if (pending.analysis) {
+      if (!pending.verdict && pending.analysis.ratings) {
+        void runJudge(pending.analysis, pending.delivery, pending.turns, pending.record.id);
+      }
+    } else if (pending.turns.some((turn) => turn.speaker === "learner")) {
+      void reviewDebate();
+    }
+  }, [pendingArchiveVerdict, view]);
 
   function clearSnapshot() {
     try {
@@ -1197,29 +1370,6 @@ export default function App() {
     setView(user ? "home" : "landing");
   }
 
-  async function resumeSession() {
-    if (recordId) {
-      try {
-        await resumeDebateRecord(recordId);
-      } catch {
-        setRecordNotice("Could not update the saved session status. You can keep debating — this transcript stays in this tab.");
-      }
-    }
-    setSecondsLeft((current) => (current > 0 ? current : duration * 60));
-    setStartedAt(Date.now());
-    setEndedAt(0);
-    const completed = messages.filter((message) => !message.pending);
-    const last = completed[completed.length - 1];
-    pendingResumeRef.current = last?.speaker === "learner" ? last.content : null;
-    lastTurnRef.current = null;
-    setTurnError("");
-    setChallengeError("");
-    setChallengeDone(false);
-    setShowJumpToLatest(false);
-    stickToBottomRef.current = true;
-    setView("arena");
-  }
-
   async function continueSavedDebate(record: DebateRecord, turns: DebateRecordTurn[]) {
     if (startingSession) return;
     setStartingSession(true);
@@ -1251,6 +1401,8 @@ export default function App() {
     setPlanUpdateError("");
     setDeliveryResult(null);
     setJudge(null);
+    setVerdictRank(null);
+    setVerdictRankLoading(false);
     setJudgeError("");
     setConfirmEnd(false);
     setStreaming(false);
@@ -1448,6 +1600,7 @@ export default function App() {
                   <AccountView
                     onStart={openPracticeDebate}
                     onContinue={(record, turns) => void continueSavedDebate(record, turns)}
+                    onViewVerdict={openArchivedVerdict}
                     onSignOut={handleSignOut}
                     focusRecordId={accountFocusId}
                     onFocusConsumed={() => setAccountFocusId(null)}
@@ -1475,9 +1628,26 @@ export default function App() {
             <div className="setup-heading">
               <h1>{learnerName ? `Set up your debate, ${learnerName.split(/\s+/)[0]}.` : "Set up your debate."}</h1>
               <p>{learnerName ? "Chosen for your level. Adjust any detail before you step in." : "Choose a motion, side and opponent, then set the pace. Change anything before you begin."}</p>
-              <div className="fixture-steps" role="list" aria-label="Debate setup steps">
-                {(["Motion", "Side", "Opponent", "Round"] as const).map((label, index) => <span key={label} className={setupStep === index + 1 ? "current" : setupStep > index + 1 ? "complete" : "upcoming"} role="listitem"><i>{index + 1}</i>{label}</span>).reduce<ReactNode[]>((items, item, index) => index ? [...items, <span key={`line-${index}`} className="fixture-connector" />, item] : [item], [])}
-              </div>
+              <nav className="fixture-steps" aria-label="Debate setup steps">
+                {(["Motion", "Side", "Opponent", "Round"] as const).map((label, index) => (
+                  <Fragment key={label}>
+                    {index > 0 && <span className="fixture-connector" aria-hidden="true" />}
+                    <button
+                      type="button"
+                      className={setupStep === index + 1 ? "current" : setupStep > index + 1 ? "complete" : "upcoming"}
+                      aria-current={setupStep === index + 1 ? "step" : undefined}
+                      aria-label={`Go to step ${index + 1}: ${label}`}
+                      onClick={() => {
+                        setSetupStep((index + 1) as 1 | 2 | 3 | 4);
+                        window.scrollTo(0, 0);
+                      }}
+                    >
+                      <i aria-hidden="true">{index + 1}</i>
+                      <span>{label}</span>
+                    </button>
+                  </Fragment>
+                ))}
+              </nav>
               {modelOffline && (
                 <div className="inline-notice" role="status">
                   <span>Before you start: {modelStatus.hint ?? "The practice model is not running."} Nothing is wrong with your setup — the room simply cannot open a case yet.</span>
@@ -1721,7 +1891,7 @@ export default function App() {
                   aria-busy={streaming || challenging}
                 >
                   {messages.length === 0 && (
-                    <div className="empty-transcript"><span className="empty-marker"><EmptyCueArt label={modelOffline ? "Waiting for the model" : "Opponent preparing an opening statement"} /></span><p>{modelOffline ? "The model is not running, so there is no opening statement yet. Start it using the message above, then retry the turn." : "The room is set. Your opponent is preparing an opening statement."}</p></div>
+                    <div className="empty-transcript"><span className="empty-marker"><EmptyCueArt label={modelOffline ? "Waiting for the model" : position === "against" ? "Opponent preparing an opening statement" : "Your opening statement"} /></span><p>{modelOffline ? "The model is not running, so there is no opening statement yet. Start it using the message above, then retry the turn." : position === "against" ? "Your opponent opens from the For side. You will respond when they finish." : "You open from the For side. Make your opening case when you’re ready."}</p></div>
                   )}
                   {messages.map((message, index) => (
                     <motion.article
@@ -1846,32 +2016,39 @@ export default function App() {
 
         {view === "verdict" && (
           <motion.main key="verdict" className="verdict-page" {...pageMotion}>
-            <header className="verdict-header"><button className="arena-brand" onClick={returnHome}><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button><span>REHEARSAL COMPLETE / CASE REVIEW</span></header>
-            <section className="verdict-content">
-              <h1>Your rehearsal<br /><span>is in the book.</span></h1>
-              <p className="verdict-summary">You argued <b>{position === "for" ? "for" : "against"}</b> the motion <b>“{activeTopic}”</b> against <b>{activePersona.name}</b>.</p>
-              <div className="verdict-stats">
-                <div><span>YOUR TURNS</span><b>{learnerTurns.length.toString().padStart(2, "0")}</b></div>
-                <div><span>YOUR WORDS</span><b>{totalWords.toString().padStart(2, "0")}</b></div>
-                <div><span>TIME IN ROOM</span><b>{formatTime(Math.min(elapsed, duration * 60))}</b></div>
+            <header className={`verdict-header verdict-header-review${analysisLoading || judgeLoading ? " is-computing" : ""}`}>
+              <button className="arena-brand" type="button" onClick={returnHome} aria-label="Verdict home"><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button>
+              <span className="verdict-header-title">DEBATE REVIEW <i aria-hidden="true">—</i> {analysisLoading || judgeLoading ? "IN PROGRESS" : "COMPLETED"}</span>
+            </header>
+            <section className="verdict-content verdict-content-review">
+              <div className="verdict-heading-row">
+                <h1>YOUR REHEARSAL<br /><span>IS IN THE BOOK</span><i className="verdict-heading-period">.</i></h1>
+                <span className="verdict-heading-note">{analysisLoading || judgeLoading ? <>REVIEW<br />IN PROGRESS</> : <>COMPLETED DEBATE<br />REVIEW</>}</span>
               </div>
-              <section className="review-block" aria-labelledby="review-heading">
-                <div className="review-head">
-                  <h2 id="review-heading">{analysis ? "Your review" : "Review your argument"}</h2>
+              <p className="verdict-summary"><b>Motion:</b> {activeTopic}<span className="verdict-summary-divider" aria-hidden="true" /> <b>Your side:</b> {position === "for" ? "For" : "Against"}<span className="verdict-summary-divider" aria-hidden="true" /> <b>Opponent:</b> {activePersona.name}</p>
+              <div className="verdict-stats">
+                <div><span>OVERALL SCORE</span>{judge ? <b>{Math.round(judge.overall * 20)}<small> / 100</small></b> : verdictComputing ? <i className="verdict-stat-skeleton" aria-hidden="true" /> : <b>—</b>}</div>
+                <div><span>WEIGHTED RANK</span>{verdictRank ? <b aria-label={`${formatOrdinal(verdictRank.rank)} out of ${verdictRank.total} among your saved verdicts`}>{formatOrdinal(verdictRank.rank)}<small> of {verdictRank.total}</small></b> : verdictRankLoading || verdictComputing ? <i className="verdict-stat-skeleton" aria-hidden="true" /> : <b>—</b>}</div>
+                <div><span>DEBATE TIME</span><b>{formatTime(Math.min(elapsed, duration * 60))}</b></div>
+              </div>
+              <section className="review-block verdict-review-block" aria-label="Argument review">
+                {!analysis && !analysisLoading && <div className="review-head">
+                  <h2>Review your argument</h2>
                   {!analysis && (
                     <button className="button button-dark" onClick={() => void reviewDebate()} disabled={analysisLoading || learnerTurns.length === 0}>
                       {analysisLoading ? <><LoaderCircle className="spin" size={15} /> Reading your case</> : <><Sparkles size={15} /> Start the review</>}
                     </button>
                   )}
-                </div>
-                {!analysis && (
+                </div>}
+                {!analysis && !analysisLoading && (
                   <p className="review-intro">
                     {learnerTurns.length === 0
                       ? "This rehearsal has no turns to review. Run a round with at least one argument to get scores."
                       : "Five scores for your argument, the counterpoints you missed, and one thing to fix next. It reads your words only — your voice is reviewed separately under Delivery."}
                   </p>
                 )}
-                {analysisLoading && <p className="review-intro" role="status"><LoaderCircle className="spin" size={14} /> Reading your case. Give it a moment.</p>}
+                {analysisLoading && !analysis && <p className="review-intro verdict-computing-status" role="status"><LoaderCircle className="spin" size={14} /> Building your review. Scores and observations will appear as they’re ready.</p>}
+                {analysisLoading && !analysis && <VerdictLoadingPreview />}
                 {analysisError && (
                   <div className="analysis-error" role="alert">
                     {analysisError}
@@ -1897,29 +2074,36 @@ export default function App() {
                   </div>
                 )}
 
-                {analysis && <>
-                  {judgeLoading && !judge && <p className="review-intro" role="status"><LoaderCircle className="spin" size={14} /> Weighing your scores.</p>}
+                  {analysis && <>
+                  {!judge && !judgeError && verdictComputing && <p className="review-intro verdict-computing-status" role="status"><LoaderCircle className="spin" size={14} /> {analysisLoading ? "Updating your review and scorecard." : deliveryResult ? "Scoring your opening, replies, and closing take." : "Weighing the finished sections."}</p>}
                   {judgeError && (
                     <div className="analysis-error" role="alert">
                       {judgeError}
                       <button className="button button-light" type="button" onClick={() => void runJudge(analysis, deliveryResult)}>Score it again</button>
                     </div>
                   )}
+                  <div className="verdict-review-columns">
+                  {!judge && (verdictComputing ? <VerdictScoreSkeleton /> : <VerdictScoreUnavailable />)}
                   {judge && (
                     <div className="score-summary">
                       <div className="score-figure">
                         <span>WEIGHTED SCORE</span>
-                        <b>{judge.overall.toFixed(1)}<small> / 5</small></b>
-                        <p>{judge.dimensions.some((dim) => dim.key === "communication") ? "Includes your closing take." : "Communication is not scored yet: record a closing take under Delivery. The other dimensions are renormalized to 100%."}</p>
+                        <b>{Math.round(judge.overall * 20)}<small> / 100</small></b>
+                        <p>{unavailableJudgeDimensions.length > 0
+                          ? `Argument quality blends clarity, relevance, and persuasion. ${unavailableJudgeDimensions.join(" and ")} ${unavailableJudgeDimensions.length === 1 ? "is" : "are"} not scored yet; weights are rescaled to 100%.`
+                          : "Argument quality blends clarity, relevance, and persuasion. Includes your closing take."}</p>
                       </div>
                       <div className="score-bars">
-                        {judge.dimensions.map((dim) => (
-                          <div className="score-bar" key={dim.key}>
-                            <span>{dim.key.replaceAll("_", " ")}</span>
-                            <div className="score-track" role="img" aria-label={`${dim.key.replaceAll("_", " ")} scores ${dim.score.toFixed(1)} of 5`}><i style={{ width: `${Math.min(100, dim.score / 5 * 100)}%` }} /></div>
-                            <b>{dim.score.toFixed(1)}</b>
+                        {SCORE_DIMENSION_ORDER.map((key) => {
+                          const dim = judge.dimensions.find((dimension) => dimension.key === key);
+                          return <div className={`score-bar${dim ? "" : " is-unrated"}`} key={key}>
+                            <span>{SCORE_DIMENSION_LABELS[key]}</span>
+                            {dim
+                              ? <div className="score-track" role="img" aria-label={`${key} scores ${Math.round(dim.score * 20)} of 100`}><i style={{ width: `${Math.min(100, dim.score / 5 * 100)}%` }} /></div>
+                              : <div className="score-track is-unrated" role="img" aria-label={`${key} not scored yet`} />}
+                            <b>{dim ? Math.round(dim.score * 20) : "—"}</b>
                           </div>
-                        ))}
+                        })}
                       </div>
                     </div>
                   )}
@@ -1927,20 +2111,37 @@ export default function App() {
                   {(analysis.strengths.length > 0 || analysis.next_steps.length > 0) && (
                     <div className="analysis-coaching-grid">
                       {analysis.strengths.length > 0 && (
-                        <section className="analysis-coaching-card"><span>WHAT WORKED</span>{analysis.strengths.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
+                        <section className="analysis-coaching-card"><span>WHAT WORKED WELL</span>{analysis.strengths.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
                       )}
                       {analysis.next_steps.length > 0 && (
-                        <section className="analysis-coaching-card is-next"><span>DO THIS NEXT</span>{analysis.next_steps.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
+                        <section className="analysis-coaching-card is-next"><span>TOP AREAS TO IMPROVE</span>{analysis.next_steps.map((item, index) => <p key={`${index}-${item}`}>{item}</p>)}</section>
                       )}
                     </div>
                   )}
+                  </div>
+
+                  <details className="disclosure verdict-delivery-step" open={deliveryResult !== null}>
+                    <summary className="verdict-delivery-summary">
+                      <span className="verdict-delivery-copy">
+                        <strong>Delivery review</strong>
+                        <small>{deliveryResult
+                          ? judgeLoading ? "Closing take reviewed. Updating your final weighted score…" : judgeError ? "Closing take reviewed. Retry scoring to refresh your final weighted score." : "Closing take reviewed. Your weighted score now includes delivery."
+                          : "Record a closing take to score delivery and complete your final weighted score."}</small>
+                      </span>
+                      <span className="verdict-delivery-action">{deliveryResult ? judgeLoading ? "UPDATING" : judgeError ? "RETRY SCORE" : judge ? "FINAL SCORE READY" : "REVIEW TAKE" : "COMPLETE FINAL SCORE"}</span>
+                    </summary>
+                    <div className="delivery-body">
+                      <p className="analysis-intro">Record or upload a closing take. Pace, fillers, and pauses are observable patterns with timestamps, not diagnoses. Your audio is discarded after the review.</p>
+                      <Suspense fallback={<div className="inline-notice" role="status">Loading delivery review…</div>}>
+                        <PresentationRoom key={`${recordId ?? "new"}-${deliveryResult ? "saved" : "empty"}`} topic={activeTopic} sessionId={recordId} compact initialResult={deliveryResult} onResult={(next) => { setDeliveryResult(next); void runJudge(analysis, next); }} />
+                      </Suspense>
+                      <button className="text-link step-aside" type="button" onClick={openDeliveryPractice}>Or practise a take on its own <ArrowUpRight size={15} /></button>
+                    </div>
+                  </details>
 
                   {analysis.ratings && (
-                    <details className="disclosure" open>
-                      <summary>
-                        Argument scores
-                        <span>clarity {analysis.ratings?.clarity?.score ?? "–"} · relevance {analysis.ratings?.relevance?.score ?? "–"} · evidence {analysis.ratings?.evidence_strength?.score ?? "–"} · logic {analysis.ratings?.logical_consistency?.score ?? "–"} · persuasion {analysis.ratings?.persuasiveness?.score ?? "–"}</span>
-                      </summary>
+                    <details className="disclosure">
+                      <summary>Argument scores</summary>
                       <div className="analysis-rubric">
                         {([
                           ["clarity", "Clarity"],
@@ -1957,8 +2158,8 @@ export default function App() {
                     </details>
                   )}
 
-                  <details className="disclosure" open>
-                    <summary>Logic watch<span>{analysis.fallacies.length === 0 ? "no clear examples" : `${analysis.fallacies.length} to review`}</span></summary>
+                  <details className="disclosure">
+                    <summary>Logic watch</summary>
                     <section className="analysis-fallacies">
                       {analysis.fallacies.length === 0
                         ? <p>No clear examples of the listed fallacies appeared. Keep checking claims against their evidence.</p>
@@ -1967,8 +2168,8 @@ export default function App() {
                   </details>
 
                   {analysis.counterarguments.length > 0 && (
-                    <details className="disclosure" open>
-                      <summary>Counterpoints to test your case<span>{analysis.counterarguments.length} angles</span></summary>
+                    <details className="disclosure">
+                      <summary>Counterpoints</summary>
                       <section className="analysis-counterpoints"><div className="counterpoint-grid">
                         {analysis.counterarguments.map((item) => <article key={item.kind}><span>{item.kind.toUpperCase()}</span><p>{item.response}</p><small>ASK: {item.question}</small></article>)}
                       </div></section>
@@ -1976,12 +2177,12 @@ export default function App() {
                   )}
 
                   {judge && (
-                    <details className="disclosure" open>
-                      <summary>How the score is weighted<span>{judge.dimensions.map((dim) => `${dim.key} ${dim.weight_pct}%`).join(" · ")}</span></summary>
+                    <details className="disclosure">
+                      <summary>Score weights</summary>
                       <div className="judge-grid">
                         {judge.dimensions.map((dim) => (
                           <article key={dim.key} className="judge-card">
-                            <span>{dim.key.replaceAll("_", " ")} · {dim.weight_pct}%</span>
+                            <span>{SCORE_DIMENSION_LABELS[dim.key]} · {dim.weight_pct}%</span>
                             <b>{dim.score.toFixed(1)}<small> / 5</small></b>
                             <p>{dim.note}</p>
                             {dim.citations.length > 0 && <small className="judge-cites">{dim.citations.map((cite) => `“${cite}”`).join(" · ")}</small>}
@@ -1998,7 +2199,7 @@ export default function App() {
                   )}
 
                   <details className="disclosure">
-                    <summary>Read the full transcript<span>{messages.length} turns</span></summary>
+                    <summary>Transcript</summary>
                     <div className="transcript-recap">
                       {messages.map((message) => (
                         <article key={message.id} className={`recap-turn ${message.speaker}`}>
@@ -2012,23 +2213,12 @@ export default function App() {
                   <p className="analysis-limit">Coaching estimate from an AI model, based only on this transcript. Scores are not objective measures — check each observation against what you meant to say.</p>
                 </>}
               </section>
-              <details className="disclosure" open={deliveryResult !== null}>
-                <summary>Delivery review<span>{deliveryResult ? "closing take reviewed" : "record a closing take"}</span></summary>
-                <div className="delivery-body">
-                  <p className="analysis-intro">Record or upload a closing take. Pace, fillers, and pauses are observable patterns with timestamps, not diagnoses. Your audio is discarded after the review.</p>
-                  <Suspense fallback={<div className="inline-notice" role="status">Loading delivery review…</div>}>
-                    <PresentationRoom topic={activeTopic} sessionId={recordId} compact onResult={(next) => { setDeliveryResult(next); void runJudge(analysis, next); }} />
-                  </Suspense>
-                  <button className="text-link step-aside" type="button" onClick={openDeliveryPractice}>Or practise a take on its own <ArrowUpRight size={15} /></button>
-                </div>
-              </details>
-              <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>This transcript, its review, and any completed delivery take stay in your learner archive.</p></div>
+              <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>Use these results to revise your case, then run another rehearsal to track your progress.</p></div>
               <div className="verdict-actions">
-                <button className="button button-dark" onClick={() => setView("setup")}>Start a new rehearsal <ArrowUpRight size={16} /></button>
-                <button className="button button-light" onClick={() => void resumeSession()}><RotateCcw size={16} /> Return to the room</button>
+                <button className="button button-dark" onClick={() => setView("setup")}>Run another rehearsal <ArrowRight size={16} /></button>
+                <button className="button button-light" onClick={openPlan}>Revise my plan <ArrowRight size={16} /></button>
               </div>
             </section>
-            <div className="verdict-footer"><span>VERDICT / CASE CLOSED</span><span>AI PRACTICE ROOM</span></div>
           </motion.main>
         )}
 

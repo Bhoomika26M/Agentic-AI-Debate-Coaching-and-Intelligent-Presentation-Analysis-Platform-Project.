@@ -40,6 +40,7 @@ class AnalysisState(TypedDict, total=False):
     topic: str
     learner_position: str
     turns: list[DebateTurnState]
+    closing_statement: str | None
     persona: str | None
     difficulty: str | None
     report: dict | None

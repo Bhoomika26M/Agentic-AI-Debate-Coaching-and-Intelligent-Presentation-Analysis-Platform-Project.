@@ -1,4 +1,4 @@
-import type { AnalysisReport, DebateMessage, DebateOptions } from "./debate-api";
+import type { AnalysisReport, DebateMessage, DebateOptions, JudgeVerdict } from "./debate-api";
 import { supabase } from "../features/auth/supabase";
 
 export type DebateRecord = {
@@ -119,7 +119,13 @@ export async function saveDebateAnalysis(sessionId: string, report: AnalysisRepo
   const { error } = await requireClient().from("debate_analyses").upsert({
     session_id: sessionId,
     report,
+    verdict: null,
   }, { onConflict: "session_id" });
+  if (error) throw error;
+}
+
+export async function saveDebateVerdict(sessionId: string, verdict: JudgeVerdict) {
+  const { error } = await requireClient().from("debate_analyses").update({ verdict }).eq("session_id", sessionId);
   if (error) throw error;
 }
 
@@ -147,4 +153,32 @@ export async function loadDebateAnalysis(sessionId: string) {
     .maybeSingle();
   if (error) throw error;
   return (data?.report as AnalysisReport | undefined) ?? null;
+}
+
+export async function loadDebateVerdict(sessionId: string) {
+  const { data, error } = await requireClient()
+    .from("debate_analyses")
+    .select("verdict")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.verdict as JudgeVerdict | undefined) ?? null;
+}
+
+export async function loadDebateVerdictRank(sessionId: string): Promise<{ rank: number; total: number } | null> {
+  const { data, error } = await requireClient()
+    .from("debate_analyses")
+    .select("session_id, verdict")
+    .not("verdict", "is", null);
+  if (error) throw error;
+  const scored = (data ?? []).flatMap((row) => {
+    const verdict = row.verdict as JudgeVerdict | null;
+    return verdict && Number.isFinite(verdict.overall) ? [{ sessionId: row.session_id as string, score: verdict.overall }] : [];
+  });
+  const current = scored.find((row) => row.sessionId === sessionId);
+  if (!current) return null;
+  return {
+    rank: 1 + scored.filter((row) => row.score > current.score).length,
+    total: scored.length,
+  };
 }

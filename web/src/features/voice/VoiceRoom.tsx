@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { BookOpenText, Headphones, Mic, MicOff, Pause, Send, Square, X } from "lucide-react";
 import { VoiceClient, type DeliverySignals, type VoiceCaption, type VoiceDiagnostics, type VoiceEvent } from "../../services/voice-api";
 import type { DebateOptions, PracticePreferences } from "../../services/debate-api";
+import { MarkdownText } from "../../components/Markdown";
 import { personaFor } from "../debate-catalog";
 import { OpponentEmblem } from "../../components/OpponentEmblem";
 import { useSpeechInput } from "./useSpeechInput";
@@ -178,10 +179,12 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
         case "started":
           connectedRef.current = true;
           window.clearTimeout(connectionTimerRef.current);
-          setStatus("idle");
+          setStatus(position === "against" && history.length === 0 ? "thinking" : "idle");
           player.bell();
-          // The fourth voice opens the round; it never argues.
-          clientRef.current?.announce(history.length > 0);
+          if (position !== "against" || history.length > 0) {
+            // The fourth voice opens the round; it never argues.
+            clientRef.current?.announce(history.length > 0);
+          }
           break;
         case "state":
           setStatus(event.state);
@@ -257,7 +260,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
           break;
       }
     },
-    [appendLine, confirmPending, history, persona, player],
+    [appendLine, confirmPending, history, persona, player, position],
   );
   const handleEventRef = useRef(handleEvent);
   handleEventRef.current = handleEvent;
@@ -504,8 +507,8 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
                     </>
                   ) : status === "thinking" ? (
                     <>
-                      <p>Your opponent is working through your point.</p>
-                      <span>The microphone opens again when they finish.</span>
+                      <p>{position === "against" ? "Your opponent is opening from the For side." : "Your opponent is working through your point."}</p>
+                      <span>{position === "against" ? "The microphone opens when the opening statement ends." : "The microphone opens again when they finish."}</span>
                     </>
                   ) : status === "closed" ? (
                     <>
@@ -514,8 +517,8 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
                     </>
                   ) : (
                     <>
-                      <p>Make your opening point. Your opponent will answer in character.</p>
-                      <span>Hold the microphone, or enable hands-free.</span>
+                      <p>{position === "against" ? "Your opponent is opening from the For side." : "Make your opening point from the For side."}</p>
+                      <span>{position === "against" ? "Your microphone will be ready when the opening statement ends." : "Hold the microphone, or enable hands-free."}</span>
                     </>
                   )}
                 </div>
@@ -523,10 +526,10 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
               {lines.map((line) => (
                 <article key={line.id} className={`voice-line ${line.speaker}`}>
                   <span className="voice-speaker">{line.speaker === "learner" ? "YOU" : PERSONA_LABEL[persona].toUpperCase()}</span>
-                  <p>
-                    {line.content}
+                  <div className="voice-line-content">
+                    <MarkdownText text={line.content} compact />
                     {line.interrupted && <em> — interrupted</em>}
-                  </p>
+                  </div>
                 </article>
               ))}
             </div>
@@ -576,7 +579,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
 
             <div className={`voice-caption${status === "speaking" ? " is-speaking" : ""}`} aria-live="polite">
               <span>IN THEIR WORDS</span>
-              <p>{caption || fallbackCaption}</p>
+              <div className="voice-caption-copy"><MarkdownText text={caption || fallbackCaption} compact /></div>
             </div>
 
             {delivery && (

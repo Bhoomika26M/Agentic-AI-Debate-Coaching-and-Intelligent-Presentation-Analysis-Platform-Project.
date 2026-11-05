@@ -169,6 +169,7 @@ export async function analyzeDebate(
   options: DebateOptions,
   turns: DebateMessage[],
   accessToken?: string,
+  closingStatement?: string,
 ) {
   const transcript = turns
     .filter((turn) => !turn.pending && turn.content.trim())
@@ -190,6 +191,7 @@ export async function analyzeDebate(
       turns: transcript,
       persona: options.persona,
       difficulty: options.difficulty,
+      closing_statement: closingStatement?.trim() || undefined,
     }),
   });
   if (!response.ok) {

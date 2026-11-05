@@ -1,4 +1,4 @@
-import type { PresentationReport, DeliverySignals } from "./presentation-api";
+import type { PresentationReport, DeliverySignals, PresentationResult } from "./presentation-api";
 import { supabase } from "../features/auth/supabase";
 
 export type PresentationFeedback = {
@@ -33,6 +33,24 @@ export async function listPresentationFeedbacks(limit = 20) {
     .order("created_at", { ascending: false }).limit(limit);
   if (error) throw error;
   return (data ?? []) as PresentationFeedback[];
+}
+
+export async function loadPresentationFeedbackForSession(sessionId: string): Promise<PresentationResult | null> {
+  const { data, error } = await requireClient().from("presentation_feedbacks")
+    .select("transcript, signals, report, audio_path")
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    transcript: data.transcript,
+    segments: [],
+    signals: data.signals as DeliverySignals,
+    report: data.report as PresentationReport,
+    retained: Boolean(data.audio_path),
+  };
 }
 
 export async function setPresentationAudio(id: string, audioPath: string) {

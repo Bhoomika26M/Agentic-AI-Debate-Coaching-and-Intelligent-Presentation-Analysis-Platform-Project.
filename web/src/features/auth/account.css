@@ -214,6 +214,9 @@
 .progress-week span { color: #5a5349; font: 8px var(--mono); }
 .progress-actions { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
 .archive-partial { color: #8d4035; font-size: 11px; }
+.archive-verdict-score { margin: 10px 0; padding: 9px 0; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; border-top: 1px solid #d3c8b7; border-bottom: 1px solid #d3c8b7; }
+.archive-verdict-score b { font: 8px var(--mono); letter-spacing: .08em; }
+.archive-verdict-score strong { font: 600 20px/1 var(--serif); font-variant-numeric: tabular-nums; }
 
 .account-plan { margin-bottom: 30px; padding: 20px; border: 1px solid #c9bda9; background: var(--paper-light); }
 .plan-body { margin-top: 16px; display: grid; gap: 18px; }

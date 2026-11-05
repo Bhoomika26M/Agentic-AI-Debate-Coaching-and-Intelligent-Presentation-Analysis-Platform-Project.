@@ -344,14 +344,18 @@
   letter-spacing: .1em;
 }
 
-.voice-line p {
+.voice-line-content {
   margin: 0;
   color: #29251f;
   font: 400 15px/1.62 var(--serif);
   overflow-wrap: anywhere;
 }
 
-.voice-line em { color: #9b3d33; font-style: italic; }
+.voice-line-content p { margin: 0; }
+.voice-line-content ul, .voice-line-content ol { margin: 4px 0 4px 20px; padding: 0; }
+.voice-line-content li { margin: 2px 0; }
+.voice-line-content code { padding: 1px 4px; border: 1px solid #d8cdbb; background: #f2ecdf; font: 12px/1.5 var(--mono); }
+.voice-line-content > em { color: #9b3d33; font-style: italic; }
 
 .voice-pending {
   padding: 12px 0 0;
@@ -455,8 +459,11 @@
 }
 
 .voice-caption > span { color: #bdb5a6; }
-.voice-caption p { min-height: 50px; margin: 8px 0 0; color: var(--paper-light); font: 400 16px/1.48 var(--serif); }
-.voice-caption.is-speaking p { color: #f3df9d; }
+.voice-caption-copy { min-height: 50px; margin: 8px 0 0; color: var(--paper-light); font: 400 16px/1.48 var(--serif); }
+.voice-caption-copy p { margin: 0; }
+.voice-caption-copy ul, .voice-caption-copy ol { margin: 4px 0 4px 18px; padding: 0; }
+.voice-caption-copy li { margin: 2px 0; }
+.voice-caption.is-speaking .voice-caption-copy { color: #f3df9d; }
 
 .voice-delivery {
   display: grid;
@@ -565,7 +572,7 @@
   .voice-desk { order: -1; flex: 0 0 auto; padding: 15px; gap: 12px; overflow: visible; }
   .voice-opponent { padding-bottom: 12px; }
   .voice-caption { padding-bottom: 11px; }
-  .voice-caption p { min-height: 0; margin-top: 6px; font-size: 15px; }
+  .voice-caption-copy { min-height: 0; margin-top: 6px; font-size: 15px; }
   .voice-transcript-panel { min-height: 360px; flex: 0 0 auto; padding: 14px 12px 12px; }
   .voice-transcript-heading { min-height: 52px; }
   .voice-transcript-heading h2 { font-size: 19px; }

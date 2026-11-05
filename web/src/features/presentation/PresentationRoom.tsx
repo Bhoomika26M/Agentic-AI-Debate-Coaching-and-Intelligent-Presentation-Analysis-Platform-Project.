@@ -23,7 +23,7 @@ function formatStamp(seconds: number) {
   return `${m}:${s}`;
 }
 
-export function PresentationRoom({ topic, sessionId, compact, onResult }: { topic?: string; sessionId?: string | null; compact?: boolean; onResult?: (result: PresentationResult | null) => void }) {
+export function PresentationRoom({ topic, sessionId, compact, initialResult = null, onResult }: { topic?: string; sessionId?: string | null; compact?: boolean; initialResult?: PresentationResult | null; onResult?: (result: PresentationResult | null) => void }) {
   const { session, user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -32,7 +32,7 @@ export function PresentationRoom({ topic, sessionId, compact, onResult }: { topi
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [result, setResult] = useState<PresentationResult | null>(null);
+  const [result, setResult] = useState<PresentationResult | null>(initialResult);
   const [retain, setRetain] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);

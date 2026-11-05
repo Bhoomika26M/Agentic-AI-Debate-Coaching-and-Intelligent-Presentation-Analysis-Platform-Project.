@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { ArrowLeft, ArrowRight, ArrowUpRight, Bot, Check, ChevronDown, ChevronUp, Download, History, LoaderCircle, MessageSquareText, Printer, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
-import { deleteDebateRecord, listDebateRecords, loadDebateAnalysis, loadDebateRecord, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
-import { loadAppCapabilities, type AnalysisReport } from "../../services/debate-api";
-import { listPresentationFeedbacks } from "../../services/presentation-records";
+import { deleteDebateRecord, listDebateRecords, loadDebateAnalysis, loadDebateRecord, loadDebateVerdict, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
+import { loadAppCapabilities, type AnalysisReport, type JudgeVerdict } from "../../services/debate-api";
+import { listPresentationFeedbacks, loadPresentationFeedbackForSession } from "../../services/presentation-records";
+import type { PresentationResult } from "../../services/presentation-api";
 import { requestPlan } from "../../services/plan-api";
 import { completePlanDrill, listLearningPlans, listPlanDrillCompletions, loadSessionDigests, saveLearningPlan, uncompletePlanDrill, type StoredPlan } from "../../services/plan-records";
 import { buildArchiveCsv, deleteAccount, deleteAllPracticeData, downloadCsvFile } from "../../services/account-data";
@@ -124,9 +125,10 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onFocusConsumed, theme = "classic", initialSection = "progress" }: {
+export function AccountView({ onStart, onContinue, onViewVerdict, onSignOut, focusRecordId, onFocusConsumed, theme = "classic", initialSection = "progress" }: {
   onStart: () => void;
   onContinue: (session: DebateRecord, turns: DebateRecordTurn[]) => void;
+  onViewVerdict: (session: DebateRecord, turns: DebateRecordTurn[], analysis: AnalysisReport | null, verdict: JudgeVerdict | null, delivery: PresentationResult | null) => void;
   onSignOut: () => Promise<void>;
   focusRecordId?: string | null;
   onFocusConsumed?: () => void;
@@ -136,7 +138,7 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
   const newTheme = theme === "new";
   const { user, session } = useAuth();
   const [records, setRecords] = useState<DebateRecord[]>([]);
-  const [selected, setSelected] = useState<{ session: DebateRecord; turns: DebateRecordTurn[]; analysis: AnalysisReport | null } | null>(null);
+  const [selected, setSelected] = useState<{ session: DebateRecord; turns: DebateRecordTurn[]; analysis: AnalysisReport | null; verdict: JudgeVerdict | null; delivery: PresentationResult | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingRecord, setLoadingRecord] = useState("");
   const [error, setError] = useState("");
@@ -357,9 +359,14 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
     setLoadingRecord(recordId);
     setError("");
     try {
-      const [record, analysis] = await Promise.all([loadDebateRecord(recordId), loadDebateAnalysis(recordId)]);
+      const [record, analysis, verdict, delivery] = await Promise.all([
+        loadDebateRecord(recordId),
+        loadDebateAnalysis(recordId),
+        loadDebateVerdict(recordId),
+        loadPresentationFeedbackForSession(recordId),
+      ]);
       setConfirmDelete(false);
-      setSelected({ ...record, analysis });
+      setSelected({ ...record, analysis, verdict, delivery });
     } catch {
       setError("We could not open this rehearsal. Check your connection and try again.");
     } finally {
@@ -1330,6 +1337,7 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
             </div>
             {selected.analysis && <section className="archive-analysis">
               <span>CASE REVIEW</span>
+              {selected.verdict && <p className="archive-verdict-score"><b>WEIGHTED VERDICT</b><strong>{selected.verdict.overall.toFixed(1)} / 5</strong></p>}
               {(selected.analysis.gaps ?? []).length > 0 && (
                 <p className="archive-partial">Partial review: {(selected.analysis.gaps ?? []).join(" ")}</p>
               )}
@@ -1340,7 +1348,10 @@ export function AccountView({ onStart, onContinue, onSignOut, focusRecordId, onF
               {selected.analysis.next_steps.map((step, index) => <p key={`${index}-${step}`}>{step}</p>)}
             </section>}
             <div className="record-detail-actions">
-              <button className="button button-dark" onClick={() => onContinue(selected.session, selected.turns)}>
+              <button className="button button-dark" onClick={() => onViewVerdict(selected.session, selected.turns, selected.analysis, selected.verdict, selected.delivery)}>
+                <ArrowUpRight size={15} /> View full verdict
+              </button>
+              <button className="button button-light" onClick={() => onContinue(selected.session, selected.turns)}>
                 Continue in the debate room <ArrowRight size={15} />
               </button>
               <button

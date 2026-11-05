@@ -101,12 +101,12 @@
 .reply-options button:focus-visible { outline: 2px solid var(--cue); outline-offset: 2px; }
 
 .theme-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.theme-option { min-width: 0; min-height: 112px; padding: 15px; display: grid; grid-template-columns: 70px minmax(0, 1fr) 22px; align-items: center; gap: 14px; border: 1px solid var(--stage-line); color: var(--ink); background: var(--paper-light); text-align: left; cursor: pointer; transition: border-color .18s ease, background-color .18s ease, transform .18s ease; }
+.theme-option { min-width: 0; min-height: 104px; padding: 13px; display: grid; grid-template-columns: 66px minmax(0, 1fr) 22px; align-items: center; gap: 12px; border: 1px solid var(--stage-line); color: var(--ink); background: var(--paper-light); text-align: left; cursor: pointer; transition: border-color .18s ease, background-color .18s ease, transform .18s ease; }
 .theme-option:hover { transform: translateY(-2px); border-color: var(--cue); }
 .theme-option.selected { border-color: var(--stage); box-shadow: inset 0 -3px 0 var(--cue); }
 .theme-option:focus-visible { outline: 2px solid var(--cue); outline-offset: 3px; }
 .theme-option-copy { min-width: 0; display: grid; gap: 5px; }
-.theme-option-copy b { color: var(--ink); font: 400 25px/1 var(--serif); }
+.theme-option-copy b { color: var(--ink); font: 400 24px/1 var(--serif); }
 .theme-option-copy small { max-width: 42ch; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .theme-check { width: 22px; height: 22px; display: grid; place-items: center; color: var(--cue); }
 .theme-swatch { width: 70px; height: 52px; padding: 7px; display: flex; align-items: flex-end; gap: 4px; border: 1px solid rgba(23, 41, 60, .28); background: #f4f0e6; }
@@ -188,7 +188,7 @@ html[data-theme="new"] .reply-options button.selected { color: #fffaf2; backgrou
 html[data-theme="new"] .theme-option { border-color: #aeb9b7; background: #fffaf2; }
 html[data-theme="new"] .theme-option:hover { border-color: var(--cue-deep); }
 html[data-theme="new"] .theme-option.selected { border-color: var(--stage); box-shadow: inset 0 -3px 0 var(--cue-deep); }
-html[data-theme="new"] .theme-option-copy b { font: 600 28px/.95 var(--display); }
+html[data-theme="new"] .theme-option-copy b { font: 600 26px/.95 var(--display); }
 html[data-theme="new"] .theme-option-copy small { color: #435867; }
 html[data-theme="new"] .theme-check { color: var(--cue-deep); }
 html[data-theme="new"] .settings-data-actions button { border-color: #71838d; color: var(--stage); }
