@@ -794,29 +794,38 @@ export function AccountView({ onStart, onContinue, onViewVerdict, onSignOut, foc
             <div className="plan-body">
               <div className="plan-head">
                 <h3>{storedPlan.plan.headline}</h3>
-                <span>NEXT REHEARSAL</span>
-                <b>{storedPlan.plan.next_session}</b>
                 <p>{storedPlan.plan.summary}</p>
                 <small>{formatDate(storedPlan.created_at)} · {storedPlan.sessions_considered} session{storedPlan.sessions_considered === 1 ? "" : "s"} considered</small>
+                <div className="plan-next-rehearsal">
+                  <span>NEXT REHEARSAL</span>
+                  <b>{storedPlan.plan.next_session}</b>
+                </div>
               </div>
 
-              <div className="plan-block">
-                <span>WHAT YOUR RECORD SHOWS</span>
+              <div className="plan-block plan-focus-block">
+                <div className="plan-block-heading"><span>WHAT YOUR RECORD SHOWS</span><small>{storedPlan.plan.weak_spots.length} FOCUS AREAS</small></div>
+                <div className="plan-focus-list">
                 {storedPlan.plan.weak_spots.map((spot) => (
                   <article className="plan-spot" key={spot.key}>
                     <b>{spot.label}</b>
                     <p>{spot.evidence}</p>
-                    <em>{spot.first_step}</em>
+                    <div className="plan-spot-action"><span>FIRST STEP</span><em>{spot.first_step}</em></div>
                   </article>
                 ))}
+                </div>
               </div>
 
-              <div className="plan-block">
-                <span>DRILLS · {completedDrills.size} OF {storedPlan.plan.drills.length} DONE</span>
+              <div className="plan-block plan-drills-block">
+                <div className="plan-block-heading"><span>DRILLS</span><small>{completedDrills.size} OF {storedPlan.plan.drills.length} DONE</small></div>
+                <div className="plan-drill-progress" role="progressbar" aria-label="Practice drills completed" aria-valuemin={0} aria-valuemax={storedPlan.plan.drills.length} aria-valuenow={completedDrills.size}>
+                  <i style={{ transform: `scaleX(${storedPlan.plan.drills.length ? completedDrills.size / storedPlan.plan.drills.length : 0})` }} />
+                </div>
+                <div className="plan-drill-list">
                 {storedPlan.plan.drills.map((drill, index) => {
                   const done = completedDrills.has(index);
                   return (
                     <article className={`plan-drill${done ? " is-done" : ""}`} key={`${index}-${drill.title}`}>
+                      <span className="plan-drill-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
                       <div><b>{drill.title}</b><span>{drill.minutes} MIN · {drill.weak_spot.replaceAll("_", " ").toUpperCase()}</span></div>
                       <ol>{drill.steps.map((step) => <li key={step}>{step}</li>)}</ol>
                       <p className="plan-check"><Check size={13} /> {drill.success_check}</p>
@@ -834,11 +843,12 @@ export function AccountView({ onStart, onContinue, onViewVerdict, onSignOut, foc
                     </article>
                   );
                 })}
+                </div>
               </div>
               {planNotice && <p className="archive-partial" role="status">{planNotice}</p>}
 
               <div className="plan-block no-print">
-                <span>THE RHYTHM</span>
+                <div className="plan-block-heading"><span>THE RHYTHM</span><small>{storedPlan.plan.milestones.length}-WEEK PRACTICE ARC</small></div>
                 <div className="plan-weeks">
                   {storedPlan.plan.milestones.map((milestone) => (
                     <div className="plan-week" key={milestone.week}>

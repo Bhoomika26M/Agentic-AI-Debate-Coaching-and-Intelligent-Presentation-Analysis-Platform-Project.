@@ -1136,3 +1136,82 @@ html[data-theme="new"] .voice-dialog :is(button,input,textarea):focus-visible { 
   html[data-theme="new"] .account-page-new .archive-empty > svg { display: none; }
   html[data-theme="new"] .account-page-new .archive-empty .button { grid-column: 1; width: 100%; }
 }
+
+/* Practice plan: give the user's direction, focus and follow-through distinct visual roles. */
+html[data-theme="new"] .account-page-new .plan-body { gap: 32px; }
+html[data-theme="new"] .account-page-new .plan-head {
+  padding: 24px 26px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(220px, .7fr);
+  grid-template-areas: "title next" "summary next" "meta next";
+  align-items: center;
+  gap: 10px 28px;
+  border: 1px solid #31485a;
+  border-top: 2px solid var(--brass);
+  background: var(--stage);
+}
+html[data-theme="new"] .account-page-new .plan-head h3 { grid-area: title; color: #fffaf2; font-size: clamp(25px, 3vw, 36px); }
+html[data-theme="new"] .account-page-new .plan-head p { grid-area: summary; max-width: 62ch; color: #e0e6e4; font-size: 13px; }
+html[data-theme="new"] .account-page-new .plan-head small { grid-area: meta; color: #c1ccd0; font: 10px var(--mono); }
+html[data-theme="new"] .account-page-new .plan-next-rehearsal {
+  grid-area: next;
+  min-height: 100%;
+  padding: 8px 0 8px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  border-left: 1px solid #526575;
+}
+html[data-theme="new"] .account-page-new .plan-next-rehearsal span,
+html[data-theme="new"] .account-page-new .plan-block-heading small,
+html[data-theme="new"] .account-page-new .plan-spot-action span { color: #c5d0d1; font: 9px var(--mono); letter-spacing: .12em; }
+html[data-theme="new"] .account-page-new .plan-next-rehearsal b { color: #fffaf2; font: 600 17px/1.45 var(--serif); }
+html[data-theme="new"] .account-page-new .plan-block-heading { margin-bottom: 12px; display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+html[data-theme="new"] .account-page-new .plan-block-heading > span { color: var(--stage); font: 700 20px/1.1 var(--display); letter-spacing: 0; }
+html[data-theme="new"] .account-page-new .plan-block-heading small { color: #526575; font-size: 9px; white-space: nowrap; }
+html[data-theme="new"] .account-page-new .plan-focus-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 30px; }
+html[data-theme="new"] .account-page-new .plan-spot { min-width: 0; padding: 16px 0 18px; }
+html[data-theme="new"] .account-page-new .plan-spot b { font-size: 19px; }
+html[data-theme="new"] .account-page-new .plan-spot p { margin: 7px 0 0; color: #405563; font: 13px/1.55 var(--serif); }
+html[data-theme="new"] .account-page-new .plan-spot-action { margin-top: 12px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 8px 12px; }
+html[data-theme="new"] .account-page-new .plan-spot-action span { color: #526575; font-size: 8px; }
+html[data-theme="new"] .account-page-new .plan-spot-action em { color: #315e4b; font: 600 12px/1.5 var(--sans); }
+html[data-theme="new"] .account-page-new .plan-drills-block { gap: 0; }
+html[data-theme="new"] .account-page-new .plan-drill-progress { height: 3px; margin: 0 0 8px; overflow: hidden; background: #d7dcd6; }
+html[data-theme="new"] .account-page-new .plan-drill-progress i { width: 100%; height: 100%; display: block; transform-origin: left center; background: #315e4b; transition: transform .3s ease; }
+html[data-theme="new"] .account-page-new .plan-drill-list { display: block; }
+html[data-theme="new"] .account-page-new .plan-drill {
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px 14px;
+}
+html[data-theme="new"] .account-page-new .plan-drill-index { padding-top: 3px; color: #315e4b; font: 10px var(--mono); letter-spacing: .05em; }
+html[data-theme="new"] .account-page-new .plan-drill > div { min-width: 0; grid-column: 2; display: grid; gap: 5px; }
+html[data-theme="new"] .account-page-new .plan-drill > div > span { color: #526575; font: 9px var(--mono); letter-spacing: .06em; }
+html[data-theme="new"] .account-page-new .plan-drill ol,
+html[data-theme="new"] .account-page-new .plan-check { grid-column: 2; }
+html[data-theme="new"] .account-page-new .plan-drill ol { padding-left: 17px; gap: 6px; }
+html[data-theme="new"] .account-page-new .plan-drill li { font: 13px/1.55 var(--serif); }
+html[data-theme="new"] .account-page-new .plan-check { margin-top: 2px; align-items: flex-start; line-height: 1.5; }
+html[data-theme="new"] .account-page-new .plan-drill-done { grid-column: 3; grid-row: 1; min-height: 44px; padding: 0 12px; white-space: nowrap; }
+html[data-theme="new"] .account-page-new .plan-weeks { gap: 0 24px; }
+html[data-theme="new"] .account-page-new .plan-week { position: relative; padding: 16px 0 18px; border-top-color: #c4ccca; }
+html[data-theme="new"] .account-page-new .plan-week::before { position: absolute; top: -4px; left: 0; width: 7px; height: 7px; border-radius: 50%; background: #315e4b; content: ""; }
+html[data-theme="new"] .account-page-new .plan-week p { margin: 2px 0 0; font-size: 16px; }
+html[data-theme="new"] .account-page-new .plan-week em { font-style: normal; line-height: 1.5; }
+
+@media (max-width: 760px) {
+  html[data-theme="new"] .account-page-new .plan-head { padding: 20px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "summary" "next" "meta"; gap: 10px; }
+  html[data-theme="new"] .account-page-new .plan-next-rehearsal { min-height: 0; padding: 12px 0 0; gap: 5px; border-top: 1px solid #526575; border-left: 0; }
+  html[data-theme="new"] .account-page-new .plan-head small { margin-top: 4px; }
+  html[data-theme="new"] .account-page-new .plan-focus-list { grid-template-columns: minmax(0, 1fr); }
+  html[data-theme="new"] .account-page-new .plan-weeks { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 420px) {
+  html[data-theme="new"] .account-page-new .plan-head { padding: 17px; }
+  html[data-theme="new"] .account-page-new .plan-block-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
+  html[data-theme="new"] .account-page-new .plan-drill { grid-template-columns: 25px minmax(0, 1fr); gap: 9px 10px; }
+  html[data-theme="new"] .account-page-new .plan-drill-done { grid-column: 2; grid-row: auto; justify-self: start; }
+}
