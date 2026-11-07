@@ -17,6 +17,8 @@ class DebateSession(Base):
     user_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
+    student_name:  Mapped[str | None] = mapped_column(String(120), nullable=True)
+    student_email: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     # Creator tracking (Educator / Coach / Admin)
     creator_id:   Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -52,10 +54,6 @@ class DebateSession(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
-
-    # Relationship
-    user = relationship("User", foreign_keys=[user_id], backref="sessions", lazy="selectin")
-    creator = relationship("User", foreign_keys=[creator_id], lazy="selectin")
 
     def __repr__(self) -> str:
         return f"<DebateSession {self.topic[:40]} [{self.status}]>"

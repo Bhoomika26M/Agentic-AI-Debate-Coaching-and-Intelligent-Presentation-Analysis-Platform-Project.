@@ -152,29 +152,62 @@ export default function Coaching() {
             </div>
           </div>
 
-          <h3 className="section-title">🎯 Priority Interventions</h3>
-          {recommendations.primary_recommendations?.map((rec, i) => (
-            <div key={i} className="rec-card">
-              <div className="rec-header">
-                <span className="rec-skill">{rec.skill}</span>
-                <span className={`priority-badge ${rec.priority === 'High' ? 'high' : 'medium'}`}>
-                  {rec.priority} Priority
-                </span>
-                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--brand-primary)' }}>
-                  {rec.current_score} → {rec.target_score}
-                </span>
+          {recommendations.overall_assessment && (
+            <div className="card" style={{ padding: '16px 20px', marginBottom: 20, background: 'var(--bg-overlay)', borderLeft: '4px solid var(--brand-primary)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--brand-primary)', textTransform: 'uppercase', marginBottom: 4 }}>
+                💡 Coach Assessment
               </div>
-              <p style={{ margin: '4px 0 10px', fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-                {rec.rationale}
+              <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                {recommendations.overall_assessment}
               </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <strong style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>Targeted Exercises:</strong>
-                {rec.exercises?.map((ex, j) => (
-                  <div key={j} className="exercise-item">✏️ {ex}</div>
-                ))}
-              </div>
             </div>
-          ))}
+          )}
+
+          {(() => {
+            const list = recommendations.primary_recommendations?.length
+              ? recommendations.primary_recommendations
+              : (recommendations.recommendations || [])
+
+            if (list.length === 0) {
+              return (
+                <div className="card" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', borderRadius: 'var(--radius-md)' }}>
+                  ✅ No urgent priority interventions needed. Skill levels are meeting competitive benchmarks!
+                </div>
+              )
+            }
+
+            return (
+              <>
+                <h3 className="section-title">🎯 Priority Interventions</h3>
+                {list.map((rec, i) => (
+                  <div key={i} className="rec-card">
+                    <div className="rec-header">
+                      <span className="rec-skill">{rec.skill}</span>
+                      {rec.priority && (
+                        <span className={`priority-badge ${String(rec.priority).toLowerCase() === 'high' ? 'high' : 'medium'}`}>
+                          {rec.priority} Priority
+                        </span>
+                      )}
+                      <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--brand-primary)' }}>
+                        {rec.current_score} → {rec.target_score}
+                      </span>
+                    </div>
+                    <p style={{ margin: '4px 0 10px', fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
+                      {rec.rationale}
+                    </p>
+                    {rec.exercises?.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <strong style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>Targeted Exercises:</strong>
+                        {rec.exercises.map((ex, j) => (
+                          <div key={j} className="exercise-item">✏️ {ex}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </>
+            )
+          })()}
         </div>
       )}
 

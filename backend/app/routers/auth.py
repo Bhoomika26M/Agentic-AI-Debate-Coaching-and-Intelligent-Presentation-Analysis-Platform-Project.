@@ -20,6 +20,12 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
 @router.post("/register", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
 async def register(payload: UserRegister, db: AsyncSession = Depends(get_db)):
     """Register a new user and return a JWT token."""
+    if payload.role == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin accounts cannot be registered publicly.",
+        )
+
     existing = await get_user_by_email(db, payload.email)
     if existing:
         raise HTTPException(

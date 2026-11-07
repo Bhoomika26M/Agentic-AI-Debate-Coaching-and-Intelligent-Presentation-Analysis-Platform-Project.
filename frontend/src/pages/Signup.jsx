@@ -7,7 +7,6 @@ const ROLES = [
   { value: 'learner', icon: '🎓', label: 'Learner', desc: 'Improve debate skills' },
   { value: 'coach', icon: '🏆', label: 'Coach', desc: 'Guide & evaluate students' },
   { value: 'educator', icon: '📚', label: 'Educator', desc: 'Manage classes & reports' },
-  { value: 'admin', icon: '⚙️', label: 'Admin', desc: 'Platform management' },
 ]
 
 export default function Signup() {

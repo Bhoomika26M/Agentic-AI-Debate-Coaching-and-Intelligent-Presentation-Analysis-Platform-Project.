@@ -31,6 +31,7 @@ export default function SessionCard({ session, onView, onDelete }) {
         <div className="session-title">{session.topic}</div>
         <div className="session-meta">
           {session.format} {session.position ? `· ${session.position}` : ''} · {date}
+          {session.student_name && ` · 🎓 ${session.student_name}`}
         </div>
       </div>
 

@@ -59,15 +59,37 @@ async def _resolve_report_scope(
 
     # 3. Coaches group report
     if student_id == "coaches":
-        c_res = await db.execute(select(User).where(User.role == "coach"))
-        coaches = c_res.scalars().all()
-        return {
-            "scope_type": "coaches",
-            "is_individual": False,
-            "target_user": None,
-            "user_ids": [c.id for c in coaches],
-            "scope_name": "Coaches Group (Activities & Sessions)",
-        }
+        if current_user.role == "coach":
+            raise HTTPException(
+                status_code=403,
+                detail="Coaches cannot view group coach report analysis. Only educators and admins have access to coaching group reports."
+            )
+        if current_user.role == "educator":
+            cls_res = await db.execute(select(Classroom).where(Classroom.educator_id == current_user.id))
+            educator_classes = cls_res.scalars().all()
+            coach_ids = [c.coach_id for c in educator_classes if c.coach_id]
+            if coach_ids:
+                c_res = await db.execute(select(User).where(User.id.in_(coach_ids)))
+                coaches = c_res.scalars().all()
+            else:
+                coaches = []
+            return {
+                "scope_type": "coaches",
+                "is_individual": False,
+                "target_user": None,
+                "user_ids": [c.id for c in coaches],
+                "scope_name": f"Assigned Coaches under {current_user.full_name}",
+            }
+        else:
+            c_res = await db.execute(select(User).where(User.role == "coach"))
+            coaches = c_res.scalars().all()
+            return {
+                "scope_type": "coaches",
+                "is_individual": False,
+                "target_user": None,
+                "user_ids": [c.id for c in coaches],
+                "scope_name": "Coaches Group (Activities & Sessions)",
+            }
 
     # 4. Class group report
     if student_id and student_id.startswith("class:"):
@@ -97,14 +119,36 @@ async def _resolve_report_scope(
             }
 
     # 6. Default cohort view: STRICTLY learners only!
-    l_res = await db.execute(select(User).where(User.role == "learner"))
-    learners = l_res.scalars().all()
+    if current_user.role == "coach":
+        cls_res = await db.execute(select(Classroom).where(Classroom.coach_id == current_user.id))
+        classes = cls_res.scalars().all()
+        student_ids = set()
+        for c in classes:
+            for sid in (c.student_ids or []):
+                if sid: student_ids.add(str(sid))
+        user_ids = list(student_ids)
+        scope_name = "My Assigned Students (Cohort Overview)"
+    elif current_user.role == "educator":
+        cls_res = await db.execute(select(Classroom).where(Classroom.educator_id == current_user.id))
+        classes = cls_res.scalars().all()
+        student_ids = set()
+        for c in classes:
+            for sid in (c.student_ids or []):
+                if sid: student_ids.add(str(sid))
+        user_ids = list(student_ids)
+        scope_name = f"My Enrolled Students ({current_user.full_name})"
+    else:
+        l_res = await db.execute(select(User).where(User.role == "learner"))
+        learners = l_res.scalars().all()
+        user_ids = [l.id for l in learners]
+        scope_name = "All Debater Students (Cohort Overview)"
+
     return {
         "scope_type": "cohort",
         "is_individual": False,
         "target_user": None,
-        "user_ids": [l.id for l in learners],
-        "scope_name": "All Debater Students (Cohort Overview)",
+        "user_ids": user_ids,
+        "scope_name": scope_name,
     }
 
 
@@ -113,11 +157,33 @@ async def list_students_for_reports(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List debater students (learners only) for drilldown."""
+    """List debater students (learners only) for drilldown, scoped by role."""
     if current_user.role not in ("admin", "coach", "educator"):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    result = await db.execute(select(User).where(User.role == "learner").order_by(User.full_name))
+    if current_user.role == "coach":
+        cls_res = await db.execute(select(Classroom).where(Classroom.coach_id == current_user.id))
+        classes = cls_res.scalars().all()
+        sids = set()
+        for c in classes:
+            for sid in (c.student_ids or []):
+                if sid: sids.add(str(sid))
+        if not sids:
+            return []
+        result = await db.execute(select(User).where(User.id.in_(list(sids))).order_by(User.full_name))
+    elif current_user.role == "educator":
+        cls_res = await db.execute(select(Classroom).where(Classroom.educator_id == current_user.id))
+        classes = cls_res.scalars().all()
+        sids = set()
+        for c in classes:
+            for sid in (c.student_ids or []):
+                if sid: sids.add(str(sid))
+        if not sids:
+            return []
+        result = await db.execute(select(User).where(User.id.in_(list(sids))).order_by(User.full_name))
+    else:
+        result = await db.execute(select(User).where(User.role == "learner").order_by(User.full_name))
+
     students = result.scalars().all()
     return [
         {
@@ -144,9 +210,36 @@ async def get_report_scopes(
     if current_user.role not in ("admin", "coach", "educator"):
         return {"scopes": [{"id": "personal", "name": f"My Personal Report ({current_user.full_name})", "type": "personal"}]}
 
-    # 1. Learners
-    st_res = await db.execute(select(User).where(User.role == "learner").order_by(User.full_name))
-    students = [{"id": s.id, "name": s.full_name, "email": s.email, "avg_score": s.avg_score or 0.0} for s in st_res.scalars().all()]
+    # 1. Learners (scoped)
+    if current_user.role == "coach":
+        cls_res = await db.execute(select(Classroom).where(Classroom.coach_id == current_user.id))
+        classes_obj = cls_res.scalars().all()
+        sids = set()
+        for c in classes_obj:
+            for sid in (c.student_ids or []):
+                if sid: sids.add(str(sid))
+        if sids:
+            st_res = await db.execute(select(User).where(User.id.in_(list(sids))).order_by(User.full_name))
+            students_obj = st_res.scalars().all()
+        else:
+            students_obj = []
+    elif current_user.role == "educator":
+        cls_res = await db.execute(select(Classroom).where(Classroom.educator_id == current_user.id))
+        classes_obj = cls_res.scalars().all()
+        sids = set()
+        for c in classes_obj:
+            for sid in (c.student_ids or []):
+                if sid: sids.add(str(sid))
+        if sids:
+            st_res = await db.execute(select(User).where(User.id.in_(list(sids))).order_by(User.full_name))
+            students_obj = st_res.scalars().all()
+        else:
+            students_obj = []
+    else:
+        st_res = await db.execute(select(User).where(User.role == "learner").order_by(User.full_name))
+        students_obj = st_res.scalars().all()
+
+    students = [{"id": s.id, "name": s.full_name, "email": s.email, "avg_score": s.avg_score or 0.0} for s in students_obj]
 
     # 2. Classes
     if current_user.role == "educator":
@@ -157,15 +250,16 @@ async def get_report_scopes(
         cls_res = await db.execute(select(Classroom).order_by(Classroom.name))
     classes = [{"id": f"class:{c.id}", "name": c.name, "student_count": len(c.student_ids or [])} for c in cls_res.scalars().all()]
 
-    # 3. Coaches
-    co_res = await db.execute(select(User).where(User.role == "coach").order_by(User.full_name))
-    coaches = [{"id": c.id, "name": c.full_name} for c in co_res.scalars().all()]
+    # 3. Coaches Group (Strictly for Educator and Admin, NOT for Coach)
+    coaches_group = None
+    if current_user.role in ("educator", "admin"):
+        coaches_group = {"id": "coaches", "name": "🏆 Coaches Group (Activities & Records)", "type": "group"}
 
     return {
         "personal": {"id": "personal", "name": f"⭐ My Personal Report ({current_user.full_name})", "type": "personal"},
         "cohort": {"id": "all", "name": "👥 All Debater Students (Cohort Overview)", "type": "cohort"},
         "classes": classes,
-        "coaches_group": {"id": "coaches", "name": "🏆 Coaches Group (Activities & Records)", "type": "group"},
+        "coaches_group": coaches_group,
         "students": students,
     }
 

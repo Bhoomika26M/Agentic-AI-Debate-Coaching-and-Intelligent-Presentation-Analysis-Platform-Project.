@@ -138,9 +138,9 @@ export default function SessionCreateModal({
             />
           </div>
 
-          {/* Assign Student Dropdown (Optional) */}
+          {/* Assign Student Dropdown */}
           <div className="form-group">
-            <label htmlFor="session-user-id">Assign to Student (Optional)</label>
+            <label htmlFor="session-user-id">Assign to Debater / Class Students</label>
             <select
               id="session-user-id"
               className="input"
@@ -148,7 +148,7 @@ export default function SessionCreateModal({
               value={form.user_id}
               onChange={onChange}
             >
-              <option value="">👥 Open for All Class Students (Any Learner Can Participate)</option>
+              <option value="">👥 Assign to All Students in My Assigned Classes</option>
               {Array.isArray(students) && students.map(st => (
                 <option key={st.id} value={st.id}>
                   🎓 {st.name} ({st.email})

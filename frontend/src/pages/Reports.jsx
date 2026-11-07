@@ -200,9 +200,11 @@ export default function Reports() {
                 </optgroup>
               )}
 
-              <optgroup label="🏆 Coaching Staff">
-                <option value="coaches">Coaches Group (Activities &amp; Records)</option>
-              </optgroup>
+              {role !== 'coach' && scopesData?.coaches_group && (
+                <optgroup label="🏆 Coaching Staff">
+                  <option value="coaches">Coaches Group (Activities &amp; Records)</option>
+                </optgroup>
+              )}
 
               {scopesData?.students?.length > 0 && (
                 <optgroup label="🎓 Individual Debater Students">

@@ -59,6 +59,7 @@ class CoachingEngine:
                         "strong_areas": [k for k, v in ranked if v >= 80],
                         "primary_focus": [r.get("skill") for r in formatted_recs[:2]],
                         "recommendations": formatted_recs,
+                        "primary_recommendations": formatted_recs,
                         "supplementary": [],
                         "overall_assessment": ai_output.get("overall_assessment"),
                         "priority_focus": ai_output.get("priority_focus"),

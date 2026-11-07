@@ -25,6 +25,8 @@ An AI-powered debate coaching and presentation analysis platform. Built for stud
 | **Educator** | Create sessions, manage classes, view cohort reports, download personal report |
 | **Admin** | Full platform management, individual personal report (not counted in aggregates) |
 
+> **Registration Note:** Public signup supports **Learner**, **Coach**, and **Educator** roles. Platform **Admin** accounts are protected and cannot be registered via public signup.
+
 ---
 
 ## 🚀 Local Setup
@@ -145,22 +147,13 @@ con.close()
 ### Reset/clean all data (keep admin accounts)
 
 ```bash
-backend\venv\Scripts\python -c "
-import sqlite3
+python -c "import sqlite3, os; [([c.cursor().execute('DELETE FROM ' + t) for t in ['notifications', 'classrooms', 'debate_sessions']], c.cursor().execute('DELETE FROM users WHERE role != \'admin\''), c.cursor().execute('UPDATE users SET avg_score = 0, total_sessions = 0, win_streak = 0, communication_skills = NULL, presentation_history = \'[]\' WHERE role = \'admin\''), c.commit(), c.cursor().execute('VACUUM'), print('Cleaned', p, 'Users:', c.cursor().execute('SELECT email, role FROM users').fetchall()), c.close()) for p in ['backend/debate.db', 'debate.db'] if os.path.exists(p) for c in [sqlite3.connect(p)]]"
+```
 
-for dbpath in ['debate.db', 'backend/debate.db']:
-    con = sqlite3.connect(dbpath)
-    cur = con.cursor()
-    cur.execute('DELETE FROM debate_sessions')
-    cur.execute('DELETE FROM notifications')
-    cur.execute('DELETE FROM classrooms')
-    cur.execute('DELETE FROM users WHERE role != ?', ('admin',))
-    cur.execute('UPDATE users SET communication_skills=NULL, presentation_history=NULL, avg_score=0, total_sessions=0, win_streak=0')
-    con.commit()
-    con.close()
+### Clean activity records while persisting all user accounts
 
-print('Cleaned — only admin accounts remain.')
-"
+```bash
+python -c "import sqlite3, os; [([c.cursor().execute('DELETE FROM ' + t) for t in ['notifications', 'classrooms', 'debate_sessions']], c.cursor().execute('UPDATE users SET total_sessions = 0, presentation_history = \'[]\''), c.commit(), c.cursor().execute('VACUUM'), print('Cleaned [', p, '] - Persisted Users:', len(c.cursor().execute('SELECT email FROM users').fetchall())), c.close()) for p in ['backend/debate.db', 'debate.db'] if os.path.exists(p) for c in [sqlite3.connect(p)]]"
 ```
 
 ### Create a new user manually

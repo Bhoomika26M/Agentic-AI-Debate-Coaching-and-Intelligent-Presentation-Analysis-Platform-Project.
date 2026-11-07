@@ -7,7 +7,7 @@ import SessionCreateModal, {
   SPEAKER_POSITIONS,
   SESSION_TYPES,
 } from '../components/SessionCreateModal'
-import api from '../api/client'
+import api, { parseApiError } from '../api/client'
 
 const EMPTY_FORM = {
   topic: '',
@@ -112,7 +112,7 @@ export default function DebateSessions() {
       setShowModal(false)
       setForm(EMPTY_FORM)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to create session. Please check fields.')
+      setError(parseApiError(err.response?.data?.detail, 'Failed to create session. Please check fields.'))
     } finally {
       setCreating(false)
     }
@@ -319,6 +319,11 @@ export default function DebateSessions() {
                 {viewSession.creator_name && (
                   <div style={{ fontSize: '0.8rem', color: 'var(--brand-primary)', marginTop: 4, fontWeight: 600 }}>
                     🏛️ Created by: {viewSession.creator_name} ({viewSession.creator_role || 'Staff'})
+                  </div>
+                )}
+                {viewSession.student_name && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--brand-secondary)', marginTop: 2, fontWeight: 600 }}>
+                    🎓 Assigned Debater: {viewSession.student_name} {viewSession.student_email ? `(${viewSession.student_email})` : ''}
                   </div>
                 )}
               </div>
