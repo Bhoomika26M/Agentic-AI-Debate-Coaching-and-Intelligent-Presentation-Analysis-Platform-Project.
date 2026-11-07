@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { parseApiError } from '../api/client'
 
 export default function Login() {
   const { login } = useAuth()
@@ -19,7 +20,7 @@ export default function Login() {
       await login(form.email, form.password)
       navigate('/dashboard')
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid credentials. Please try again.')
+      setError(parseApiError(err.response?.data?.detail, 'Invalid credentials. Please try again.'))
     } finally {
       setLoading(false)
     }
@@ -43,7 +44,7 @@ export default function Login() {
         </div>
 
         {/* Error */}
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && <div className="alert alert-error">{String(error)}</div>}
 
         {/* Form */}
         <form className="auth-form" onSubmit={handleSubmit}>

@@ -102,7 +102,7 @@ export default function SessionCreateModal({
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
-        {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
+        {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{String(error)}</div>}
 
         {/* Quick Demo Presets */}
         <div style={{ marginBottom: 16, background: 'var(--bg-overlay)', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { parseApiError } from '../api/client'
 
 const ROLES = [
   { value: 'learner', icon: '🎓', label: 'Learner', desc: 'Improve debate skills' },
@@ -36,7 +37,7 @@ export default function Signup() {
       await register({ full_name: form.full_name, email: form.email, password: form.password, role: form.role })
       navigate('/dashboard')
     } catch (err) {
-      setError(err.response?.data?.detail || 'Registration failed. Please try again.')
+      setError(parseApiError(err.response?.data?.detail, 'Registration failed. Please try again.'))
     } finally {
       setLoading(false)
     }
@@ -62,7 +63,7 @@ export default function Signup() {
           </div>
         </div>
 
-        {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
+        {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{String(error)}</div>}
 
         {/* ── Step 1: Identity ──────────────────────────────── */}
         {step === 1 && (

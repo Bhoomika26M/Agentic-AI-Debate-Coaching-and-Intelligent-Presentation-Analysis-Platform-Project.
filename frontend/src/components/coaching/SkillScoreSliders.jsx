@@ -63,7 +63,7 @@ export default function SkillScoreSliders({ scores, onScoreChange, level, onLeve
           {loading ? <span className="spinner" /> : '🔍 Analyze & Synthesize Guidance'}
         </button>
       </div>
-      {error && <div className="alert alert-error" style={{ marginTop: 12 }}>{error}</div>}
+      {error && <div className="alert alert-error" style={{ marginTop: 12 }}>{String(error)}</div>}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import api from '../api/client'
+import api, { parseApiError } from '../api/client'
 
 const DEBATE_TOPICS = [
   'Technology & AI', 'Climate & Environment', 'Politics & Governance',
@@ -67,7 +67,7 @@ export default function Profile() {
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to save profile.')
+      setError(parseApiError(err.response?.data?.detail, 'Failed to save profile.'))
     } finally {
       setSaving(false)
     }
@@ -89,7 +89,7 @@ export default function Profile() {
         </button>
       </div>
 
-      {error   && <div className="alert alert-error"   style={{ marginBottom: 20 }}>{error}</div>}
+      {error   && <div className="alert alert-error"   style={{ marginBottom: 20 }}>{String(error)}</div>}
       {success && <div className="alert alert-success" style={{ marginBottom: 20 }}>✅ Profile saved successfully!</div>}
 
       {/* Avatar + Basic Info */}

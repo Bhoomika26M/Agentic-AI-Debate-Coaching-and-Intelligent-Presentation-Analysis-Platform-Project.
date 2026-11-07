@@ -189,7 +189,7 @@ export default function DebateSimulation() {
               </select>
             </div>
 
-            {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
+            {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{String(error)}</div>}
 
             <button
               className="btn btn-primary btn-lg"
@@ -289,7 +289,7 @@ export default function DebateSimulation() {
 
                 <div className="speech-footer">
                   <span>{userSpeech.split(/\s+/).filter(Boolean).length} words</span>
-                  {error && <span style={{ color: 'var(--brand-danger)' }}>{error}</span>}
+                  {error && <span style={{ color: 'var(--brand-danger)' }}>{String(error)}</span>}
                   <button
                     className="btn btn-primary"
                     onClick={submitSpeech}

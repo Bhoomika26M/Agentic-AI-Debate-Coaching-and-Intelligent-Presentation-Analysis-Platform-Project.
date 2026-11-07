@@ -179,7 +179,7 @@ export default function ArgumentAnalysis() {
             />
           </div>
 
-          {error && <div className="alert alert-error">{error}</div>}
+          {error && <div className="alert alert-error">{String(error)}</div>}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
             <button

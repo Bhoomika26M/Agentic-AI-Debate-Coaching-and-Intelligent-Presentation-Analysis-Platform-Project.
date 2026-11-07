@@ -397,7 +397,7 @@ export default function DebateSessions() {
                   </div>
                 )}
 
-                {aiError && <div className="alert alert-error" style={{ marginTop: 8, fontSize: '0.82rem' }}>{aiError}</div>}
+                {aiError && <div className="alert alert-error" style={{ marginTop: 8, fontSize: '0.82rem' }}>{String(aiError)}</div>}
 
                 {aiReport && (
                   <div style={{ marginTop: 12, padding: 12, background: 'var(--bg-overlay)', borderRadius: 'var(--radius-md)', border: '1px solid var(--brand-primary)' }}>

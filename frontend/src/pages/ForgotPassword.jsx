@@ -81,7 +81,7 @@ export default function ForgotPassword() {
         </div>
 
         {/* Error Alert */}
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && <div className="alert alert-error">{String(error)}</div>}
 
         {/* Step 1: Enter Email */}
         {step === 1 && (

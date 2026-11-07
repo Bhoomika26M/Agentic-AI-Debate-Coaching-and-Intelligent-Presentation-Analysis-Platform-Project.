@@ -322,7 +322,7 @@ export default function Reports() {
         </div>
       )}
 
-      {error && <div className="error-msg" style={{ marginBottom: 16 }}>{error}</div>}
+      {error && <div className="error-msg" style={{ marginBottom: 16 }}>{String(error)}</div>}
 
       {/* Tab Navigation */}
       <div className="tab-bar" style={{ overflowX: 'auto', whiteSpace: 'nowrap', marginBottom: 24 }}>

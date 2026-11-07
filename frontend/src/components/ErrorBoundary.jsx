@@ -29,7 +29,11 @@ export default class ErrorBoundary extends React.Component {
           <div style={{ fontSize: '3rem', marginBottom: 16 }}>⚠️</div>
           <h2 style={{ marginBottom: 8, color: 'var(--text-primary)' }}>Something went wrong</h2>
           <p style={{ color: 'var(--text-secondary)', maxWidth: 480, marginBottom: 20, fontSize: '0.9rem' }}>
-            {this.state.error?.message || 'An unexpected rendering error occurred. You can reload this view or return to the dashboard.'}
+            {typeof this.state.error?.message === 'string'
+              ? this.state.error.message
+              : typeof this.state.error === 'string'
+                ? this.state.error
+                : 'An unexpected rendering error occurred. You can reload this view or return to the dashboard.'}
           </p>
           <div style={{ display: 'flex', gap: 12 }}>
             <button

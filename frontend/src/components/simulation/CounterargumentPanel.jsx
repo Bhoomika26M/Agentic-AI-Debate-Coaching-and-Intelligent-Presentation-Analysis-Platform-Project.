@@ -56,7 +56,7 @@ export default function CounterargumentPanel({ currentTopic }) {
           rows={3}
           style={{ resize: 'vertical', fontSize: '0.88rem' }}
         />
-        {error && <div className="alert alert-error" style={{ padding: '8px 12px', fontSize: '0.8rem' }}>{error}</div>}
+        {error && <div className="alert alert-error" style={{ padding: '8px 12px', fontSize: '0.8rem' }}>{String(error)}</div>}
         <button
           type="submit"
           className="btn btn-secondary btn-sm"

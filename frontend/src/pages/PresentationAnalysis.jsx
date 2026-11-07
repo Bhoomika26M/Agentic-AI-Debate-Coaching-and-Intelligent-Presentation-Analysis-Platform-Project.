@@ -200,7 +200,7 @@ export default function PresentationAnalysis() {
               />
               <div className="speech-footer">
                 <span className="word-count">{wc} words</span>
-                {error && <span className="error-inline">{error}</span>}
+                {error && <span className="error-inline">{String(error)}</span>}
                 <button className="btn btn-primary" onClick={analyze} disabled={loading}>
                   {loading ? '⏳ Analysing...' : '🎤 Analyse Presentation'}
                 </button>
@@ -227,7 +227,7 @@ export default function PresentationAnalysis() {
                   Selected: <strong>{audioFile.name}</strong> ({(audioFile.size / 1024).toFixed(1)} KB)
                 </div>
               )}
-              {error && <div className="error-msg" style={{ marginBottom: 14 }}>{error}</div>}
+              {error && <div className="error-msg" style={{ marginBottom: 14 }}>{String(error)}</div>}
               <div>
                 <button className="btn btn-primary" onClick={analyze} disabled={loading || !audioFile}>
                   {loading ? '⏳ Processing Audio...' : '🚀 Transcribe & Analyze Audio'}
