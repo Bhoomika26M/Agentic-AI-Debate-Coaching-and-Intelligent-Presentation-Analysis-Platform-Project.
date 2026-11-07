@@ -58,7 +58,7 @@ export default function LearningPlanTab({ learningPlan }) {
         <div className="milestones-list">
           {learningPlan.milestones?.map((m, i) => (
             <div key={i} className="milestone-item">
-              <div className="milestone-week">Milestone Week {m.week}</div>
+              <div className="milestone-week">Milestone {m.milestone || i + 1} (Week {m.week || i + 1})</div>
               <div className="milestone-check">✅ {m.checkpoint}</div>
             </div>
           ))}

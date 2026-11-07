@@ -2,6 +2,7 @@ import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import Navbar from './Navbar'
 import Sidebar from './Sidebar'
+import ErrorBoundary from './ErrorBoundary'
 
 export default function ProtectedRoute() {
   const { user, loading } = useAuth()
@@ -14,7 +15,9 @@ export default function ProtectedRoute() {
     )
   }
 
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) {
+    return <Navigate to="/" replace />
+  }
 
   return (
     <div className="app-layout">
@@ -22,7 +25,9 @@ export default function ProtectedRoute() {
       <div className="main-content">
         <Navbar />
         <main className="page-content">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

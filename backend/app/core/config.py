@@ -25,9 +25,9 @@ class Settings(BaseSettings):
 
     # Agentic AI / LLM Configuration
     # Supported providers: 'gemini' (Google Gemini API), 'openai' (OpenAI API / Compatible), 'auto', or 'heuristic'
-    AI_PROVIDER: str = "auto"
+    AI_PROVIDER: str = "gemini"
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
     OPENAI_API_KEY: str = ""
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o-mini"

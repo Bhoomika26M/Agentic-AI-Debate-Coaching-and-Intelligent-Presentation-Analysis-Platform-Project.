@@ -49,52 +49,6 @@ class NotificationListResponse(BaseModel):
     notifications: list[NotificationOut]
 
 
-async def _seed_default_notifications_if_empty(db: AsyncSession, current_user: User):
-    """Seed initial engagement notifications if user has zero personal notifications."""
-    result = await db.execute(
-        select(Notification).where(Notification.user_id == current_user.id)
-    )
-    user_notifs = result.scalars().all()
-    if not user_notifs:
-        defaults = [
-            Notification(
-                user_id=current_user.id,
-                title="Skill Milestone Unlocked",
-                message="Congratulations! Your Argument Consistency metric has reached the top 15% tier among peer debaters.",
-                type=NotificationType.SKILL_MILESTONE,
-                link="/profile",
-                is_read=False,
-            ),
-            Notification(
-                user_id=current_user.id,
-                title="Scheduled Debate Reminder",
-                message="Your Parliamentary debate session is coming up. Review key definitions and counterpoints before round 1.",
-                type=NotificationType.DEBATE_REMINDER,
-                link="/sessions",
-                is_read=False,
-            ),
-            Notification(
-                user_id=current_user.id,
-                title="AI Coaching Feedback Available",
-                message="Coach Williams completed evaluation on your recent speech transcript. 4 actionable rebuttals suggested.",
-                type=NotificationType.COACHING_FEEDBACK,
-                link="/coaching",
-                is_read=False,
-            ),
-            Notification(
-                user_id=current_user.id,
-                title="Daily Practice Session",
-                message="Spend 5 minutes today on the '2-Minute Drill' to trim filler words and refine speaking pace.",
-                type=NotificationType.PRACTICE_REMINDER,
-                link="/presentation",
-                is_read=False,
-            ),
-        ]
-        for item in defaults:
-            db.add(item)
-        await db.flush()
-
-
 @router.get("", response_model=NotificationListResponse)
 @router.get("/", response_model=NotificationListResponse)
 async def list_notifications(
@@ -102,11 +56,8 @@ async def list_notifications(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Retrieve all notifications for the authenticated user, including platform broadcasts.
-    Automatically seeds engaging starter notifications if empty.
+    Retrieve real notifications for the authenticated user, including platform broadcasts.
     """
-    await _seed_default_notifications_if_empty(db, current_user)
-
     result = await db.execute(
         select(Notification)
         .where(or_(Notification.user_id == current_user.id, Notification.user_id.is_(None)))

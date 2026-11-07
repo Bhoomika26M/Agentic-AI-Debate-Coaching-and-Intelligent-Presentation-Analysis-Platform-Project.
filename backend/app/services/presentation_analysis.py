@@ -9,6 +9,7 @@ Provides:
 """
 
 import re
+from app.services.ai_agent import ai_agent
 from typing import Literal
 
 # ── Filler words database ──────────────────────────────────────────────────────
@@ -223,8 +224,41 @@ class PresentationAnalysisEngine:
             improvements.append(f"Speaking pace of ~{wpm} WPM is too fast. Target 120-160 WPM for maximum comprehension.")
             priority_tips.extend(IMPROVEMENT_TIPS["pacing"][:2])
 
+        # Attempt Live AI Presentation Delivery Critique
+        ai_critique = None
+        if ai_agent.get_status().get("active"):
+            try:
+                ai_critique = ai_agent.analyze_presentation_delivery(transcript=text, title=title)
+                if ai_critique:
+                    if ai_critique.get("strengths"):
+                        strengths = ai_critique["strengths"]
+                    if ai_critique.get("priority_improvements"):
+                        improvements = ai_critique["priority_improvements"]
+            except Exception:
+                pass
+
+        if not improvements:
+            if priority_tips:
+                improvements = priority_tips[:3]
+            else:
+                improvements = [
+                    "Incorporate deliberate 1-2 second rhetorical pauses before key claims to build dramatic emphasis.",
+                    "Elevate listener engagement by using direct rhetorical questions to invite active cognitive investment.",
+                    "Vary cadence and vocal pitch between evidentiary statistics and narrative impacts.",
+                ]
+
+        if not priority_tips:
+            priority_tips = [
+                "Practice deliberate silent pauses instead of rushing through transition statements.",
+                "Frame evidentiary points with clear signposting (e.g., 'Crucially, the empirical data shows...').",
+                "Ensure your closing sentence leaves a memorable call-to-action or lingering challenge for the audience.",
+            ]
+
         return {
             "title": title or "Speech Analysis",
+            "is_ai_evaluated": bool(ai_critique),
+            "ai_critique": ai_critique.get("executive_critique") if ai_critique else None,
+            "pacing_advice": ai_critique.get("recommended_pacing_strategy") if ai_critique else None,
             "word_count": word_count,
             "sentence_count": sentence_count,
             "avg_words_per_sentence": avg_words_per_sentence,

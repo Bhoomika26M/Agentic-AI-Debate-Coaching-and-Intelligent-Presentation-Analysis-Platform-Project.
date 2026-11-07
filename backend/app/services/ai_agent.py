@@ -16,6 +16,7 @@ Supported Providers:
    heuristics when no API key is supplied or when offline.
 """
 
+import base64
 import json
 import logging
 import re
@@ -51,10 +52,10 @@ class AIAgentService:
     """
 
     def __init__(self):
-        self.gemini_key = settings.GEMINI_API_KEY.strip()
-        self.openai_key = settings.OPENAI_API_KEY.strip()
+        self.gemini_key = settings.GEMINI_API_KEY.strip().strip('"').strip("'")
+        self.openai_key = settings.OPENAI_API_KEY.strip().strip('"').strip("'")
         self.provider_pref = settings.AI_PROVIDER.lower().strip()
-        self.gemini_model = settings.GEMINI_MODEL
+        self.gemini_model = "gemini-3.5-flash-lite"
         self.openai_model = settings.OPENAI_MODEL
         self.openai_base_url = settings.OPENAI_BASE_URL.rstrip("/")
 
@@ -63,14 +64,16 @@ class AIAgentService:
         Reports active AI engine status, active provider, and configured models.
         Useful for UI badges and diagnostics.
         """
-        active_key = api_key_override or self.gemini_key or self.openai_key
+        raw_key = api_key_override or self.gemini_key or self.openai_key
+        active_key = raw_key.strip().strip('"').strip("'") if raw_key else ""
         has_key = bool(active_key)
 
         provider = "heuristic"
         if has_key:
             if api_key_override:
-                # Detect provider based on key format
-                if api_key_override.startswith("AIzaSy"):
+                # Detect provider based on key format (AIzaSy or AQ. for Google Gemini)
+                clean_override = api_key_override.strip().strip('"').strip("'")
+                if clean_override.startswith("AIzaSy") or clean_override.startswith("AQ."):
                     provider = "gemini"
                 else:
                     provider = "openai"
@@ -129,9 +132,13 @@ class AIAgentService:
         user_prompt: str,
         timeout: float,
     ) -> Optional[dict[str, Any]]:
-        """Invokes Google Gemini REST API with JSON response format."""
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.gemini_model}:generateContent?key={api_key}"
-        combined_prompt = f"{system_prompt}\n\nStrict JSON Requirement: Output ONLY a valid JSON object matching the requested schema. No conversational preamble, no markdown quotes.\n\nInput Task:\n{user_prompt}"
+        """Invokes Google Gemini REST API with JSON response format and resilient model routing."""
+        combined_prompt = (
+            f"{system_prompt}\n\n"
+            "Strict JSON Requirement: Output ONLY a valid JSON object matching the requested schema. "
+            "No conversational preamble, no markdown quotes.\n\n"
+            f"Input Task:\n{user_prompt}"
+        )
 
         payload = {
             "contents": [{"parts": [{"text": combined_prompt}]}],
@@ -141,28 +148,54 @@ class AIAgentService:
             },
         }
 
-        if httpx:
-            with httpx.Client(timeout=timeout) as client:
-                res = client.post(url, json=payload)
-                res.raise_for_status()
-                data = res.json()
-        else:
-            import urllib.request
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=timeout) as response:
-                data = json.loads(response.read().decode("utf-8"))
+        candidate_models = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-3.6-flash"]
+        if self.gemini_model and self.gemini_model not in candidate_models:
+            candidate_models.insert(0, self.gemini_model)
 
-        # Extract text from Gemini candidates
-        candidates = data.get("candidates", [])
-        if not candidates:
-            return None
-        text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-        return self._clean_and_parse_json(text)
+        last_err = None
+        for model in candidate_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            try:
+                if httpx:
+                    with httpx.Client(timeout=15.0) as client:
+                        res = client.post(url, json=payload)
+                        if res.status_code == 200:
+                            data = res.json()
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                                parsed = self._clean_and_parse_json(text)
+                                if parsed:
+                                    return parsed
+                        elif res.status_code in (404, 503, 429):
+                            logger.info(f"AIAgent: Gemini model {model} returned {res.status_code}. Trying fallback...")
+                            continue
+                        else:
+                            res.raise_for_status()
+                else:
+                    import urllib.request
+                    req = urllib.request.Request(
+                        url,
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST"
+                    )
+                    with urllib.request.urlopen(req, timeout=timeout) as response:
+                        data = json.loads(response.read().decode("utf-8"))
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                            parsed = self._clean_and_parse_json(text)
+                            if parsed:
+                                return parsed
+            except Exception as e:
+                last_err = e
+                logger.warning(f"AIAgent: Gemini call with {model} failed: {e}. Trying fallback...")
+                continue
+
+        if last_err:
+            logger.warning(f"AIAgent: All Gemini models failed: {last_err}")
+        return None
 
     def _call_openai(
         self,
@@ -452,6 +485,175 @@ class AIAgentService:
             f"FOCUS AREAS: {focus_areas or 'General improvement'}"
         )
 
+        return self._call_llm(system_prompt, user_prompt, api_key_override)
+
+
+    def transcribe_audio(
+        self,
+        audio_bytes: bytes,
+        mime_type: str = "audio/wav",
+        prompt: Optional[str] = None,
+        api_key_override: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Transcribes uploaded audio speech recording into accurate word-for-word text
+        using multimodal Agentic AI (Gemini Multimodal Speech Intelligence).
+        """
+        status = self.get_status(api_key_override)
+        if not status["active"] or status["provider"] != "gemini":
+            return None
+
+        key = api_key_override or self.gemini_key
+        clean_mime = mime_type.lower() if mime_type else "audio/wav"
+        if "wav" in clean_mime:
+            valid_mime = "audio/wav"
+        elif "mp3" in clean_mime or "mpeg" in clean_mime:
+            valid_mime = "audio/mp3"
+        elif "m4a" in clean_mime:
+            valid_mime = "audio/m4a"
+        elif "ogg" in clean_mime:
+            valid_mime = "audio/ogg"
+        elif "webm" in clean_mime:
+            valid_mime = "audio/webm"
+        else:
+            valid_mime = "audio/wav"
+
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+        instruction = (
+            prompt or 
+            "You are a professional verbatim speech transcriber. Listen to the provided audio file "
+            "and output the EXACT, verbatim spoken speech word for word. "
+            "Do not summarize, do not omit words, and do not add conversational preamble. "
+            "Return only the spoken transcript text."
+        )
+
+        candidate_models = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-3.6-flash"]
+
+        for model in candidate_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "inline_data": {
+                                    "mime_type": valid_mime,
+                                    "data": audio_b64,
+                                }
+                            },
+                            {
+                                "text": instruction
+                            }
+                        ]
+                    }
+                ],
+                "generationConfig": {
+                    "temperature": 0.1,
+                }
+            }
+
+            try:
+                if httpx:
+                    with httpx.Client(timeout=45.0) as client:
+                        res = client.post(url, json=payload)
+                        if res.status_code == 200:
+                            data = res.json()
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                                if text and len(text.strip()) > 0:
+                                    return text.strip()
+                        elif res.status_code in (404, 503, 429):
+                            continue
+            except Exception as e:
+                logger.warning(f"Audio transcription failed on model {model}: {e}")
+                continue
+
+        return None
+
+    def analyze_presentation_delivery(
+        self,
+        transcript: str,
+        title: Optional[str] = None,
+        api_key_override: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        """
+        AI Presentation & Speech Delivery Critic:
+        Generates qualitative speech critique, specific rhetorical strengths,
+        and high-impact priority delivery tips based on the actual transcript.
+        """
+        system_prompt = (
+            "You are a World Championship Public Speaking Coach. "
+            "Analyze this speech transcript for rhetorical delivery, audience engagement, "
+            "clarity, and persuasive resonance.\n"
+            "Return JSON matching EXACT schema:\n"
+            "{\n"
+            '  "executive_critique": "2-3 sentence assessment of the speech impact",\n'
+            '  "strengths": ["specific strength 1 from the text", "specific strength 2 from the text"],\n'
+            '  "priority_improvements": ["concrete action to improve 1", "concrete action to improve 2"],\n'
+            '  "recommended_pacing_strategy": "Advice on where to pause and emphasize points in this specific speech"\n'
+            "}"
+        )
+        user_prompt = f"PRESENTATION TITLE: {title or 'Speech'}\n\nTRANSCRIPT:\n\"\"\"{transcript}\"\"\""
+        return self._call_llm(system_prompt, user_prompt, api_key_override)
+
+
+    def generate_coaching_learning_plan(
+        self,
+        user_level: str = "intermediate",
+        weak_skills: Optional[list[str]] = None,
+        sessions_per_week: int = 3,
+        api_key_override: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        """
+        Agentic Curriculum Designer:
+        Generates a 4-week structured debate syllabus tailored to student level and weak skills.
+        """
+        system_prompt = (
+            "You are a Master Debate Coach and Curriculum Director. Design a tailored 4-week debate learning plan.\n"
+            "Return JSON matching EXACT schema:\n"
+            "{\n"
+            '  "weekly_plan": [\n'
+            '    {\n'
+            '      "week": 1,\n'
+            '      "focus": "Topic/Skill area",\n'
+            '      "goal": "Measurable competency goal",\n'
+            '      "daily_practice": "Concrete drill description (e.g. 25 mins daily structure drill)"\n'
+            '    },\n'
+            '    {\n'
+            '      "week": 2,\n'
+            '      "focus": "Topic/Skill area",\n'
+            '      "goal": "Measurable competency goal",\n'
+            '      "daily_practice": "Concrete drill description"\n'
+            '    },\n'
+            '    {\n'
+            '      "week": 3,\n'
+            '      "focus": "Topic/Skill area",\n'
+            '      "goal": "Measurable competency goal",\n'
+            '      "daily_practice": "Concrete drill description"\n'
+            '    },\n'
+            '    {\n'
+            '      "week": 4,\n'
+            '      "focus": "Topic/Skill area",\n'
+            '      "goal": "Measurable competency goal",\n'
+            '      "daily_practice": "Concrete drill description"\n'
+            '    }\n'
+            '  ],\n'
+            '  "targeted_skill_exercises": ["Exercise 1 targeting weak skills", "Exercise 2", "Exercise 3", "Exercise 4"],\n'
+            '  "milestones": [\n'
+            '    {"milestone": 1, "week": 1, "checkpoint": "Week 1 diagnostic milestone checkpoint"},\n'
+            '    {"milestone": 2, "week": 2, "checkpoint": "Week 2 progression checkpoint"},\n'
+            '    {"milestone": 3, "week": 3, "checkpoint": "Week 3 sparring checkpoint"},\n'
+            '    {"milestone": 4, "week": 4, "checkpoint": "Week 4 mastery checkpoint"}\n'
+            '  ],\n'
+            '  "daily_commitment_minutes": 30\n'
+            "}"
+        )
+        user_prompt = (
+            f"STUDENT LEVEL: {user_level}\n"
+            f"WEAK SKILLS TO TARGET: {weak_skills or 'General debate proficiency'}\n"
+            f"TRAINING FREQUENCY: {sessions_per_week} sessions per week"
+        )
         return self._call_llm(system_prompt, user_prompt, api_key_override)
 
 

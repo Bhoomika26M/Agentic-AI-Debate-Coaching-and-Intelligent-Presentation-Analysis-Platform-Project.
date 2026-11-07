@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../api/client'
+import { resetScrollTop } from '../components/ScrollToTop'
 import SkillScoreSliders from '../components/coaching/SkillScoreSliders'
 import LearningPlanTab from '../components/coaching/LearningPlanTab'
 import SkillGapTab from '../components/coaching/SkillGapTab'
@@ -31,8 +32,14 @@ export default function Coaching() {
   const [error, setError]                     = useState('')
 
   useEffect(() => {
-    loadDrills()
-    loadAll()
+    // Populate scores from student's historical performance if available
+    api.get('/reports/performance')
+      .then(res => {
+        if (res.data?.skill_averages && Object.keys(res.data.skill_averages).length > 0) {
+          setScores(prev => ({ ...prev, ...res.data.skill_averages }))
+        }
+      })
+      .catch(() => {})
   }, [])
 
   const loadAll = async (customScores = null, customLevel = null) => {
@@ -41,7 +48,7 @@ export default function Coaching() {
     const s = customScores || scores
     const l = customLevel || level
     try {
-      const [recRes, planRes, gapRes] = await Promise.all([
+      const [recRes, planRes, gapRes, drillRes] = await Promise.all([
         api.post('/coaching/recommendations', { scores: s, user_level: l }),
         api.post('/coaching/learning-plan', {
           user_level: l,
@@ -49,10 +56,12 @@ export default function Coaching() {
           sessions_per_week: 3,
         }),
         api.post('/coaching/skill-gap', { scores: s }),
+        api.get('/coaching/drills'),
       ])
       setRecommendations(recRes.data)
       setLearningPlan(planRes.data)
       setSkillGap(gapRes.data)
+      setDrills(drillRes.data || [])
     } catch (err) {
       setError('Failed to load coaching data. Ensure backend is running.')
     } finally {
@@ -111,15 +120,26 @@ export default function Coaching() {
             key={t.key}
             type="button"
             className={`tab-btn ${activeTab === t.key ? 'active' : ''}`}
-            onClick={() => setActiveTab(t.key)}
+            onClick={() => { setActiveTab(t.key); resetScrollTop(); }}
           >
             {t.label}
           </button>
         ))}
       </div>
 
+      {/* Empty State before Analysis */}
+      {!recommendations && !loading && (
+        <div className="card" style={{ textAlign: 'center', padding: '48px 24px', background: 'var(--bg-surface)', border: '1px dashed var(--border-medium)', borderRadius: 'var(--radius-lg)' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🏆</div>
+          <h3 style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>Ready for AI Coaching & Curriculum</h3>
+          <p style={{ color: 'var(--text-muted)', maxWidth: 540, margin: '0 auto', fontSize: '0.9rem' }}>
+            Adjust your 5 skill dials above or keep your current benchmarks, then click <strong>"Analyze & Synthesize Guidance"</strong> to generate your tailored AI coaching plan, 4-week study curriculum, and competitive gap analysis.
+          </p>
+        </div>
+      )}
+
       {/* ── Recommendations Tab ── */}
-      {activeTab === 'recommendations' && recommendations && (
+      {recommendations && activeTab === 'recommendations' && (
         <div className="coaching-content">
           <div className="overall-score-card">
             <div className="oc-score" style={{ color: 'var(--brand-primary)' }}>
@@ -159,17 +179,17 @@ export default function Coaching() {
       )}
 
       {/* ── Learning Plan Tab ── */}
-      {activeTab === 'learning-plan' && (
+      {recommendations && activeTab === 'learning-plan' && (
         <LearningPlanTab learningPlan={learningPlan} />
       )}
 
       {/* ── Skill Gap Tab ── */}
-      {activeTab === 'skill-gap' && (
+      {recommendations && activeTab === 'skill-gap' && (
         <SkillGapTab skillGap={skillGap} />
       )}
 
       {/* ── Drills Tab ── */}
-      {activeTab === 'drills' && (
+      {recommendations && activeTab === 'drills' && (
         <div className="coaching-content">
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
             {['', 'beginner', 'intermediate', 'advanced'].map(d => (
@@ -185,7 +205,7 @@ export default function Coaching() {
           </div>
 
           <div className="drills-grid">
-            {drills.map((drill, i) => (
+            {(drills.length > 0 ? drills : (learningPlan?.recommended_drills || [])).map((drill, i) => (
               <div key={i} className="drill-card">
                 <div className="drill-header">
                   <span className="drill-name">{drill.name}</span>

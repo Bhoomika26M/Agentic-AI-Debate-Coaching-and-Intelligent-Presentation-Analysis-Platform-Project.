@@ -403,3 +403,56 @@
   .hero-title { font-size: clamp(2.35rem, 11vw, 3.6rem); }
   .features-section { padding: 56px 20px; }
 }
+
+/* Presentation Analysis History & Tips Modals */
+.modal-box {
+  width: 100%;
+  max-width: 620px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-lg);
+  animation: fadeIn 0.25s ease;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.tips-filter {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+.tips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 440px;
+  overflow-y: auto;
+}
+.tip-modal-item {
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  transition: all var(--transition-fast);
+}
+.tip-modal-item:hover {
+  border-color: var(--brand-primary);
+  background: rgba(23, 107, 104, 0.05);
+}
+.tip-category {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--brand-primary);
+  margin-bottom: 4px;
+}
+.tip-text {
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}

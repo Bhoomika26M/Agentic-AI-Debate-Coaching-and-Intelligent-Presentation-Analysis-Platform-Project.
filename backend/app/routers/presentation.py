@@ -20,6 +20,7 @@ from app.models.debate_session import DebateSession
 from app.models.user import User
 from app.routers.users import get_current_user
 from app.services.presentation_analysis import presentation_engine
+from app.services.ai_agent import ai_agent
 
 router = APIRouter(prefix="/presentation", tags=["Presentation Analysis"])
 
@@ -50,7 +51,14 @@ def _format_presentation_report(report: dict) -> dict:
     report["confidence_analysis"] = {"confidence_score": confidence}
     report["clarity_analysis"] = {"clarity_score": clarity}
     report["engagement_analysis"] = {"engagement_score": engagement}
-    report["improvement_recommendations"] = report.get("priority_tips", [])
+    priority_tips = report.get("priority_tips", [])
+    report["improvement_recommendations"] = priority_tips
+    if not report.get("improvements"):
+        report["improvements"] = priority_tips if priority_tips else [
+            "Incorporate deliberate 1-2 second rhetorical pauses before key claims to build dramatic emphasis.",
+            "Elevate listener engagement by using direct rhetorical questions to invite active cognitive investment.",
+            "Vary cadence and vocal pitch between evidentiary statistics and narrative impacts.",
+        ]
     return report
 
 
@@ -133,16 +141,22 @@ async def upload_audio_presentation(
     # Approximate audio duration from file size (typical 16kHz mono audio is ~32KB/sec)
     approx_duration = max(15, min(300, int(file_size / 32000)))
 
-    # In speech analysis architecture, speech-to-text models transcribe the audio stream
-    # Sample realistic transcription based on presentation topic context
-    transcription = (
-        f"Thank you, ladies and gentlemen. Today I want to address {title or 'our central resolution'} "
-        "with clear empirical evidence and critical analysis. Firstly, we must recognise that structural "
-        "reform requires sustained investment and accountability. Secondly, you know, while some critics, um, "
-        "suggest gradual modification, the data conclusively shows that comprehensive transformation delivers "
-        "superior outcomes across key performance metrics. In conclusion, we urge the adoption of this measure "
-        "for long-term progress and societal benefit."
+    # Transcribe the uploaded audio with Agentic AI Multimodal Speech Engine
+    ai_transcript = ai_agent.transcribe_audio(
+        audio_bytes=contents,
+        mime_type=audio_file.content_type or "audio/wav",
     )
+
+    if ai_transcript and len(ai_transcript.strip()) >= 5:
+        transcription = ai_transcript.strip()
+        is_live_ai_transcribed = True
+    else:
+        # If no key or offline, inform accurately without fake speech
+        transcription = (
+            f"Speech recording submitted for: {title or audio_file.filename}. "
+            "Audio received and validated. Connect Gemini AI to view live word-for-word speech transcription."
+        )
+        is_live_ai_transcribed = False
 
     raw_report = presentation_engine.analyze_speech_text(
         transcript=transcription,
@@ -150,6 +164,8 @@ async def upload_audio_presentation(
         title=title or audio_file.filename or "Audio Presentation",
     )
     report = _format_presentation_report(raw_report)
+    report["transcript"] = transcription
+    report["is_live_ai_transcribed"] = is_live_ai_transcribed
     report["audio_meta"] = {
         "filename": audio_file.filename,
         "content_type": audio_file.content_type,

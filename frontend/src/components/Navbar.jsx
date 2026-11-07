@@ -48,10 +48,15 @@ export default function Navbar() {
   const dropdownRef = useRef(null)
 
   useEffect(() => {
+    loadAiStatus()
     if (user) {
       loadNotifications()
+      // Live polling for instant notifications
+      const notifInterval = setInterval(() => {
+        loadNotifications()
+      }, 10000)
+      return () => clearInterval(notifInterval)
     }
-    loadAiStatus()
   }, [user])
 
   // Close dropdown on outside click

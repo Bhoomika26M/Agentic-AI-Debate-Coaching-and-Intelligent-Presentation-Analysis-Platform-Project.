@@ -8,7 +8,7 @@ export default function Sidebar() {
 
   const handleLogout = () => {
     logout()
-    navigate('/login')
+    window.location.href = '/'
   }
 
   const roleColors = {
@@ -57,7 +57,7 @@ export default function Sidebar() {
       </div>
 
       {/* User pill */}
-      {user && (
+      {user ? (
         <div className="sidebar-user">
           <div className="user-avatar" style={{ background: roleColor }}>
             {user.full_name?.[0]?.toUpperCase() || '?'}
@@ -69,6 +69,24 @@ export default function Sidebar() {
               {user.role}
             </div>
           </div>
+        </div>
+      ) : (
+        <div style={{
+          padding: '12px 14px',
+          margin: '10px 14px',
+          background: 'var(--bg-overlay)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border-light)',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Guest Mode</div>
+          <button
+            className="btn btn-primary btn-sm"
+            style={{ marginTop: 8, width: '100%' }}
+            onClick={() => navigate('/login')}
+          >
+            Sign In
+          </button>
         </div>
       )}
 
@@ -91,11 +109,17 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Logout */}
+      {/* Logout / Login */}
       <div className="sidebar-footer">
-        <button className="logout-btn" onClick={handleLogout}>
-          <span>🚪</span> Logout
-        </button>
+        {user ? (
+          <button className="logout-btn" onClick={handleLogout}>
+            <span>🚪</span> Logout
+          </button>
+        ) : (
+          <button className="logout-btn" onClick={() => navigate('/login')}>
+            <span>🔑</span> Sign In
+          </button>
+        )}
       </div>
     </aside>
   )

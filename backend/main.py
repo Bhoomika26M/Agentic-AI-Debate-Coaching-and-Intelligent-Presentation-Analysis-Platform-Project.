@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import create_tables
-from app.routers import auth, users, sessions, analysis, simulation, coaching, presentation, reports, notifications
+from app.routers import auth, users, sessions, analysis, simulation, coaching, presentation, reports, notifications, classes
 
 
 @asynccontextmanager
@@ -59,6 +59,7 @@ app.include_router(coaching.router,      prefix=_PREFIX)
 app.include_router(presentation.router,  prefix=_PREFIX)
 app.include_router(reports.router,       prefix=_PREFIX)
 app.include_router(notifications.router, prefix=_PREFIX)
+app.include_router(classes.router,       prefix=_PREFIX)
 
 
 # ── Health endpoints ──────────────────────────────────────────────

@@ -18,6 +18,12 @@ class DebateSession(Base):
         UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
 
+    # Creator tracking (Educator / Coach / Admin)
+    creator_id:   Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    creator_role: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    creator_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    class_id:     Mapped[str | None] = mapped_column(String(36), nullable=True)
+
     topic:        Mapped[str]        = mapped_column(String(500))
     format:       Mapped[str]        = mapped_column(String(60))
     position:     Mapped[str | None] = mapped_column(String(60),   nullable=True)
@@ -48,7 +54,8 @@ class DebateSession(Base):
     )
 
     # Relationship
-    user = relationship("User", backref="sessions", lazy="selectin")
+    user = relationship("User", foreign_keys=[user_id], backref="sessions", lazy="selectin")
+    creator = relationship("User", foreign_keys=[creator_id], lazy="selectin")
 
     def __repr__(self) -> str:
         return f"<DebateSession {self.topic[:40]} [{self.status}]>"

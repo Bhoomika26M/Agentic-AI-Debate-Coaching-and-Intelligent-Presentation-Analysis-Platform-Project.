@@ -72,3 +72,9 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Demo & Presentation notes (local only - do not commit)
+presentation.md
+presenato.md
+PRESENTATION_DEMO_SCRIPT.md
+docs/

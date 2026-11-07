@@ -51,9 +51,6 @@ export default function ArgumentAnalysis() {
     api.get('/analysis/fallacies')
       .then(res => setFallacyCatalog(res.data))
       .catch(() => {})
-
-    // Run initial analysis on sample
-    runAnalysis(SAMPLE_SPEECHES[1].text, SAMPLE_SPEECHES[1].topic, SAMPLE_SPEECHES[1].position)
   }, [])
 
   /**
@@ -91,7 +88,7 @@ export default function ArgumentAnalysis() {
     setTopic(sample.topic)
     setPosition(sample.position)
     setText(sample.text)
-    runAnalysis(sample.text, sample.topic, sample.position)
+    setReport(null)
   }
 
   return (
@@ -200,6 +197,15 @@ export default function ArgumentAnalysis() {
 
       {/* Modular Results View */}
       {report && <AnalysisResultsView report={report} />}
+      {!report && !analyzing && (
+        <div className="card" style={{ textAlign: 'center', padding: '48px 24px', background: 'var(--bg-surface)', border: '1px dashed var(--border-medium)', borderRadius: 'var(--radius-lg)' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🧠</div>
+          <h3 style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>Ready for AI Argument Analysis</h3>
+          <p style={{ color: 'var(--text-muted)', maxWidth: 520, margin: '0 auto', fontSize: '0.9rem' }}>
+            Click <strong>"Analyze Arguments & Fallacies"</strong> above to extract claims, detect logical fallacies via AI, and view full rubric scoring.
+          </p>
+        </div>
+      )}
 
       {/* Fallacy Educational Catalog Modal */}
       <FallacyCatalogModal

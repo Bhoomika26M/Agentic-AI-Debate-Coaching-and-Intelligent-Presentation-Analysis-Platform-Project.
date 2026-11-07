@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 # ── Request schemas ──────────────────────────────────────────────
 
 class SessionCreate(BaseModel):
+    user_id:          str | None = None  # target student (or assigned to learner)
     topic:            str = Field(..., min_length=5, max_length=500)
     format:           str = Field(..., min_length=3, max_length=60)
     position:         str | None = Field(None, max_length=60)
@@ -17,6 +18,7 @@ class SessionCreate(BaseModel):
     transcript:       str | None = None
     recording_url:    str | None = None
     key_arguments:    list[str] | None = None
+    class_id:         str | None = None
 
 
 class SessionUpdate(BaseModel):
@@ -24,7 +26,7 @@ class SessionUpdate(BaseModel):
     format:              str | None = None
     position:            str | None = None
     notes:               str | None = None
-    status:              Literal["scheduled", "active", "completed", "cancelled"] | None = None
+    status:              Literal["scheduled", "active", "completed", "cancelled", "expired"] | None = None
     scheduled_at:        datetime | None = None
     round_count:         int | None = None
     duration_minutes:    int | None = None
@@ -34,6 +36,7 @@ class SessionUpdate(BaseModel):
     score:               float | None = None
     feedback_summary:    str | None = None
     evaluation_criteria: dict | None = None
+    class_id:            str | None = None
 
 
 class SessionEvaluation(BaseModel):
@@ -47,6 +50,10 @@ class SessionEvaluation(BaseModel):
 class SessionOut(BaseModel):
     id:                  str
     user_id:             str
+    creator_id:          str | None = None
+    creator_role:        str | None = None
+    creator_name:        str | None = None
+    class_id:            str | None = None
     topic:               str
     format:              str
     position:            str | None = None

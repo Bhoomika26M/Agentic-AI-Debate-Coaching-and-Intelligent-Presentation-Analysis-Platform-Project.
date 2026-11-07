@@ -96,8 +96,24 @@ async def evaluate_session_transcript(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
 
-    if session.user_id != current_user.id and current_user.role not in ("admin", "coach", "educator"):
-        raise HTTPException(status_code=403, detail="Access denied.")
+    if current_user.role not in ("admin", "coach", "educator"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Learners cannot run AI adjudication on debate sessions. Your coach or educator will evaluate and grade your speech."
+        )
+
+    # Ownership checks: Educator vs Coach separation
+    if current_user.role != "admin":
+        if session.creator_role == "educator" and current_user.role == "coach":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This session was created by Educator {session.creator_name or ''}. Only that Educator (or Admin) can evaluate this session."
+            )
+        if session.creator_role == "coach" and current_user.role == "educator":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This session was created by Coach {session.creator_name or ''}. Only that Coach (or Admin) can evaluate this session."
+            )
 
     if not session.transcript or len(session.transcript.strip()) < 10:
         raise HTTPException(
