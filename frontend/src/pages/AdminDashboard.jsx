@@ -51,7 +51,8 @@ export default function AdminDashboard() {
         <table>
           <tbody>
             <tr><td><b>Primary Model</b></td><td>{system.models.primary}</td></tr>
-            <tr><td><b>Fallback Model</b></td><td>{system.models.fallback}</td></tr>
+            <tr><td><b>Text Fallback</b></td><td>{system.models.fallback}</td></tr>
+            <tr><td><b>Audio Fallback</b></td><td>{system.models.audio_fallback}</td></tr>
             {Object.entries(system.ai_calls_by_feature).map(([k, v]) => (
               <tr key={k}><td>{k.replace(/_/g, ' ')}</td><td>{v} calls</td></tr>
             ))}

@@ -237,6 +237,7 @@ def admin_system(user: User = Depends(require_role("admin")), db: Session = Depe
         "models": {
             "primary": s.GEMINI_MODEL,
             "fallback": s.NVIDIA_TEXT_MODEL if s.NVIDIA_API_KEY else "not configured",
+            "audio_fallback": "openai/whisper-large-v3" if s.NVIDIA_API_KEY else "not configured",
         },
         "status": "operational",
         "uptime_note": "In-memory counters; production would persist to a metrics store.",

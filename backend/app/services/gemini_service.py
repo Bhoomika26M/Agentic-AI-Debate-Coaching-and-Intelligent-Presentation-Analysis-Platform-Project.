@@ -9,6 +9,7 @@ from google import genai
 from google.genai import types
 from app.core.config import get_settings
 from app.services import nvidia_text_service
+from app.services import nvidia_audio_service
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -23,7 +24,8 @@ def get_client() -> genai.Client:
     if _client is None:
         if not settings.GEMINI_API_KEY:
             raise RuntimeError("GEMINI_API_KEY is not configured")
-        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        _client = genai.Client(api_key=settings.GEMINI_API_KEY,
+                               http_options=types.HttpOptions(timeout=30000),)
     return _client
 
 def _is_busy_error(exc: Exception) -> bool:
@@ -34,7 +36,8 @@ def _is_busy_error(exc: Exception) -> bool:
 def _generate(prompt: str, system_instruction: str | None = None, json_mode: bool = False) -> str:
     """Low-level generation call. Raises GeminiError on failure."""
     try:
-        config_kwargs: dict[str, Any] = {"temperature": 0.7}
+        config_kwargs: dict[str, Any] = {"temperature": 0.7,
+                                         "thinking_config": types.ThinkingConfig(thinking_level="low"), }
         if system_instruction:
             config_kwargs["system_instruction"] = system_instruction
         if json_mode:
@@ -186,7 +189,9 @@ Return JSON:
     return _parse_json(_generate(prompt, system, json_mode=True))
 
 def transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
-    """Transcribe audio via Gemini multimodal input. Raises GeminiError if unsupported."""
+    """
+    Transcribe audio via Gemini, with NVIDIA Parakeet fallback.
+    """
     try:
         response = get_client().models.generate_content(
             model=settings.GEMINI_MODEL,
@@ -198,7 +203,19 @@ def transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
         if not response or not response.text:
             raise GeminiError("Empty transcription response")
         return response.text.strip()
-    except GeminiError:
-        raise
+
     except Exception as e:
-        raise GeminiError(f"Audio transcription unavailable: {str(e)}")
+        # Fallback only on busy/transient errors
+        if _is_busy_error(e) and settings.NVIDIA_API_KEY:
+            logger.warning("Gemini audio transcription busy (%s), falling back to Parakeet", e)
+            try:
+                return nvidia_audio_service.transcribe_with_whisper(audio_bytes, mime_type)
+            except nvidia_audio_service.NvidiaAudioError as nae:
+                raise GeminiError(
+                    f"Gemini transcription failed and Parakeet fallback failed: {str(nae)}"
+                )
+        # Non-busy errors propagate as before
+        if isinstance(e, GeminiError):
+            raise
+        logger.error("Gemini audio transcription failed: %s", e)
+        raise GeminiError(f"Audio transcription error: {str(e)}")

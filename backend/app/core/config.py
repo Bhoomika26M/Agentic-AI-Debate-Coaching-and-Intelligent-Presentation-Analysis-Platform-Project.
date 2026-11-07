@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     NVIDIA_API_KEY: str = ""
     NVIDIA_TEXT_MODEL: str = "nvidia/nemotron-3.5-super-vl-120b-a12b"
 
+    NVIDIA_ASR_FUNCTION_ID: str = "b702f636-f60c-4a3d-a6f4-f3568c13bd7d"
     class Config:
         env_file = ".env"
         extra = "ignore"
