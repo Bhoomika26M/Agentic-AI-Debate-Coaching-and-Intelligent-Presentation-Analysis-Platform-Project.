@@ -144,18 +144,6 @@ con.close()
 "
 ```
 
-### Reset/clean all data (keep admin accounts)
-
-```bash
-python -c "import sqlite3, os; [([c.cursor().execute('DELETE FROM ' + t) for t in ['notifications', 'classrooms', 'debate_sessions']], c.cursor().execute('DELETE FROM users WHERE role != \'admin\''), c.cursor().execute('UPDATE users SET avg_score = 0, total_sessions = 0, win_streak = 0, communication_skills = NULL, presentation_history = \'[]\' WHERE role = \'admin\''), c.commit(), c.cursor().execute('VACUUM'), print('Cleaned', p, 'Users:', c.cursor().execute('SELECT email, role FROM users').fetchall()), c.close()) for p in ['backend/debate.db', 'debate.db'] if os.path.exists(p) for c in [sqlite3.connect(p)]]"
-```
-
-### Clean activity records while persisting all user accounts
-
-```bash
-python -c "import sqlite3, os; [([c.cursor().execute('DELETE FROM ' + t) for t in ['notifications', 'classrooms', 'debate_sessions']], c.cursor().execute('UPDATE users SET total_sessions = 0, presentation_history = \'[]\''), c.commit(), c.cursor().execute('VACUUM'), print('Cleaned [', p, '] - Persisted Users:', len(c.cursor().execute('SELECT email FROM users').fetchall())), c.close()) for p in ['backend/debate.db', 'debate.db'] if os.path.exists(p) for c in [sqlite3.connect(p)]]"
-```
-
 ### Create a new user manually
 
 ```bash
