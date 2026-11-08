@@ -6,7 +6,7 @@ import { cacheLearningPlan, clearCachedLearningPlan, listLearningPlans, readCach
 import { buildRecommendation, emptyPrefs, firstPracticeCue, goalLine, hasAnswers, loadPrefs, purposeLine } from "../../services/learner-prefs";
 import "./practice-home.css";
 
-export type PracticeNavItem = "debate" | "analysis" | "plan" | "settings";
+export type PracticeNavItem = "debate" | "delivery" | "analysis" | "plan" | "settings";
 
 export function PracticeHeader({
   active,
@@ -14,6 +14,7 @@ export function PracticeHeader({
   onDebate,
   onAnalysis,
   onPlan,
+  onDelivery,
   onSettings,
 }: {
   active: PracticeNavItem;
@@ -21,6 +22,7 @@ export function PracticeHeader({
   onDebate: () => void;
   onAnalysis: () => void;
   onPlan: () => void;
+  onDelivery: () => void;
   onSettings: () => void;
 }) {
   return (
@@ -31,6 +33,7 @@ export function PracticeHeader({
         </button>
         <nav className="programme-nav" aria-label="Main navigation">
           <button type="button" className={active === "debate" ? "active" : ""} aria-current={active === "debate" ? "page" : undefined} onClick={onDebate}>Debate</button>
+          <button type="button" className={active === "delivery" ? "active" : ""} aria-current={active === "delivery" ? "page" : undefined} onClick={onDelivery}>Delivery</button>
           <button type="button" className={active === "analysis" ? "active" : ""} aria-current={active === "analysis" ? "page" : undefined} onClick={onAnalysis}>Analysis</button>
           <button type="button" className={active === "plan" ? "active" : ""} aria-current={active === "plan" ? "page" : undefined} onClick={onPlan}>My plan</button>
         </nav>
@@ -120,6 +123,7 @@ export function PracticeHome({
   onDebate,
   onAnalysis,
   onPlan,
+  onDelivery,
   onArchive,
   onOpenRecord,
 }: {
@@ -134,6 +138,7 @@ export function PracticeHome({
   onDebate: () => void;
   onAnalysis: () => void;
   onPlan: () => void;
+  onDelivery: () => void;
   onArchive: () => void;
   onOpenRecord: (recordId: string) => void;
 }) {
@@ -236,6 +241,11 @@ export function PracticeHome({
             <span className="programme-index" aria-hidden="true">03</span>
             <div className="programme-mode-copy"><h2>Your plan</h2>{plan ? <p>{plan.plan.headline}</p> : isPlanLoading ? <span className="plan-loading-line plan-loading-line-short" aria-hidden="true" /> : <p>Turn your goals and reviews into a focused next step.</p>}</div>
             <button className="programme-action" type="button" onClick={onPlan}>Open my plan <ArrowRight size={19} aria-hidden="true" /></button>
+          </article>
+          <article className="programme-mode">
+            <span className="programme-index" aria-hidden="true">04</span>
+            <div className="programme-mode-copy"><h2>Delivery</h2><p>Record a take and get pace, pause, and filler coaching without a debate.</p></div>
+            <button className="programme-action" type="button" onClick={onDelivery}>Open delivery room <ArrowRight size={19} aria-hidden="true" /></button>
           </article>
         </div>
 

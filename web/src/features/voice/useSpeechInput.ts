@@ -50,11 +50,14 @@ export function useSpeechInput(options: Options) {
   const vadRef = useRef<MicVAD | null>(null);
   const [error, setError] = useState("");
   const [listening, setListening] = useState(false);
+  const [level, setLevel] = useState(0);
+  const levelAtRef = useRef(0);
   const [handsFree, setHandsFree] = useState(false);
   const [startingHandsFree, setStartingHandsFree] = useState(false);
 
   const release = useCallback(() => {
     recordingRef.current = false;
+    setLevel(0);
     pushToTalkPressedRef.current = false;
     sourceRef.current?.disconnect();
     sourceRef.current = null;
@@ -75,6 +78,14 @@ export function useSpeechInput(options: Options) {
       vadRef.current = null;
     };
   }, [release]);
+
+  // Keep the meter cheap: one state update per ~80 ms is plenty for a level.
+  const publishLevel = useCallback((value: number) => {
+    const now = performance.now();
+    if (now - levelAtRef.current < 80) return;
+    levelAtRef.current = now;
+    setLevel(Math.max(0, Math.min(1, value)));
+  }, []);
 
   const ensureStream = useCallback(async () => {
     if (streamRef.current) return streamRef.current;
@@ -106,7 +117,11 @@ export function useSpeechInput(options: Options) {
       chunksRef.current = [];
       processor.onaudioprocess = (event) => {
         if (!recordingRef.current) return;
-        chunksRef.current.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+        const samples = event.inputBuffer.getChannelData(0);
+        chunksRef.current.push(new Float32Array(samples));
+        let energy = 0;
+        for (let index = 0; index < samples.length; index += 1) energy += samples[index] * samples[index];
+        publishLevel(Math.sqrt(energy / samples.length) * 7);
       };
       source.connect(processor);
       processor.connect(ctx.destination);
@@ -122,15 +137,17 @@ export function useSpeechInput(options: Options) {
       pushToTalkPressedRef.current = false;
       release();
       setListening(false);
+      setLevel(0);
       setError("Microphone access failed. Allow the microphone, or close voice mode and type your turn.");
     }
-  }, [ensureStream, release]);
+  }, [ensureStream, publishLevel, release]);
 
   const stopPushToTalk = useCallback(() => {
     pushToTalkPressedRef.current = false;
     if (!recordingRef.current) return;
     recordingRef.current = false;
     setListening(false);
+    setLevel(0);
     const rate = contextRef.current?.sampleRate ?? TARGET_SAMPLE_RATE;
     const durationMs = performance.now() - startedAtRef.current;
     const blob = wavFromChunks(chunksRef.current, rate);
@@ -192,6 +209,7 @@ export function useSpeechInput(options: Options) {
             });
           },
           onFrameProcessed: (probabilities: { isSpeech: number }) => {
+            publishLevel(probabilities.isSpeech);
             optionsRef.current.onLevel?.(probabilities.isSpeech);
           },
         });
@@ -212,17 +230,19 @@ export function useSpeechInput(options: Options) {
       startingVadRef.current = false;
       if (mountedRef.current) setStartingHandsFree(false);
     }
-  }, [handsFree]);
+  }, [handsFree, publishLevel]);
 
   const stopHandsFree = useCallback(async () => {
     await vadRef.current?.pause();
     setHandsFree(false);
     setListening(false);
+    setLevel(0);
   }, []);
 
   const pause = useCallback(() => {
     void vadRef.current?.pause();
     setListening(false);
+    setLevel(0);
   }, []);
 
   const resume = useCallback(() => {
@@ -236,6 +256,7 @@ export function useSpeechInput(options: Options) {
   return {
     error,
     listening,
+    level,
     handsFree,
     startingHandsFree,
     startPushToTalk,

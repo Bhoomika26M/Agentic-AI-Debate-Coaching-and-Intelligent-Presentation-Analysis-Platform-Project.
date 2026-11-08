@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BookOpenText, Headphones, Mic, MicOff, Pause, Send, Square, X } from "lucide-react";
+import { BookOpenText, Headphones, Keyboard, Mic, MicOff, Pause, Send, Square, X } from "lucide-react";
 import { VoiceClient, type DeliverySignals, type VoiceCaption, type VoiceDiagnostics, type VoiceEvent } from "../../services/voice-api";
 import type { DebateOptions, PracticePreferences } from "../../services/debate-api";
 import { MarkdownText } from "../../components/Markdown";
@@ -18,7 +18,12 @@ type Props = {
   preferences?: PracticePreferences | null;
   /** Show the opponent's reply sentence by sentence as it is spoken. */
   streamReplies: boolean;
+  /** The saved setting, so the room can offer to remember a session change. */
+  streamRepliesDefault: boolean;
   onStreamRepliesChange: (value: boolean) => void;
+  onRememberStreamReplies: () => void;
+  /** Close the voice room and put the caret back in the typed composer. */
+  onTypeInstead: () => void;
   accessToken?: string;
   history?: Array<{ speaker: "learner" | "opponent"; content: string }>;
   onTurn?: (speaker: "learner" | "opponent", content: string) => void;
@@ -77,6 +82,10 @@ function closeMessage(reason: string, code?: number) {
   return reason;
 }
 
+function elapsedLabel(seconds: number) {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 function sentencesOf(text: string) {
   return text
     .replace(/[*_`#>]+/g, " ")
@@ -85,7 +94,7 @@ function sentencesOf(text: string) {
     .filter(Boolean);
 }
 
-export function VoiceRoom({ topic, position, persona, difficulty, preferences, streamReplies, onStreamRepliesChange, accessToken, history = [], onTurn, onClose, onSignIn }: Props) {
+export function VoiceRoom({ topic, position, persona, difficulty, preferences, streamReplies, streamRepliesDefault, onStreamRepliesChange, onRememberStreamReplies, onTypeInstead, accessToken, history = [], onTurn, onClose, onSignIn }: Props) {
   const titleId = useId();
   const [status, setStatus] = useState<Status>("connecting");
   const [lines, setLines] = useState<Line[]>(() => history.map((line) => ({
@@ -111,6 +120,9 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, s
   const [heard, setHeard] = useState("");
   // The opponent line while its sentences are still being spoken.
   const [streamed, setStreamed] = useState<{ id: string; text: string } | null>(null);
+  // A dropped recognition, shown where the learner expects their words.
+  const [heardNote, setHeardNote] = useState("");
+  const [listenSeconds, setListenSeconds] = useState(0);
 
   const clientRef = useRef<VoiceClient | null>(null);
   const captionRef = useRef<VoiceCaption | null>(null);
@@ -158,12 +170,14 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, s
       recoveryNoticeRef.current = false;
       setError("");
       setHeard("");
+      setHeardNote("");
       player.resetPlayed();
       setStatus("thinking");
       clientRef.current?.speak(blob, mode, mode === "hands_free");
     },
     onSpeechStart: () => {
       setHeard("");
+      setHeardNote("");
       if (status === "speaking") {
         // Barge-in: stop the audio before the server hears about it.
         player.stop();
@@ -177,6 +191,20 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, s
   });
   const inputRef = useRef(input);
   inputRef.current = input;
+
+  useEffect(() => {
+    if (!input.listening) {
+      setListenSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    setListenSeconds(0);
+    const timer = window.setInterval(
+      () => setListenSeconds(Math.floor((Date.now() - startedAt) / 1000)),
+      250,
+    );
+    return () => window.clearInterval(timer);
+  }, [input.listening]);
 
   const confirmPending = useCallback(
     (text?: string) => {
@@ -281,9 +309,17 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, s
         case "notice":
           setNotice(event.message);
           setStatus("listening");
+          if (event.reason) {
+            // The recognition gate dropped the clip; say so where the words
+            // would have appeared, and clear any earlier turn.
+            setHeard("");
+            setHeardNote(event.message);
+            setPending(null);
+          }
           break;
         case "error":
           setError(event.message);
+          if (event.recoverable) setHeardNote(event.message);
           setStatus("idle");
           setStreamed(null);
           break;
@@ -483,10 +519,20 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, s
               className={`voice-ghost${streamReplies ? " is-on" : ""}`}
               onClick={() => onStreamRepliesChange(!streamReplies)}
               aria-pressed={streamReplies}
-              title="Show the opponent's reply sentence by sentence as they speak. Turn off to wait for the full reply."
+              title="This session only: show the opponent's reply sentence by sentence as they speak."
             >
               {streamReplies ? "Streaming" : "Full reply"}
             </button>
+            {streamReplies !== streamRepliesDefault && (
+              <button
+                type="button"
+                className="voice-ghost voice-remember"
+                onClick={onRememberStreamReplies}
+                title="Save this as your default for future rooms"
+              >
+                Remember
+              </button>
+            )}
             <button type="button" className="voice-ghost" onClick={() => setShowDev((value) => !value)} aria-pressed={showDev}>
               {showDev ? "Hide timings" : "Timings"}
             </button>
@@ -593,7 +639,24 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, s
             >
               <div className="voice-pending-head">
                 <label htmlFor="voice-heard-text">{pending ? "Check the transcript" : "Your words"}</label>
-                <span>{pending ? `Sending in ${Math.ceil(timer / 1000)}s` : input.listening ? "Listening…" : heard ? "Recognised" : "Speech to text"}</span>
+                <span className="voice-heard-status">
+                  {input.listening ? (
+                    <>
+                      <span className="voice-level" aria-hidden="true">
+                        {Array.from({ length: 10 }).map((_, index) => (
+                          <i key={index} style={{ opacity: input.level > index / 10 ? 1 : 0.16 }} />
+                        ))}
+                      </span>
+                      <span>{elapsedLabel(listenSeconds)}</span>
+                    </>
+                  ) : pending ? (
+                    `Sending in ${Math.ceil(timer / 1000)}s`
+                  ) : heard ? (
+                    "Recognised"
+                  ) : (
+                    "Speech to text"
+                  )}
+                </span>
               </div>
               <input
                 id="voice-heard-text"
@@ -627,11 +690,30 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, s
                   </button>
                 </div>
               ) : (
-                <p className="voice-heard-note">
-                  {heard
-                    ? "Sent to the debate."
-                    : "Recognised by the local voice API; your audio is not stored."}
-                </p>
+                <div className="voice-heard-note">
+                  <span>
+                    {heardNote || input.error || (heard
+                      ? "Sent to the debate."
+                      : "Recognised by the local voice API; your audio is not stored.")}
+                  </span>
+                  <span className="voice-heard-actions">
+                    {(input.error || heardNote) && canPushToTalk && (
+                      <button
+                        type="button"
+                        className="voice-heard-action"
+                        onClick={() => {
+                          player.unlock();
+                          void input.startPushToTalk();
+                        }}
+                      >
+                        Try mic again
+                      </button>
+                    )}
+                    <button type="button" className="voice-heard-action" onClick={onTypeInstead}>
+                      <Keyboard size={13} /> Type instead
+                    </button>
+                  </span>
+                </div>
               )}
             </div>
           </section>

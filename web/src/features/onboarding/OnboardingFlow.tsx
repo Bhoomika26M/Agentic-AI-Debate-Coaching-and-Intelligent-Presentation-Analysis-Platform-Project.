@@ -423,7 +423,7 @@ export function OnboardingFlow({
 
                   <div className="sheet-actions">
                     <button className="button button-primary" type="button" onClick={() => finish("home")} autoFocus>
-                      Open my dashboard <ArrowRight size={16} />
+                      Open my first round <ArrowRight size={16} />
                     </button>
                     {prefs.focus.includes("delivery") && (
                       <button className="button button-light" type="button" onClick={() => finish("delivery")}>

@@ -411,10 +411,10 @@
 
 .programme-modes {
   min-width: 0;
-  min-height: 426px;
+  min-height: 552px;
   padding: 0 24px 0 8px;
   display: grid;
-  grid-template-rows: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
   color: #f7f0e6;
   background: #17293c;
 }

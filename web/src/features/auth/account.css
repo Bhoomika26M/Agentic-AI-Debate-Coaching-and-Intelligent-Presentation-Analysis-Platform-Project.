@@ -314,3 +314,13 @@
   .account-head-actions, .account-tabs, .progress-actions, .plan-actions, .verdict-actions, .site-header, .archive-rail, .archive-more { display: none !important; }
   .account-page { width: 100%; }
 }
+
+/* Recent solo delivery takes surfaced with the analysis view. */
+.analysis-delivery { margin-top: 16px; padding: 16px; border: 1px solid #c9bda9; background: var(--paper-light); }
+.delivery-take-list { margin-top: 12px; display: grid; gap: 0; border-top: 1px solid #d4c8b4; }
+.delivery-take { padding: 10px 2px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: 14px; border-bottom: 1px solid #e2d8c6; }
+.delivery-take:last-child { border-bottom: 0; }
+.delivery-take span { overflow: hidden; color: #3d3831; font: 13px var(--serif); text-overflow: ellipsis; white-space: nowrap; }
+.delivery-take b { color: #5b5348; font: 9px var(--mono); font-weight: 400; letter-spacing: .04em; }
+.delivery-take time { color: #6d655a; font: 9px var(--mono); }
+@media (max-width: 620px) { .delivery-take { grid-template-columns: 1fr; gap: 3px; } }

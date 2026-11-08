@@ -172,10 +172,12 @@ test("ending a rehearsal clears its resumable snapshot", async ({ page }) => {
   await startRehearsal(page);
   await submitCase(page, "Schools should ban phones because attention improves in class.");
 
-  await page.getByRole("button", { name: "End session" }).click();
-  await page.getByRole("button", { name: /Tap again to end/ }).click();
+  await page.getByRole("button", { name: "Finish & review" }).click();
+  await page.getByRole("button", { name: /Tap again to finish/ }).click();
   await expect(page.getByText(/DEBATE REVIEW — COMPLETED/)).toBeVisible();
   await expect(page.getByRole("heading", { name: /is in the book/i })).toBeVisible();
+  await expect(page.getByText("RECOMMENDED NEXT")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Rematch this round" })).toBeVisible();
 
   await page.reload();
   await expect(page.getByText("REHEARSAL IN PROGRESS")).toHaveCount(0);

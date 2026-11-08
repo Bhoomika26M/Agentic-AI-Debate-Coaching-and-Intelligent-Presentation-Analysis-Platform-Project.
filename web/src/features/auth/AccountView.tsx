@@ -4,7 +4,7 @@ import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
 import { deleteDebateRecord, listDebateRecords, loadDebateAnalysis, loadDebateRecord, loadDebateVerdict, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
 import { loadAppCapabilities, type AnalysisReport, type JudgeVerdict } from "../../services/debate-api";
-import { listPresentationFeedbacks, loadPresentationFeedbackForSession } from "../../services/presentation-records";
+import { listPresentationFeedbacks, loadPresentationFeedbackForSession, type PresentationFeedback } from "../../services/presentation-records";
 import type { PresentationResult } from "../../services/presentation-api";
 import { requestPlan } from "../../services/plan-api";
 import { completePlanDrill, listLearningPlans, listPlanDrillCompletions, loadSessionDigests, saveLearningPlan, uncompletePlanDrill, type StoredPlan } from "../../services/plan-records";
@@ -125,8 +125,9 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-export function AccountView({ onStart, onContinue, onViewVerdict, onSignOut, focusRecordId, onFocusConsumed, theme = "classic", initialSection = "progress" }: {
+export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, onSignOut, focusRecordId, onFocusConsumed, theme = "classic", initialSection = "progress" }: {
   onStart: () => void;
+  onDelivery: () => void;
   onContinue: (session: DebateRecord, turns: DebateRecordTurn[]) => void;
   onViewVerdict: (session: DebateRecord, turns: DebateRecordTurn[], analysis: AnalysisReport | null, verdict: JudgeVerdict | null, delivery: PresentationResult | null) => void;
   onSignOut: () => Promise<void>;
@@ -177,6 +178,7 @@ export function AccountView({ onStart, onContinue, onViewVerdict, onSignOut, foc
   const [progressOwnerId, setProgressOwnerId] = useState<string | null>(user?.id ?? null);
   const [progressLoading, setProgressLoading] = useState(() => Boolean(user && !readCachedProgress(user.id)));
   const [progressError, setProgressError] = useState("");
+  const [deliveryTakes, setDeliveryTakes] = useState<PresentationFeedback[]>([]);
   const progressRefreshInFlightRef = useRef<string | null>(null);
   const currentProgressUserRef = useRef<string | null>(user?.id ?? null);
 
@@ -558,6 +560,7 @@ export function AccountView({ onStart, onContinue, onViewVerdict, onSignOut, foc
       let fillers: { first: number | null; last: number | null; deliveries: number } = { first: null, last: null, deliveries: 0 };
       try {
         const feedbacks = await listPresentationFeedbacks(20);
+        setDeliveryTakes(feedbacks.slice(0, 3));
         const rates = feedbacks.map((f) => f.signals.filler_rate_per_100w).filter((r) => typeof r === "number");
         fillers = {
           first: rates.length > 0 ? rates[rates.length - 1] : null,
@@ -880,7 +883,10 @@ export function AccountView({ onStart, onContinue, onViewVerdict, onSignOut, foc
         <section className="account-progress" role="tabpanel" id="account-panel-progress" aria-labelledby="account-tab-progress">
           <div className="archive-heading">
             <div><h2 id="progress-heading">Your analysis</h2><p>Strengths, focus areas, and change across your saved argument reviews.</p></div>
-            <span>{progress?.sessions.toString().padStart(2, "0") ?? "--"}</span>
+            <div className="archive-heading-side">
+              <span>{progress?.sessions.toString().padStart(2, "0") ?? "--"}</span>
+              <button className="dash-text-link" type="button" onClick={onDelivery}>Delivery room <ArrowUpRight size={14} /></button>
+            </div>
           </div>
           {progressLoading && <div className="archive-loading"><LoaderCircle className="spin" size={18} /> Reading your trends</div>}
           {progressError && <div className="archive-error" role="alert">{progressError} <button className="button button-light" onClick={() => void loadProgress()}>Retry</button></div>}
@@ -971,6 +977,23 @@ export function AccountView({ onStart, onContinue, onViewVerdict, onSignOut, foc
                 </div> : <p className="analysis-chart-empty">Session activity will appear after you save a rehearsal.</p>}
               </section>
             </div>
+            {deliveryTakes.length > 0 && (
+              <section className="analysis-delivery" aria-labelledby="analysis-delivery-title">
+                <div className="analysis-section-head">
+                  <div><h3 id="analysis-delivery-title">Recent delivery takes</h3><p>Pace and pauses from the takes you kept in your archive.</p></div>
+                  <button type="button" className="dash-text-link" onClick={onDelivery}>Open delivery room <ArrowUpRight size={14} /></button>
+                </div>
+                <div className="delivery-take-list">
+                  {deliveryTakes.map((take) => (
+                    <article key={take.id} className="delivery-take">
+                      <span>{take.topic ?? "Solo delivery take"}</span>
+                      <b>{Math.round(take.signals.wpm)} WPM · {take.signals.filler_count} filler{take.signals.filler_count === 1 ? "" : "s"}</b>
+                      <time dateTime={take.created_at}>{new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(take.created_at))}</time>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
             <div className="progress-actions no-print">
               <button className="button button-light" onClick={() => void downloadCsv()} disabled={progress.sessions === 0 || exporting}><Download size={15} /> {exporting ? "Building archive CSV" : "Download archive CSV"}</button>
               <button className="button button-light" onClick={() => window.print()}><Printer size={15} /> Print report</button>

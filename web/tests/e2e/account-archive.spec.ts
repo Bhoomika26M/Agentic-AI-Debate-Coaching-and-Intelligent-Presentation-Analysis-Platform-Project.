@@ -99,6 +99,16 @@ test("the archive shows five sessions first and expands on demand", async ({ pag
   await expect(page.locator(".archive-row")).toHaveCount(5);
 });
 
+test("the home opens the delivery room as a first-class mode", async ({ page }) => {
+  await seedSignedIn(page);
+  await mockSupabase(page);
+
+  await goToHome(page);
+  await page.getByRole("button", { name: "Delivery", exact: true }).click();
+  await expect(page.getByText("DELIVERY ROOM / SOLO PRACTICE")).toBeVisible();
+  await expect(page.getByText("THE MIC IS YOURS.")).toBeVisible();
+});
+
 test("opening a recent round from the home page opens that record in the archive", async ({ page }) => {
   await seedSignedIn(page);
   await mockSupabase(page);

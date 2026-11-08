@@ -37,7 +37,7 @@ import type { SessionDigest } from "./services/plan-api";
 import { addBankTopic, listBankTopics, type BankTopic } from "./services/topics";
 import { loadProfile } from "./services/profiles";
 import { cacheApplicationSettings, loadApplicationSettings, normalizeApplicationSettings, type ApplicationSettings } from "./services/app-settings";
-import { difficultyOptions, personas, starterTopics, type PersonaKey } from "./features/debate-catalog";
+import { difficultyFor, difficultyOptions, personaFor, personas, starterTopics, type DifficultyKey, type PersonaKey } from "./features/debate-catalog";
 import { buildRecommendation, hydratePrefs, isOnboardingDone, loadPrefs, orderedStarterTopics, preferencesFor } from "./services/learner-prefs";
 import type { OnboardingResult } from "./features/onboarding/OnboardingFlow";
 import { useAuth } from "./features/auth/AuthProvider";
@@ -220,6 +220,49 @@ const SCORE_DIMENSION_LABELS = {
   rebuttal: "REBUTTAL",
   communication: "DELIVERY",
 } as const;
+type ScoreKey = (typeof SCORE_DIMENSION_ORDER)[number];
+type SetupMode = "fresh" | "recommended" | "focused" | "rematch";
+type PracticeFocus = {
+  key: ScoreKey;
+  label: string;
+  reason: string;
+  persona: PersonaKey;
+  difficulty: DifficultyKey;
+  duration: number;
+};
+
+const PRACTICE_FOCUS: Record<ScoreKey, Omit<PracticeFocus, "reason">> = {
+  argument: { key: "argument", label: "argument quality", persona: "strategist", difficulty: "challenge", duration: 5 },
+  evidence: { key: "evidence", label: "evidence", persona: "skeptic", difficulty: "cross-examination", duration: 4 },
+  logical: { key: "logical", label: "logic", persona: "skeptic", difficulty: "cross-examination", duration: 4 },
+  rebuttal: { key: "rebuttal", label: "rebuttal", persona: "strategist", difficulty: "cross-examination", duration: 4 },
+  communication: { key: "communication", label: "delivery", persona: "diplomat", difficulty: "challenge", duration: 4 },
+};
+
+const RATING_TO_SCORE: Record<string, ScoreKey> = {
+  clarity: "argument",
+  relevance: "argument",
+  evidence_strength: "evidence",
+  logical_consistency: "logical",
+  persuasiveness: "communication",
+};
+
+function focusFromScores(
+  scores: Partial<Record<ScoreKey, number>>,
+  nextStep?: string,
+): PracticeFocus | null {
+  const ranked = SCORE_DIMENSION_ORDER.map((key) => ({ key, score: scores[key] })).filter(
+    (entry): entry is { key: ScoreKey; score: number } => typeof entry.score === "number",
+  );
+  if (ranked.length === 0) return null;
+  const weakest = ranked.reduce((current, entry) => (entry.score < current.score ? entry : current));
+  const base = PRACTICE_FOCUS[weakest.key];
+  return {
+    ...base,
+    reason: `Your lowest score in this review was ${base.label} (${Math.round(weakest.score * 20)}/100). This round keeps the same motion and side so you can work on it directly.${nextStep ? ` The review's next step: ${nextStep}` : ""}`,
+  };
+}
+
 type ArenaSnapshot = {
   messages: DebateMessage[];
   draft: string;
@@ -363,6 +406,11 @@ export default function App() {
   const [recordNotice, setRecordNotice] = useState("");
   const [startingSession, setStartingSession] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
+  // One last point after the clock, chosen by the learner when a draft exists.
+  const [graceTurn, setGraceTurn] = useState(false);
+  const graceOfferedRef = useRef(false);
+  const [setupMode, setSetupMode] = useState<SetupMode>("fresh");
+  const [setupFocus, setSetupFocus] = useState<PracticeFocus | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<ArenaSnapshot | null>(null);
   const [recentMotions, setRecentMotions] = useState<string[]>(() => loadRecentMotions());
   const [learnerName, setLearnerName] = useState<string | null>(null);
@@ -430,6 +478,23 @@ export default function App() {
     (count, message) => count + message.content.trim().split(/\s+/).filter(Boolean).length,
     0,
   );
+  const lastLearnerMessage = [...messages].reverse().find((message) => message.speaker === "learner" && message.content.trim());
+  const nextPracticeFocus = useMemo(() => {
+    const scores: Partial<Record<ScoreKey, number>> = {};
+    if (judge) {
+      for (const dimension of judge.dimensions) {
+        if ((SCORE_DIMENSION_ORDER as readonly string[]).includes(dimension.key)) {
+          scores[dimension.key as ScoreKey] = dimension.score;
+        }
+      }
+    } else if (analysis?.ratings) {
+      for (const [rating, value] of Object.entries(analysis.ratings)) {
+        const key = RATING_TO_SCORE[rating];
+        if (key && typeof value?.score === "number") scores[key] = value.score;
+      }
+    }
+    return focusFromScores(scores, analysis?.next_steps?.[0]);
+  }, [judge, analysis]);
   const unavailableJudgeDimensions = judge
     ? SCORE_DIMENSION_ORDER.filter((key) => !judge.dimensions.some((dimension) => dimension.key === key)).map((key) => SCORE_DIMENSION_LABELS[key].toLowerCase())
     : [];
@@ -530,6 +595,10 @@ export default function App() {
     const normalized = normalizeApplicationSettings(next);
     cacheApplicationSettings(user?.id ?? "guest", normalized);
     setAppSettings(normalized);
+  }
+
+  function rememberStreamReplies(value: boolean) {
+    updateApplicationSettings({ ...appSettings, streamReplies: value });
   }
 
   async function saveMotionToBank() {
@@ -735,11 +804,26 @@ export default function App() {
   }, [view]);
 
   useEffect(() => {
-    if (view === "arena" && secondsLeft === 0 && !streaming) {
-      setRecordNotice("Time — wrapping up with the reply on screen.");
-      finishSession();
+    if (view !== "arena") {
+      setGraceTurn(false);
+      graceOfferedRef.current = false;
     }
-  }, [view, secondsLeft, streaming]);
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== "arena" || secondsLeft > 0 || streaming) return;
+    // If a point is already in the composer, offer one grace turn instead of
+    // cutting the learner off mid-sentence. The clock stays at zero.
+    if (!graceOfferedRef.current && draft.trim() && learnerTurns.length > 0) {
+      graceOfferedRef.current = true;
+      setGraceTurn(true);
+      setRecordNotice("Time — one last point. Send it, or review now.");
+      return;
+    }
+    if (graceTurn) return;
+    setRecordNotice("Time — wrapping up with the reply on screen.");
+    finishSession();
+  }, [view, secondsLeft, streaming, draft, graceTurn, learnerTurns.length]);
 
   function handleTranscriptScroll() {
     const element = transcriptRef.current;
@@ -955,11 +1039,8 @@ export default function App() {
     setView("auth");
   }
 
-  function openPracticeDebate() {
-    if (!user) {
-      openAuth("sign-up", "setup");
-      return;
-    }
+  function seedSetup(mode: SetupMode) {
+    if (!user) return;
     const learnerPrefs = loadPrefs(user.id);
     const recommendation = buildRecommendation(learnerPrefs.experience, learnerPrefs);
     const orderedTopics = orderedStarterTopics(starterTopics, learnerPrefs);
@@ -972,7 +1053,53 @@ export default function App() {
     setDifficulty(recommendation.difficulty);
     setDuration(recommendation.duration);
     setSecondsLeft(recommendation.duration * 60);
+    setSetupStep(1);
+    setSetupMode(mode);
+    setSetupFocus(null);
     setView("setup");
+  }
+
+  function openPracticeDebate() {
+    if (!user) {
+      openAuth("sign-up", "setup");
+      return;
+    }
+    seedSetup("fresh");
+  }
+
+  // The verdict's one recommendation: keep the motion and side, change the
+  // opponent and pressure so the weakest score is what the round tests.
+  function openFocusedRound() {
+    if (!nextPracticeFocus) {
+      openRematch();
+      return;
+    }
+    applyRecentMotion(activeTopic);
+    setPosition(position);
+    setPersona(nextPracticeFocus.persona);
+    setDifficulty(nextPracticeFocus.difficulty);
+    setDuration(nextPracticeFocus.duration);
+    setSecondsLeft(nextPracticeFocus.duration * 60);
+    setSetupFocus(nextPracticeFocus);
+    setSetupMode("focused");
+    setSetupStep(1);
+    setView("setup");
+    window.scrollTo(0, 0);
+  }
+
+  function openRematch() {
+    applyRecentMotion(activeTopic);
+    setSecondsLeft(duration * 60);
+    setSetupFocus(null);
+    setSetupMode("rematch");
+    setSetupStep(1);
+    setView("setup");
+    window.scrollTo(0, 0);
+  }
+
+  function clearSetupCarry() {
+    seedSetup("fresh");
+    window.scrollTo(0, 0);
   }
 
   function openAnalysis() {
@@ -1217,6 +1344,8 @@ export default function App() {
     abortRef.current?.abort();
     setStreaming(false);
     setConfirmEnd(false);
+    setGraceTurn(false);
+    graceOfferedRef.current = false;
     setChallengeDone(false);
     setShowJumpToLatest(false);
     lastTurnRef.current = null;
@@ -1234,7 +1363,7 @@ export default function App() {
   async function submitArgument(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const argument = draft.trim();
-    if (!argument || streaming || secondsLeft === 0) return;
+    if (!argument || streaming || (secondsLeft === 0 && !graceTurn)) return;
     const learnerMessage: DebateMessage = {
       id: crypto.randomUUID(),
       speaker: "learner",
@@ -1247,6 +1376,11 @@ export default function App() {
     setDraft("");
     setChallengeError("");
     await requestOpponentReply(messages, argument);
+    if (graceTurn) {
+      // Let the render with the grace turn land before the verdict reads the
+      // transcript, so the last point is part of the review.
+      setGraceTurn(false);
+    }
   }
 
   function challengeDepth(current: DebateMessage[] = messages) {
@@ -1355,6 +1489,8 @@ export default function App() {
     abortRef.current?.abort();
     setStreaming(false);
     setConfirmEnd(false);
+    setGraceTurn(false);
+    graceOfferedRef.current = false;
     lastTurnRef.current = null;
     pendingResumeRef.current = null;
     if (snapshot) setSavedSnapshot(snapshot);
@@ -1400,12 +1536,13 @@ export default function App() {
 
   function completeOnboarding(result: OnboardingResult) {
     if (result.profile.display_name) setLearnerName(result.profile.display_name);
-    const recommendation = buildRecommendation(result.prefs.experience, result.prefs);
-    setPersona(recommendation.persona);
-    setDifficulty(recommendation.difficulty);
-    setDuration(recommendation.duration);
-    setSecondsLeft(recommendation.duration * 60);
-    setView(result.destination === "delivery" ? "present" : "home");
+    if (result.destination === "delivery") {
+      setView("present");
+      return;
+    }
+    // The onboarding answers just picked a room; open it ready to start rather
+    // than sending the learner to a dashboard to find the same setup again.
+    seedSetup("recommended");
   }
 
   function skipOnboarding() {
@@ -1516,11 +1653,12 @@ export default function App() {
       {view !== "arena" && view !== "verdict" && view !== "onboarding" && view !== "landing" && view !== "auth" && (
         theme === "new" ? (
           <PracticeHeader
-            active={view === "settings" ? "settings" : view === "account" ? accountStartSection : "debate"}
+            active={view === "settings" ? "settings" : view === "present" ? "delivery" : view === "account" ? accountStartSection : "debate"}
             onHome={returnHome}
             onDebate={openPracticeDebate}
             onAnalysis={openAnalysis}
             onPlan={openPlan}
+            onDelivery={openDeliveryPractice}
             onSettings={openSettings}
           />
         ) : (
@@ -1583,6 +1721,7 @@ export default function App() {
               onDebate={openPracticeDebate}
               onAnalysis={openAnalysis}
               onPlan={openPlan}
+              onDelivery={openDeliveryPractice}
               onArchive={openAnalysis}
               onOpenRecord={(recordIdToOpen) => {
                 setAccountFocusId(recordIdToOpen);
@@ -1642,6 +1781,7 @@ export default function App() {
                 : (
                   <AccountView
                     onStart={openPracticeDebate}
+                    onDelivery={openDeliveryPractice}
                     onContinue={(record, turns) => void continueSavedDebate(record, turns)}
                     onViewVerdict={openArchivedVerdict}
                     onSignOut={handleSignOut}
@@ -1671,6 +1811,27 @@ export default function App() {
             <div className="setup-heading">
               <h1>{learnerName ? `Set up your debate, ${learnerName.split(/\s+/)[0]}.` : "Set up your debate."}</h1>
               <p>{learnerName ? "Chosen for your level. Adjust any detail before you step in." : "Choose a motion, side and opponent, then set the pace. Change anything before you begin."}</p>
+              {setupMode !== "fresh" && (
+                <div className={`setup-carry is-${setupMode}`} role="status">
+                  <div className="setup-carry-copy">
+                    <span>{setupMode === "focused" ? "FOCUSED ROUND" : setupMode === "rematch" ? "REMATCH" : "YOUR ROOM IS SET"}</span>
+                    <p>
+                      {setupMode === "focused"
+                        ? setupFocus?.reason ?? "The round keeps your last motion and side."
+                        : setupMode === "rematch"
+                          ? "Same motion, side, opponent, and pressure as the round you just finished."
+                          : "Built from your onboarding answers. Change any detail below before you start."}
+                    </p>
+                  </div>
+                  <div className="setup-carry-terms" aria-label="Current room">
+                    <b>{personaFor(persona).name}</b>
+                    <small>{difficultyFor(difficulty).label} · {duration} min</small>
+                  </div>
+                  <button type="button" className="setup-carry-clear" onClick={clearSetupCarry}>
+                    {setupMode === "focused" ? "Clear focus" : setupMode === "rematch" ? "Start fresh" : "Adjust from scratch"}
+                  </button>
+                </div>
+              )}
               <nav className="fixture-steps" aria-label="Debate setup steps">
                 {(["Motion", "Side", "Opponent", "Round"] as const).map((label, index) => (
                   <Fragment key={label}>
@@ -1827,7 +1988,7 @@ export default function App() {
             <header className="arena-header">
               <button className="arena-brand" onClick={returnHome} aria-label="Return home"><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button>
               <div className="arena-session"><span>{continuation ? "CONTINUED REHEARSAL" : "LIVE REHEARSAL"}</span><i /> <span>ACT / {String(sessionId).slice(-4).padStart(4, "0")}</span></div>
-              <div className="arena-header-actions"><button className="voice-open-button" onClick={() => setVoiceOpen(true)} aria-label="Open voice debate" aria-haspopup="dialog"><Mic size={14} /> Voice</button><button className={`end-button${confirmEnd ? " armed" : ""}`} onClick={requestEndSession}>{confirmEnd ? "Tap again to end" : "End session"} <X size={15} /></button></div>
+              <div className="arena-header-actions"><button className="voice-open-button" onClick={() => setVoiceOpen(true)} aria-label="Open voice debate" aria-haspopup="dialog"><Mic size={14} /> Voice</button><button className="pause-button" type="button" onClick={returnHome} title="Save this round and return home. Resume it from your dashboard.">Save &amp; leave</button><button className={`end-button${confirmEnd ? " armed" : ""}`} onClick={requestEndSession}>{confirmEnd ? "Tap again to finish" : "Finish & review"} <X size={15} /></button></div>
             </header>
 
             {voiceOpen && (
@@ -1840,7 +2001,13 @@ export default function App() {
                     difficulty={difficulty}
                     preferences={learnerAim()}
                     streamReplies={streamReplies}
+                    streamRepliesDefault={appSettings.streamReplies}
                     onStreamRepliesChange={setStreamReplies}
+                    onRememberStreamReplies={() => rememberStreamReplies(streamReplies)}
+                    onTypeInstead={() => {
+                      setVoiceOpen(false);
+                      window.setTimeout(() => composerRef.current?.focus(), 80);
+                    }}
                     accessToken={session?.access_token}
                     history={messages
                       .filter((message) => !message.pending && message.content.trim())
@@ -1893,7 +2060,7 @@ export default function App() {
               </aside>
 
               <section className="transcript-panel" role="region" aria-label="Live debate transcript">
-                <div className="transcript-heading"><div><h2>The debate</h2>{continuation && <p>Earlier turns from your archive are part of this conversation.</p>}</div><div className="transcript-heading-actions"><button type="button" className={`stream-toggle${streamReplies ? " is-on" : ""}`} aria-pressed={streamReplies} onClick={() => setStreamReplies((value) => !value)} title="Show the reply sentence by sentence as it is written. Turn off to wait for the full, checked reply.">{streamReplies ? "Live reply" : "Full reply"}</button><span className="round-counter"><span>TURN</span> {Math.max(1, learnerTurns.length).toString().padStart(2, "0")}</span></div></div>
+                <div className="transcript-heading"><div><h2>The debate</h2>{continuation && <p>Earlier turns from your archive are part of this conversation.</p>}</div><div className="transcript-heading-actions"><button type="button" className={`stream-toggle${streamReplies ? " is-on" : ""}`} aria-pressed={streamReplies} onClick={() => setStreamReplies((value) => !value)} title="This session only: show the reply sentence by sentence as it is written. Turn off to wait for the full, checked reply.">{streamReplies ? "Live reply" : "Full reply"}</button>{streamReplies !== appSettings.streamReplies && <button type="button" className="stream-save" onClick={() => rememberStreamReplies(streamReplies)} title="Save this as your default for future rounds">Remember</button>}<span className="round-counter"><span>TURN</span> {Math.max(1, learnerTurns.length).toString().padStart(2, "0")}</span></div></div>
                 <AnimatePresence initial={false}>
                   {cueVisible && (
                     <motion.div
@@ -1986,6 +2153,18 @@ export default function App() {
                     <ArrowDownRight size={14} aria-hidden="true" /> Jump to newest
                   </button>
                 )}
+                {secondsLeft <= 60 && secondsLeft > 0 && !streaming && (
+                  <div className="final-minute" role="status">
+                    <span><Clock3 size={14} aria-hidden="true" /> Final minute — finish when your point is made.</span>
+                    <button type="button" onClick={requestEndSession}>{confirmEnd ? "Tap again to finish" : "Finish & review"}</button>
+                  </div>
+                )}
+                {graceTurn && secondsLeft === 0 && (
+                  <div className="final-minute is-time-up" role="status">
+                    <span><Clock3 size={14} aria-hidden="true" /> Time — send your final point, or review now.</span>
+                    <button type="button" onClick={finishSession}>Review now</button>
+                  </div>
+                )}
                 <form className="argument-composer" onSubmit={(event) => void submitArgument(event)}>
                   <div className="composer-topline"><span><CornerDownLeft size={13} /> YOUR TURN</span><span>{draft.length} / 1000 · ENTER TO SEND</span></div>
                   <textarea
@@ -2001,7 +2180,7 @@ export default function App() {
                     placeholder={learnerTurns.length === 0 ? "State your opening case..." : "Answer the point. Make it count."}
                     aria-label="Your argument. Press Enter to send, Shift plus Enter for a new line."
                     rows={3}
-                    disabled={streaming || secondsLeft === 0}
+                    disabled={streaming || (secondsLeft === 0 && !graceTurn)}
                   />
                   {challengeError && <div className="inline-notice" role="status">{challengeError}</div>}
                   <div className="composer-bottom">
@@ -2039,7 +2218,7 @@ export default function App() {
                               : "Ask a follow-up"}
                       </span>
                     </button>
-                    <button className="send-button" disabled={!draft.trim() || streaming || secondsLeft === 0} type="submit">
+                    <button className="send-button" disabled={!draft.trim() || streaming || (secondsLeft === 0 && !graceTurn)} type="submit">
                       {streaming ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />}
                       <span>{streaming ? "Drafting and reviewing" : "Make your case"}</span>
                     </button>
@@ -2072,6 +2251,13 @@ export default function App() {
                 <span className="verdict-heading-note">{analysisLoading || judgeLoading ? <>REVIEW<br />IN PROGRESS</> : <>COMPLETED DEBATE<br />REVIEW</>}</span>
               </div>
               <p className="verdict-summary"><b>Motion:</b> {activeTopic}<span className="verdict-summary-divider" aria-hidden="true" /> <b>Your side:</b> {position === "for" ? "For" : "Against"}<span className="verdict-summary-divider" aria-hidden="true" /> <b>Opponent:</b> {activePersona.name}</p>
+              {verdictComputing && (
+                <div className="verdict-context" role="status">
+                  <span>REVIEWING THIS ROUND</span>
+                  <p><b>{activeTopic}</b> · {position === "for" ? "For" : "Against"} · {activePersona.name} · {learnerTurns.length} {learnerTurns.length === 1 ? "turn" : "turns"}</p>
+                  {lastLearnerMessage && <blockquote>“{lastLearnerMessage.content.slice(0, 180)}”</blockquote>}
+                </div>
+              )}
               <div className="verdict-stats">
                 <div><span>OVERALL SCORE</span>{judge ? <b>{Math.round(judge.overall * 20)}<small> / 100</small></b> : verdictComputing ? <i className="verdict-stat-skeleton" aria-hidden="true" /> : <b>—</b>}</div>
                 <div><span>WEIGHTED RANK</span>{verdictRank ? <b aria-label={`${formatOrdinal(verdictRank.rank)} out of ${verdictRank.total} among your saved verdicts`}>{formatOrdinal(verdictRank.rank)}<small> of {verdictRank.total}</small></b> : verdictRankLoading || verdictComputing ? <i className="verdict-stat-skeleton" aria-hidden="true" /> : <b>—</b>}</div>
@@ -2272,10 +2458,21 @@ export default function App() {
                   <p className="analysis-limit">Coaching estimate from an AI model, based only on this transcript. Scores are not objective measures — check each observation against what you meant to say.</p>
                 </>}
               </section>
-              <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>Use these results to revise your case, then run another rehearsal to track your progress.</p></div>
-              <div className="verdict-actions">
-                <button className="button button-dark" onClick={() => setView("setup")}>Run another rehearsal <ArrowRight size={16} /></button>
-                <button className="button button-light" onClick={openPlan}>Revise my plan <ArrowRight size={16} /></button>
+              <div className="verdict-note"><span>WHAT HAPPENS NEXT</span><p>Your lowest score shapes the recommended round below. Rematch keeps every term; a focused round keeps the motion and side and changes the pressure.</p></div>
+              <div className="verdict-next">
+                <span>RECOMMENDED NEXT</span>
+                <h2>{nextPracticeFocus ? `Work on ${nextPracticeFocus.label}.` : "Run the round again with one change."}</h2>
+                <p>{nextPracticeFocus?.reason ?? "This review did not have enough scored turns to name a focus. A rematch keeps the same room so you can test a different case."}</p>
+                <div className="verdict-actions">
+                  {nextPracticeFocus ? (
+                    <button className="button button-dark" onClick={openFocusedRound}>Practice {nextPracticeFocus.label} <ArrowRight size={16} /></button>
+                  ) : (
+                    <button className="button button-dark" onClick={() => setView("setup")}>Run another rehearsal <ArrowRight size={16} /></button>
+                  )}
+                  <button className="button button-light" onClick={openRematch}>Rematch this round</button>
+                  <button className="text-link" type="button" onClick={openPlan}>Revise my plan <ArrowRight size={15} /></button>
+                  {!deliveryResult && <button className="text-link" type="button" onClick={openDeliveryPractice}>Practise delivery instead <ArrowUpRight size={15} /></button>}
+                </div>
               </div>
             </section>
           </motion.main>
@@ -2292,7 +2489,8 @@ export default function App() {
                 <PresentationRoom />
               </Suspense>
               <div className="verdict-actions">
-                <button className="button button-dark" onClick={() => setView("setup")}><ArrowLeft size={16} /> Back to debate setup</button>
+                <button className="button button-dark" onClick={openPracticeDebate}>Start a debate <ArrowRight size={16} /></button>
+                <button className="button button-light" onClick={returnHome}>Back home</button>
               </div>
             </section>
             <div className="verdict-footer"><span>VERDICT / DELIVERY ROOM</span><span>AI PRACTICE ROOM</span></div>
