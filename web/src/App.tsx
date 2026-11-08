@@ -2487,9 +2487,8 @@ export default function App() {
 
         {view === "present" && (
           <motion.main key="present" className="verdict-page" {...pageMotion}>
-            <header className="verdict-header"><button className="arena-brand" onClick={returnHome}><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button><span>DELIVERY ROOM / SOLO PRACTICE</span></header>
             <section className="verdict-content">
-              <div className="verdict-overline"><span className="verdict-seal"><BookOpenText size={22} /></span><span>THE MIC IS YOURS.</span></div>
+              <div className="verdict-overline"><span className="verdict-seal"><BookOpenText size={22} /></span><span>THE MIC IS YOURS.</span><span className="verdict-overline-context">DELIVERY ROOM / SOLO PRACTICE</span></div>
               <h1>Steady the<br /><span>next take.</span></h1>
               <p className="verdict-summary">Record or upload without a debate. Review pace, pauses, and tutor drills with timestamps. Audio is discarded after review.</p>
               <Suspense fallback={<div className="inline-notice" role="status">Loading delivery room…</div>}>

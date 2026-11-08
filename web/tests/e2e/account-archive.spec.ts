@@ -105,6 +105,8 @@ test("the home opens the delivery room as a first-class mode", async ({ page }) 
 
   await goToHome(page);
   await page.getByRole("button", { name: "Delivery", exact: true }).click();
+  await expect(page.locator(".programme-header")).toBeVisible();
+  await expect(page.locator(".verdict-header")).toHaveCount(0);
   await expect(page.getByText("DELIVERY ROOM / SOLO PRACTICE")).toBeVisible();
   await expect(page.getByText("THE MIC IS YOURS.")).toBeVisible();
 });

@@ -466,7 +466,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .verdict-header { height: 66px; margin: 0 -40px; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--paper-light); background: var(--stage); }
 .verdict-header > span, .verdict-footer { color: #d0c8b9; font: 9px var(--mono); letter-spacing: .09em; }
 .verdict-content { width: min(100%, 980px); min-height: calc(100vh - 114px); margin: auto; padding: 44px 0 48px; }
-.verdict-overline { display: flex; align-items: center; gap: 12px; color: #5c554b; font: 8px var(--mono); letter-spacing: .12em; }
+.verdict-overline { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: #5c554b; font: 8px var(--mono); letter-spacing: .12em; }
+.verdict-overline-context { margin-left: auto; opacity: .72; }
 .verdict-seal { width: 43px; height: 43px; display: grid; place-items: center; border: 1px solid #a89b84; color: #8d4035; }
 .verdict-content h1 { margin: 0 0 16px; font-size: clamp(2.7rem, 5vw, 4.1rem); line-height: 1; letter-spacing: -.035em; }
 .verdict-content h1 span { color: #8d4035; font-style: italic; }
