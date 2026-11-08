@@ -74,7 +74,7 @@ async function mockSupabase(page: Page) {
     return route.fulfill({ json: [] });
   });
   await page.route("**/auth/v1/**", (route) => route.fulfill({ json: {} }));
-  await page.route("**/api/health", (route) =>
+  await page.route("**/api/health*", (route) =>
     route.fulfill({
       json: { status: "ready", adaptive_tactics_available: true, laya_available: false },
     }),

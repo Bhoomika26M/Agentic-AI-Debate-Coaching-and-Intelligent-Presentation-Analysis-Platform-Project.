@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Check, Download, LoaderCircle, LogOut, Trash2 } from "lucide-react";
+import { ArrowUpRight, Check, Cpu, Download, LoaderCircle, LogOut, Trash2 } from "lucide-react";
 import { buildArchiveCsv, deleteAccount, deleteAllPracticeData, downloadCsvFile } from "../../services/account-data";
-import { cacheApplicationSettings, type ApplicationSettings, type ThemePreference } from "../../services/app-settings";
+import { cacheApplicationSettings, LOCAL_MODEL_OPTIONS, type ApplicationSettings, type ThemePreference } from "../../services/app-settings";
 import { emptyProfile, loadProfile, saveProfile, type LearnerProfile } from "../../services/profiles";
 import {
   FOCUS_OPTIONS,
@@ -236,6 +236,7 @@ export function SettingsView({ settings, onChange, onSignIn, onSignOut }: Settin
           <a href="#settings-profile">Profile</a>
           <a href="#settings-practice">Your practice</a>
           <a href="#settings-coach">Debate coach</a>
+          <a href="#settings-model">Local model</a>
           <a href="#settings-appearance">Appearance</a>
           <a href="#settings-data">Your data</a>
         </nav>
@@ -339,6 +340,36 @@ export function SettingsView({ settings, onChange, onSignIn, onSignOut }: Settin
               <div className="settings-row"><div><h3>Stream replies as they are written</h3><p>Show the opponent's reply in the exchange and voice room sentence by sentence. Turn this off to wait for the full, checked reply.</p></div><label className="settings-switch"><span className="visually-hidden">Stream replies as they are written</span><input type="checkbox" checked={settings.streamReplies} onChange={(event) => updateSettings({ streamReplies: event.target.checked })} /><i aria-hidden="true" /></label></div>
               <div className="settings-row settings-row-length"><div><h3>Opponent reply length</h3><p>Choose a concise point or a fuller response.</p></div><div className="reply-options" role="group" aria-label="Opponent reply length"><button type="button" aria-pressed={settings.replyLength === "concise"} className={settings.replyLength === "concise" ? "selected" : ""} onClick={() => updateSettings({ replyLength: "concise" })}>Short</button><button type="button" aria-pressed={settings.replyLength === "standard"} className={settings.replyLength === "standard" ? "selected" : ""} onClick={() => updateSettings({ replyLength: "standard" })}>Standard</button></div></div>
             </div>
+          </section>
+
+          <section className="settings-section" id="settings-model" aria-labelledby="model-settings-title">
+            <div className="settings-section-heading">
+              <div><h2 id="model-settings-title">Local model</h2><p>Choose which Ollama model answers debate turns, reviews, plans, and delivery coaching. Both run on this machine.</p></div>
+            </div>
+            <div className="model-options" role="radiogroup" aria-label="Local model">
+              {LOCAL_MODEL_OPTIONS.map((option) => {
+                const selected = settings.model === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    className={`model-option${selected ? " selected" : ""}`}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => updateSettings({ model: option.id })}
+                  >
+                    <span className="model-option-mark" aria-hidden="true"><Cpu size={17} /></span>
+                    <span className="model-option-copy">
+                      <b>{option.name}</b>
+                      <small>{option.detail}</small>
+                      <code>ollama pull {option.id}</code>
+                    </span>
+                    <span className="model-option-check" aria-hidden="true">{selected && <Check size={17} />}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="settings-model-note">Switching applies to the next turn or review; no restart is needed. Voice, delivery, and plan requests use the same choice. Pull both models once so either is ready: <code>ollama pull qwen3.5:4b</code> and <code>ollama pull gemma4:e4b</code>.</p>
           </section>
 
           <section className="settings-section" id="settings-appearance" aria-labelledby="appearance-title">

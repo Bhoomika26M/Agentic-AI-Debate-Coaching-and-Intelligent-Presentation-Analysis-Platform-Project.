@@ -7,6 +7,8 @@ indistinguishable from a typed one by the time it reaches the guard.
 from dataclasses import dataclass, field
 from typing import Literal
 
+from ..local_models import LOCAL_MODELS
+
 MAX_SESSION_TURNS = 200
 # The delivery cue is available on every third learner turn, at most.
 DELIVERY_CUE_EVERY = 3
@@ -23,6 +25,7 @@ class VoiceSession:
     preferences: dict | None = None
     adaptive_tactics: bool = True
     reply_length: str = "voice"
+    model: str | None = None
     memory: list[dict] = field(default_factory=list)
     history: list[dict] = field(default_factory=list)
     learner_turns: int = 0
@@ -98,6 +101,9 @@ class VoiceSession:
         self.preferences = preferences if isinstance(preferences, dict) else None
         if isinstance(payload.get("adaptive_tactics"), bool):
             self.adaptive_tactics = bool(payload["adaptive_tactics"])
+        model = payload.get("model")
+        if model in LOCAL_MODELS:
+            self.model = model
         if isinstance(payload.get("memory"), list):
             self.memory = [item for item in payload["memory"] if isinstance(item, dict)][:12]
         if payload.get("reset"):

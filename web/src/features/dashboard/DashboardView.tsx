@@ -27,6 +27,7 @@ import { loadProfile, type LearnerProfile } from "../../services/profiles";
 import { listBankTopics, type BankTopic } from "../../services/topics";
 import type { AnalysisReport } from "../../services/debate-api";
 import { generateAndSaveLearningPlan, listLearningPlans, type StoredPlan } from "../../services/plan-records";
+import { loadApplicationSettings } from "../../services/app-settings";
 import {
   buildRecommendation,
   goalLine,
@@ -565,7 +566,7 @@ export function DashboardView({
         goals: profile?.goals ?? null,
         experience: profile?.experience ?? prefs.experience,
         preferences: preferencesFor(prefs),
-      }, accessToken);
+      }, accessToken, loadApplicationSettings(userId).model);
       setStoredPlan(created);
     } catch (error) {
       setPlanError(error instanceof Error ? error.message : "The coach could not update your practice plan.");

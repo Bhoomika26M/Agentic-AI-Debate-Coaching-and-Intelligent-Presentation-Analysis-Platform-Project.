@@ -389,3 +389,14 @@ def test_each_persona_speaks_with_its_own_voice(persona):
     _run(Recorder(), session=session, engine=engine, openers=None, respond=_responder())
 
     assert {voice for _text, voice in engine.calls} == {persona}
+
+
+def test_a_voice_session_accepts_only_supported_models():
+    session = _session()
+    session.configure({"model": "gemma4:e4b"})
+    assert session.model == "gemma4:e4b"
+    # An unsupported name is ignored rather than passed through to Ollama.
+    session.configure({"model": "not-a-model"})
+    assert session.model == "gemma4:e4b"
+    session.configure({"model": "qwen3.5:4b"})
+    assert session.model == "qwen3.5:4b"

@@ -1,4 +1,5 @@
 import { apiUrl } from "../config";
+import type { LocalModel } from "./app-settings";
 
 export type PresentationSegment = { text: string; start: number; end: number };
 export type DeliveryEvent = { kind: string; start: number; end: number; label: string; detail: string };
@@ -25,6 +26,7 @@ export async function analyzePresentation(
   filename: string,
   topic: string | undefined,
   accessToken: string | undefined,
+  model: LocalModel | undefined,
   signal?: AbortSignal,
 ) {
   const size = file.size ?? 0;
@@ -33,6 +35,7 @@ export async function analyzePresentation(
   const form = new FormData();
   form.append("audio", file, filename);
   if (topic) form.append("topic", topic);
+  if (model) form.append("model", model);
   const headers: Record<string, string> = {};
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   const response = await fetch(apiUrl("/api/presentation/analyze"), {

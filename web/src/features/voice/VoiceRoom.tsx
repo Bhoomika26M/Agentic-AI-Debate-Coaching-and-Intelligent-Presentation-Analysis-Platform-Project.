@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BookOpenText, Headphones, Keyboard, Mic, MicOff, Pause, Send, Square, X } from "lucide-react";
 import { VoiceClient, type DeliverySignals, type VoiceCaption, type VoiceDiagnostics, type VoiceEvent } from "../../services/voice-api";
+import { DEFAULT_LOCAL_MODEL, type LocalModel } from "../../services/app-settings";
 import type { DebateOptions, PracticePreferences } from "../../services/debate-api";
 import { MarkdownText } from "../../components/Markdown";
 import { personaFor } from "../debate-catalog";
@@ -16,6 +17,8 @@ type Props = {
   persona: "strategist" | "skeptic" | "diplomat";
   difficulty: DebateOptions["difficulty"];
   preferences?: PracticePreferences | null;
+  /** The local Ollama model selected in Settings. */
+  model?: LocalModel;
   /** Show the opponent's reply sentence by sentence as it is spoken. */
   streamReplies: boolean;
   /** The saved setting, so the room can offer to remember a session change. */
@@ -94,7 +97,7 @@ function sentencesOf(text: string) {
     .filter(Boolean);
 }
 
-export function VoiceRoom({ topic, position, persona, difficulty, preferences, streamReplies, streamRepliesDefault, onStreamRepliesChange, onRememberStreamReplies, onTypeInstead, accessToken, history = [], onTurn, onClose, onSignIn }: Props) {
+export function VoiceRoom({ topic, position, persona, difficulty, preferences, model = DEFAULT_LOCAL_MODEL, streamReplies, streamRepliesDefault, onStreamRepliesChange, onRememberStreamReplies, onTypeInstead, accessToken, history = [], onTurn, onClose, onSignIn }: Props) {
   const titleId = useId();
   const [status, setStatus] = useState<Status>("connecting");
   const [lines, setLines] = useState<Line[]>(() => history.map((line) => ({
@@ -133,8 +136,8 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, s
   const ttsRef = useRef(tts);
   const recoveryNoticeRef = useRef(false);
   const roomRef = useRef<HTMLDialogElement | null>(null);
-  const configRef = useRef({ topic, position, persona, difficulty, preferences, accessToken, history });
-  configRef.current = { topic, position, persona, difficulty, preferences, accessToken, history };
+  const configRef = useRef({ topic, position, persona, difficulty, preferences, model, accessToken, history });
+  configRef.current = { topic, position, persona, difficulty, preferences, model, accessToken, history };
   ttsRef.current = tts;
   const chatRef = useRef<HTMLDivElement | null>(null);
   const streamRepliesRef = useRef(streamReplies);
@@ -347,6 +350,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, s
           persona: config.persona,
           difficulty: config.difficulty,
           preferences: config.preferences ?? undefined,
+          model: config.model,
           reset: true,
           history: config.history.slice(-200),
         });

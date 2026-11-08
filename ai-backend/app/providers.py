@@ -9,20 +9,42 @@ automatic: a configured `OPENAI_API_KEY` means hosted, otherwise Ollama.
 import json
 import logging
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
 
+from .local_models import DEFAULT_LOCAL_MODEL, LOCAL_MODELS
 from .ollama_client import OLLAMA_BASE_URL
 from .ollama_client import stream_chat as ollama_stream
 
 logger = logging.getLogger(__name__)
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:4b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", DEFAULT_LOCAL_MODEL).strip() or DEFAULT_LOCAL_MODEL
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+
+# One request's model choice, scoped by `use_model` so concurrent learners can
+# use different local models without changing process-wide state.
+_requested_model: ContextVar[str | None] = ContextVar("requested_model", default=None)
 
 # Tests replace this with an httpx.MockTransport; production leaves it unset.
 _transport: httpx.AsyncBaseTransport | None = None
+
+
+def local_model() -> str:
+    """The Ollama model this request selected, or the configured default."""
+    return _requested_model.get() or OLLAMA_MODEL
+
+
+@contextmanager
+def use_model(model: str | None) -> Iterator[None]:
+    """Apply one learner's model choice to every provider call in this scope."""
+    token = _requested_model.set(model if model in LOCAL_MODELS else None)
+    try:
+        yield
+    finally:
+        _requested_model.reset(token)
 
 
 def provider() -> str:
@@ -49,7 +71,7 @@ def _hosted_json_mode() -> str:
 def model_name() -> str:
     if provider() == "openai":
         return os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
-    return OLLAMA_MODEL
+    return local_model()
 
 
 def provider_label() -> str:
@@ -62,9 +84,10 @@ def unavailable_hint() -> str:
             "The hosted model is unavailable. Check OPENAI_API_KEY, OPENAI_BASE_URL, "
             "and OPENAI_MODEL on the API."
         )
+    selected = local_model()
     return (
-        f"Ollama or model {OLLAMA_MODEL} is unavailable. Start Ollama and pull the model "
-        f"(`ollama pull {OLLAMA_MODEL}`)."
+        f"Ollama or model {selected} is unavailable. Start Ollama and pull the model "
+        f"(`ollama pull {selected}`)."
     )
 
 
@@ -114,7 +137,7 @@ async def _ollama_chat(
     json_schema: dict[str, Any] | None,
 ) -> str:
     payload: dict[str, Any] = {
-        "model": OLLAMA_MODEL,
+        "model": local_model(),
         "messages": messages,
         "stream": False,
         "think": False,
@@ -158,7 +181,9 @@ async def stream(
     num_predict: int = 240,
 ) -> AsyncIterator[str]:
     if provider() == "ollama":
-        async for delta in ollama_stream(messages, num_predict=num_predict):
+        async for delta in ollama_stream(
+            messages, num_predict=num_predict, model=local_model()
+        ):
             yield delta
         return
     payload = _hosted_payload(messages, temperature, num_predict, None, stream=True)
@@ -201,7 +226,7 @@ async def is_available() -> bool:
             response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
             response.raise_for_status()
             model_names = {model["name"] for model in response.json().get("models", [])}
-            return OLLAMA_MODEL in model_names
+            return local_model() in model_names
     except (httpx.HTTPError, ValueError, KeyError):
         return False
 
@@ -215,7 +240,7 @@ async def is_loaded() -> bool:
             response = await client.get(f"{OLLAMA_BASE_URL}/api/ps")
             response.raise_for_status()
             model_names = {model["name"] for model in response.json().get("models", [])}
-            return OLLAMA_MODEL in model_names
+            return local_model() in model_names
     except (httpx.HTTPError, ValueError, KeyError):
         return False
 

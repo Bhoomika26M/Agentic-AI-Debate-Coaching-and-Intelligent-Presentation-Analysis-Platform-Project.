@@ -179,3 +179,27 @@ def test_unavailable_hints_name_the_configured_provider(monkeypatch):
     assert "ollama pull" in providers.unavailable_hint()
     _env(monkeypatch, LLM_PROVIDER="openai")
     assert "OPENAI_API_KEY" in providers.unavailable_hint()
+
+
+def test_a_request_can_switch_to_an_allowlisted_local_model(monkeypatch):
+    _env(monkeypatch, LLM_PROVIDER="ollama")
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content)["model"])
+        return httpx.Response(200, json={"message": {"content": "local reply"}})
+
+    _transport(handler)
+    with providers.use_model("gemma4:e4b"):
+        assert providers.model_name() == "gemma4:e4b"
+        asyncio.run(providers.chat([{"role": "user", "content": "hi"}]))
+    # The override is scoped to the request, not process-wide.
+    assert providers.model_name() == "qwen3.5:4b"
+    assert seen == ["gemma4:e4b"]
+
+
+def test_an_unknown_model_cannot_escape_the_allowlist(monkeypatch):
+    _env(monkeypatch, LLM_PROVIDER="ollama")
+    with providers.use_model("not-a-supported-model"):
+        assert providers.local_model() == "qwen3.5:4b"
+    assert providers.local_model() == "qwen3.5:4b"

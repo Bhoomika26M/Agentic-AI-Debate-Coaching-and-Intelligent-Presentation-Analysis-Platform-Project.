@@ -4,8 +4,10 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from .local_models import DEFAULT_LOCAL_MODEL
+
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:4b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", DEFAULT_LOCAL_MODEL).strip() or DEFAULT_LOCAL_MODEL
 
 
 async def is_available() -> bool:
@@ -31,10 +33,10 @@ async def is_loaded() -> bool:
 
 
 async def stream_chat(
-    messages: list[dict[str, str]], num_predict: int = 240
+    messages: list[dict[str, str]], num_predict: int = 240, *, model: str | None = None
 ) -> AsyncIterator[str]:
     payload = {
-        "model": OLLAMA_MODEL,
+        "model": model or OLLAMA_MODEL,
         "messages": messages,
         "stream": True,
         "think": False,

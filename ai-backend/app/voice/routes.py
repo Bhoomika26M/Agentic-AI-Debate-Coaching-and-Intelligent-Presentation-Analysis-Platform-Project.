@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from ..auth import require_token
 from ..delivery import analyze_delivery
+from ..providers import use_model
 from ..rate_limit import model_limiter, request_limiter
 from ..speech import (
     AudioValidationError,
@@ -383,18 +384,19 @@ class VoiceConnection:
         control = TurnControl()
         self._control = control
         try:
-            await run_turn(
-                self.session,
-                latest,
-                hooks=TurnHooks(emit=self.send, audio=self.send_audio),
-                engine=self.engine,
-                openers=self.openers,
-                control=control,
-                speech_end_ms=speech_end_ms,
-                received_at_ms=received_at_ms,
-                delivery_cue=delivery_cue,
-                stt_ms=stt_ms,
-            )
+            with use_model(self.session.model):
+                await run_turn(
+                    self.session,
+                    latest,
+                    hooks=TurnHooks(emit=self.send, audio=self.send_audio),
+                    engine=self.engine,
+                    openers=self.openers,
+                    control=control,
+                    speech_end_ms=speech_end_ms,
+                    received_at_ms=received_at_ms,
+                    delivery_cue=delivery_cue,
+                    stt_ms=stt_ms,
+                )
         except (TranscriptionUnavailableError, TranscriptionTimeoutError) as error:
             logger.info("Voice turn could not be transcribed: %s", error)
             await self.send({"type": "error", "message": RECOGNITION_ERROR, "recoverable": True})

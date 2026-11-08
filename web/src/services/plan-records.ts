@@ -3,6 +3,7 @@ import { listDebateRecords, loadDebateAnalysis } from "./debate-records";
 import { listPresentationFeedbacks } from "./presentation-records";
 import { requestPlan, type LearningPlan, type SessionDigest } from "./plan-api";
 import type { PracticePreferences } from "./debate-api";
+import type { LocalModel } from "./app-settings";
 
 export type StoredPlan = {
   id: string;
@@ -124,9 +125,10 @@ export async function generateAndSaveLearningPlan(
     preferences?: PracticePreferences | null;
   },
   accessToken?: string,
+  model?: LocalModel,
 ) {
   const digests = await loadSessionDigests(12);
-  const result = await requestPlan({ ...input, digests }, accessToken);
+  const result = await requestPlan({ ...input, digests, model }, accessToken);
   return saveLearningPlan(userId, result.plan, digests.length);
 }
 

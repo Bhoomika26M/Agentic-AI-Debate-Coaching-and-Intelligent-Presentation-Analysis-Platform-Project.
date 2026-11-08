@@ -271,7 +271,7 @@ test("a missing model is explained instead of leaving the room silent", async ({
   const unavailable = "Ollama or model qwen3.5:4b is unavailable. Start Ollama and pull the model.";
   await seedSignedIn(page);
   await mockSupabase(page);
-  await page.route("**/api/health", (route) =>
+  await page.route("**/api/health*", (route) =>
     route.fulfill({
       json: {
         status: "model_unavailable",

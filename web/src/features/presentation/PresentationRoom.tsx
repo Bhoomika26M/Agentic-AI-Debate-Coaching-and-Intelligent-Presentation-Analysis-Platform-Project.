@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, Mic, RotateCcw, Sparkles, Square, Upload } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import { MicCueArt } from "../../components/CueArt";
+import { DEFAULT_LOCAL_MODEL, type LocalModel } from "../../services/app-settings";
 import { analyzePresentation, type PresentationResult } from "../../services/presentation-api";
 import { savePresentationFeedback, uploadPresentationAudio } from "../../services/presentation-records";
 import { loadProfile } from "../../services/profiles";
@@ -23,7 +24,7 @@ function formatStamp(seconds: number) {
   return `${m}:${s}`;
 }
 
-export function PresentationRoom({ topic, sessionId, compact, initialResult = null, onResult }: { topic?: string; sessionId?: string | null; compact?: boolean; initialResult?: PresentationResult | null; onResult?: (result: PresentationResult | null) => void }) {
+export function PresentationRoom({ topic, sessionId, compact, initialResult = null, model = DEFAULT_LOCAL_MODEL, onResult }: { topic?: string; sessionId?: string | null; compact?: boolean; initialResult?: PresentationResult | null; model?: LocalModel; onResult?: (result: PresentationResult | null) => void }) {
   const { session, user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -146,7 +147,7 @@ export function PresentationRoom({ topic, sessionId, compact, initialResult = nu
     if (!file || loading) return;
     setLoading(true); setError(""); setNotice("");
     try {
-      const out = await analyzePresentation(file, file.name, topic, session?.access_token);
+      const out = await analyzePresentation(file, file.name, topic, session?.access_token, model);
       setResult(out);
       onResult?.(out);
       if (session && user) {

@@ -28,6 +28,8 @@ Visitors can explore the public overview. A Supabase account is required to ente
 
 **Track your progress.** Your learner space opens on **Analysis** — trends across sessions, streaks, average scores, and filler direction — followed by Plan, Settings and Archive in that order. The homepage carries a compact version of the same picture: a ring for your latest review average, one bar per reviewed round, and your streak in words. The archive shows the latest five of the 30 most recent rehearsals first and expands to the rest, and opening a session from the dashboard jumps straight to it. Download an archive CSV with transcripts, reviews, and delivery takes, or print a report. The archive can delete one rehearsal; Settings can delete all saved practice or the account itself.
 
+**Choose the local model.** Settings has a **Local model** section that switches every model-backed feature — debate turns, follow-ups, argument reviews, the weighted judge, practice plans, delivery coaching, and voice — between `qwen3.5:4b` and `gemma4:e4b`. The choice is scoped to each request on the API, so it applies on the next turn without restarting Ollama, and different signed-in learners can use different models at the same time.
+
 ![The learner space analysis view with seeded sample sessions, the argument profile, and the curated practice plan](docs/screenshots/account.png)
 
 *This view uses the seeded sample sessions and test account from the browser test fixture, not a real learner's record. The setup, arena, and verdict stills use the same fixture's deterministic API responses; the landing page is a guest capture. The linked recording is a current-UI fixture run, not a live model call.*
@@ -72,7 +74,7 @@ The language model only ever receives text through the API. The browser never ta
 | --- | --- | --- |
 | Web app | React 19, TypeScript, Vite | Landing, setup, live arena, verdict, delivery room, learner space |
 | API | Python 3.12/3.13, FastAPI, Pydantic, LangGraph | All model calls, orchestration, and validation live here |
-| Inference | Ollama (`qwen3.5:4b` by default), or any OpenAI-compatible API | One transport in `app/providers.py`; `LLM_PROVIDER` chooses, and a key alone switches to hosted |
+| Inference | Ollama (`qwen3.5:4b` or `gemma4:e4b`, switchable in Settings), or any OpenAI-compatible API | One transport in `app/providers.py`; `LLM_PROVIDER` chooses, and a key alone switches to hosted. `OLLAMA_MODEL` is the fallback when a request does not choose a model |
 | Debate move selection | Deterministic argument-shape policy, plus Laya as an opt-in local PyTorch checkpoint | Clear turns are routed by policy; Laya chooses an ambiguous five-way vulnerability when enabled. The configured model still writes the reply |
 | Speech | `faster-whisper`, Kokoro | Local transcription for delivery review (`distil-large-v3.5`) and voice debate (`base.en`); optional local speech synthesis |
 | Accounts and storage | Supabase (free tier) | Auth, Postgres with row level security, private audio bucket |
@@ -137,7 +139,7 @@ The language model only ever receives text through the API. The browser never ta
 - **Tasks**
   - [x] Implement the presentation analysis engine: transcript-based pace, fillers, pauses, and drills. **No confidence, engagement, or prosody scoring**, and no slides or video.
   - [x] Add reports and visualization modules. **CSV and browser print only; no native PDF or Excel export.**
-  - [x] Implement testing and validations: 395 backend tests and 13 Playwright tests (all passing in a clean run), plus a GitHub Actions workflow for pytest, the fallacy-set check, the typecheck, and a build. The workflow has not yet run on a GitHub runner.
+  - [x] Implement testing and validations: 399 backend tests and 15 Playwright tests (all passing in a clean run), plus a GitHub Actions workflow for pytest, the fallacy-set check, the typecheck, and a build. The workflow has not yet run on a GitHub runner.
   - [ ] Deploy the platform to a public host. Dockerfiles, compose, a Render blueprint, and hosted-provider routing exist, but nothing is deployed and there is no monitoring.
   - [x] Prepare final documentation and presentation. Documentation, the milestone audit, and a recorded walkthrough are in the repository; **no slide deck is included**.
 - **Outcomes**
@@ -181,11 +183,14 @@ The original brief listed fourteen modules. This table says what exists for each
 
 You need Node.js 20.19+ or 22.12+ (Vite 7), Python 3.12 or 3.13, `uv`, and a model: either Ollama locally or an OpenAI-compatible endpoint with a key (step 4).
 
-**1. Start Ollama and pull the model**
+**1. Start Ollama and pull both supported models**
 
 ```bash
 ollama pull qwen3.5:4b
+ollama pull gemma4:e4b
 ```
+
+Settings can switch between them for the next turn. If you only want one, pull that one; `/api/health?model=...` and the setup screen will say when the selected model is missing.
 
 If Ollama does not start on its own, run `ollama serve` in a terminal and leave it open. Confirm it with `curl http://127.0.0.1:11434/api/tags`.
 
@@ -241,13 +246,13 @@ uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 The standard API image excludes Laya. To opt in, copy `.env.docker.example` to `.env`, set `EXTRAS=--extra laya`, and set `ENABLE_LAYA_TACTICS=true` before building.
 
-After copying `.env.docker.example` to `.env` and configuring Supabase, one command starts the API, the web app, and an Ollama service with the model pulled. The default `REQUIRE_AUTH=true` requires `SUPABASE_URL`; the API will not start without it. Setting `REQUIRE_AUTH=false` permits unauthenticated local API requests, but the browser app still requires sign-in for practice.
+After copying `.env.docker.example` to `.env` and configuring Supabase, one command starts the API, the web app, and an Ollama service with both supported models pulled. The default `REQUIRE_AUTH=true` requires `SUPABASE_URL`; the API will not start without it. Setting `REQUIRE_AUTH=false` permits unauthenticated local API requests, but the browser app still requires sign-in for practice.
 
 ```bash
 docker compose up --build          # then open http://localhost:8080
 ```
 
-The first run downloads the Ollama image and about 3.4 GB of model. If Laya is opted in, the first ambiguous debate move also downloads its checkpoint (about 808 MB) into the persistent `hf-cache` volume.
+The first run downloads the Ollama image and both supported models. If Laya is opted in, the first ambiguous debate move also downloads its checkpoint (about 808 MB) into the persistent `hf-cache` volume.
 
 Compose builds the `runtime` target, so `docker compose up` does not run the backend tests. Run `make test`, `uv run pytest` in `ai-backend`, or `docker build --target test ai-backend` when you want the suite exercised.
 
@@ -292,7 +297,7 @@ Running it needs more than `uv sync`:
 1. `uv sync --group tts` — Kokoro, onnxruntime and soundfile.
 2. The two Kokoro files in `ai-backend/models/kokoro/` (`kokoro-v1.0.onnx`, `voices-v1.0.bin`); links are in [docs/VOICE.md](docs/VOICE.md).
 3. `espeak-ng` on the system (Kokoro's phonemiser, GPL-3.0).
-4. `ollama serve` with `qwen3.5:4b` pulled, and the API on port 8000, because `vite.config.ts` proxies `/ws` there.
+4. `ollama serve` with `qwen3.5:4b` and `gemma4:e4b` pulled, and the API on port 8000, because `vite.config.ts` proxies `/ws` there.
 5. A signed-in account: the browser app requires one for practice, and the voice socket authenticates with its session token. Without a valid token the socket closes with 4401.
 
 The API also checks the page's origin against `WEB_ORIGIN` (default `http://127.0.0.1:5173,http://localhost:5173`) and closes with 4403 otherwise. If the Voice button opens a room that immediately reports a failure, that close code now says which of the three it was; a blank page would mean the room itself crashed, which the arena now contains instead of taking the whole app down.
@@ -301,7 +306,7 @@ The API also checks the page's origin against `WEB_ORIGIN` (default `http://127.
 - Speech synthesis is `kokoro-onnx` in process on the CPU. It adds **0 MiB** of VRAM, which is what keeps the 4B model resident in 6 GB. Kokoro needs **espeak-ng (GPL-3.0)**, the one non-permissive dependency in the stack.
 - `VOICE_TTS=off` disables server speech; the browser then uses `speechSynthesis` at the same pace. `GET /api/health` does not report speech state — the socket's `ready` event does (`tts: "kokoro-82m-cpu"` or `"none"`).
 - Setup, licences, per-persona voices, VRAM numbers, and measured p50/p95 over 20 turns are in [docs/VOICE.md](docs/VOICE.md). Raw per-turn data is in [docs/voice-measurements.json](docs/voice-measurements.json).
-- The backend suite has 395 passing tests and the Playwright suite 13, including a complete spoken turn using Chromium's fake microphone and the mocked API. A 7 November three-run benchmark on `qwen3.5:4b` measured the complete review wait falling from 80.2 s to 31.1 s after the plan refresh moved off the critical path. The review now streams the rubric as soon as that branch lands, so the scorecard paints before fallacy detection and counterpoints finish; the 31.1 s figure is the complete review, not the first paint. The larger debate context added about 17 ms to first token (`ai-backend/evals/*_measurement.md`).
+- The backend suite has 399 passing tests and the Playwright suite 15, including a complete spoken turn using Chromium's fake microphone and the mocked API. A 7 November three-run benchmark on `qwen3.5:4b` measured the complete review wait falling from 80.2 s to 31.1 s after the plan refresh moved off the critical path. The review now streams the rubric as soon as that branch lands, so the scorecard paints before fallacy detection and counterpoints finish; the 31.1 s figure is the complete review, not the first paint. The larger debate context added about 17 ms to first token (`ai-backend/evals/*_measurement.md`).
 
 Voice mode is **not** real-time or full duplex: you cannot talk over the opponent, and barge-in cuts the reply rather than mixing streams. Round phases (P4) are not implemented. The Playwright suite covers a mocked spoken turn, while real-device barge-in latency still needs measurement; see [docs/VOICE.md](docs/VOICE.md).
 
@@ -335,7 +340,7 @@ Set these in `ai-backend/.env` (see `.env.example`) unless noted.
 | `OPENAI_JSON_MODE` | `json_schema` | Set `json_object` when the endpoint does not support JSON schemas |
 | `OPENAI_API_KEY` | empty | Server-side key for the hosted endpoint; never a `VITE_` variable |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Local model endpoint the API calls |
-| `OLLAMA_MODEL` | `qwen3.5:4b` | Local model name to expect and request |
+| `OLLAMA_MODEL` | `qwen3.5:4b` | Fallback local model when a request does not choose one in Settings; the supported choices are `qwen3.5:4b` and `gemma4:e4b` |
 | `WEB_ORIGIN` | `http://127.0.0.1:5173` | Exact allowed browser origins, comma separated; wildcards are rejected |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1,0.0.0.0` | Hosts the API will answer for |
 | `REQUIRE_AUTH` | `true` | Supabase must be configured for the API to start; `false` permits unauthenticated local API requests but does not unlock browser practice |

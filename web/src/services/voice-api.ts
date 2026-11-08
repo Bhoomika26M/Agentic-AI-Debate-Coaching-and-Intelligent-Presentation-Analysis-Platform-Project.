@@ -1,4 +1,5 @@
 import { apiUrl } from "../config";
+import type { LocalModel } from "./app-settings";
 import type { PracticePreferences, TurnDiagnostics } from "./debate-api";
 
 /** Events the voice socket sends. Mirrors app/voice/routes.py exactly. */
@@ -88,6 +89,7 @@ export type VoiceConfig = {
   difficulty: "warm-up" | "challenge" | "cross-examination";
   preferences?: PracticePreferences | null;
   adaptive_tactics?: boolean;
+  model?: LocalModel;
   reset?: boolean;
   history?: Array<{ speaker: "learner" | "opponent"; content: string }>;
 };

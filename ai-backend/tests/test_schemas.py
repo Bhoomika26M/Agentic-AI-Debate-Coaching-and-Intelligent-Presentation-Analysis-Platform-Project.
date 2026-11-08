@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from app.schemas import (
     AnalysisRequest,
+    ChallengeRequest,
     DebateRequest,
     JudgeRequest,
     PlanRequest,
@@ -122,6 +123,29 @@ def test_a_plan_request_accepts_an_empty_archive_but_not_a_bad_experience_level(
     assert PlanRequest().digests == []
     with pytest.raises(ValidationError):
         PlanRequest(experience="expert")
+
+
+def test_model_backed_requests_accept_only_the_supported_local_models():
+    assert DebateRequest(**_debate(model="gemma4:e4b")).model == "gemma4:e4b"
+    assert AnalysisRequest(
+        topic="Should schools ban phones?",
+        learner_position="for",
+        turns=[{"speaker": "learner", "content": "Attention improves."}],
+        model="qwen3.5:4b",
+    ).model == "qwen3.5:4b"
+    assert ChallengeRequest(
+        topic="Should schools ban phones?",
+        latest="Attention improves.",
+        depth=0,
+        model="gemma4:e4b",
+    ).model == "gemma4:e4b"
+    assert PlanRequest(model="gemma4:e4b").model == "gemma4:e4b"
+    # Omitting a model keeps the server default.
+    assert DebateRequest(**_debate()).model is None
+    with pytest.raises(ValidationError):
+        DebateRequest(**_debate(model="llama3:8b"))
+    with pytest.raises(ValidationError):
+        PlanRequest(model="not-a-model")
 
 
 def test_scores_stay_inside_the_rubric():

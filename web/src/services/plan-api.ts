@@ -1,4 +1,5 @@
 import { apiUrl } from "../config";
+import type { LocalModel } from "./app-settings";
 import type { AnalysisReport, PracticePreferences } from "./debate-api";
 
 export type CriterionKey =
@@ -60,6 +61,7 @@ export async function requestPlan(
     experience: string | null;
     digests: SessionDigest[];
     preferences?: PracticePreferences | null;
+    model?: LocalModel;
   },
   accessToken?: string,
 ) {
@@ -74,6 +76,7 @@ export async function requestPlan(
       experience: input.experience,
       digests: input.digests.slice(-12),
       preferences: input.preferences ?? undefined,
+      model: input.model,
     }),
   });
   if (!response.ok) {

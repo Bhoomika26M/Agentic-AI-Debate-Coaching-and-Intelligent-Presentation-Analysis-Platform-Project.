@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, AudioLines, Bot, Check, ChevronDown, ChevronUp, Download, History, LoaderCircle, MessageSquareText, Printer, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, AudioLines, Bot, Check, ChevronDown, ChevronUp, Cpu, Download, History, LoaderCircle, MessageSquareText, Printer, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
 import { deleteDebateRecord, listDebateRecords, loadDebateAnalysis, loadDebateRecord, loadDebateVerdict, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
@@ -10,7 +10,7 @@ import { requestPlan } from "../../services/plan-api";
 import { completePlanDrill, listLearningPlans, listPlanDrillCompletions, loadSessionDigests, saveLearningPlan, uncompletePlanDrill, type StoredPlan } from "../../services/plan-records";
 import { buildArchiveCsv, deleteAccount, deleteAllPracticeData, downloadCsvFile } from "../../services/account-data";
 import { emptyProfile, loadProfile, saveProfile, type LearnerProfile } from "../../services/profiles";
-import { cacheApplicationSettings, loadApplicationSettings, type ApplicationSettings } from "../../services/app-settings";
+import { cacheApplicationSettings, loadApplicationSettings, LOCAL_MODEL_OPTIONS, normalizeApplicationSettings, type ApplicationSettings } from "../../services/app-settings";
 import type { ThemePreference } from "../../services/app-settings";
 import { difficultyFor, personaFor, personas } from "../debate-catalog";
 import {
@@ -125,7 +125,7 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, onSignOut, focusRecordId, onFocusConsumed, theme = "classic", initialSection = "progress" }: {
+export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, onSignOut, focusRecordId, onFocusConsumed, theme = "classic", initialSection = "progress", onApplicationSettingsChange }: {
   onStart: () => void;
   onDelivery: () => void;
   onContinue: (session: DebateRecord, turns: DebateRecordTurn[]) => void;
@@ -135,6 +135,7 @@ export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, on
   onFocusConsumed?: () => void;
   theme?: ThemePreference;
   initialSection?: "progress" | "plan";
+  onApplicationSettingsChange?: (next: ApplicationSettings) => void;
 }) {
   const newTheme = theme === "new";
   const { user, session } = useAuth();
@@ -246,8 +247,10 @@ export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, on
           // No saved settings is not the same as saved defaults: leave the
           // learner's current theme and local cache untouched.
           if (data.app_settings) {
-            setAppSettings(data.app_settings);
-            cacheApplicationSettings(user.id, data.app_settings);
+            const nextSettings = normalizeApplicationSettings(data.app_settings);
+            setAppSettings(nextSettings);
+            cacheApplicationSettings(user.id, nextSettings);
+            onApplicationSettingsChange?.(nextSettings);
           }
         })
         .catch(() => {})
@@ -409,6 +412,14 @@ export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, on
     }
   }
 
+  function updateAppSettings(patch: Partial<ApplicationSettings>) {
+    const next = { ...appSettings, ...patch };
+    setAppSettings(next);
+    // Keep the app-level copy in step so Voice and Delivery use this choice
+    // immediately, while "Save app settings" still writes it to the account.
+    onApplicationSettingsChange?.(next);
+  }
+
   async function saveApplicationSettings() {
     if (!user || !appSettingsReady || savingAppSettings || savingProfile) return;
     setSavingAppSettings(true);
@@ -486,6 +497,7 @@ export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, on
           experience: profile.experience,
           digests,
           preferences: preferencesFor(prefs),
+          model: appSettings.model,
         },
         session?.access_token,
       );
@@ -1152,6 +1164,32 @@ export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, on
           </div>
 
           <div className="app-settings-list">
+            <div className="app-setting-row app-setting-length">
+              <div className="app-setting-copy">
+                <span className="app-setting-icon"><Cpu size={17} /></span>
+                <div>
+                  <h3>Local model</h3>
+                  <p>Choose which Ollama model answers debate turns, reviews, plans, and delivery coaching on this machine.</p>
+                  <p className="app-setting-status">Pull both models once with <code>ollama pull</code>; switching takes effect on the next request.</p>
+                </div>
+              </div>
+              <div className="app-length-options app-model-options" role="radiogroup" aria-label="Local model">
+                {LOCAL_MODEL_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    disabled={!appSettingsReady}
+                    aria-checked={appSettings.model === option.id}
+                    className={appSettings.model === option.id ? "selected" : ""}
+                    onClick={() => updateAppSettings({ model: option.id })}
+                  >
+                    <b>{option.name}</b><small>{option.detail}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="app-setting-row">
               <div className="app-setting-copy">
                 <span className="app-setting-icon"><Bot size={17} /></span>
@@ -1171,7 +1209,7 @@ export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, on
                   type="checkbox"
                   checked={appSettings.adaptiveTactics}
                   disabled={!appSettingsReady}
-                  onChange={(event) => setAppSettings((current) => ({ ...current, adaptiveTactics: event.target.checked }))}
+                  onChange={(event) => updateAppSettings({ adaptiveTactics: event.target.checked })}
                 />
                 <span aria-hidden="true" />
               </label>
@@ -1191,7 +1229,7 @@ export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, on
                   type="checkbox"
                   checked={appSettings.usePracticeHistory}
                   disabled={!appSettingsReady}
-                  onChange={(event) => setAppSettings((current) => ({ ...current, usePracticeHistory: event.target.checked }))}
+                  onChange={(event) => updateAppSettings({ usePracticeHistory: event.target.checked })}
                 />
                 <span aria-hidden="true" />
               </label>
@@ -1211,7 +1249,7 @@ export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, on
                   type="checkbox"
                   checked={appSettings.streamReplies}
                   disabled={!appSettingsReady}
-                  onChange={(event) => setAppSettings((current) => ({ ...current, streamReplies: event.target.checked }))}
+                  onChange={(event) => updateAppSettings({ streamReplies: event.target.checked })}
                 />
                 <span aria-hidden="true" />
               </label>
@@ -1232,7 +1270,7 @@ export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, on
                   disabled={!appSettingsReady}
                   aria-checked={appSettings.replyLength === "concise"}
                   className={appSettings.replyLength === "concise" ? "selected" : ""}
-                  onClick={() => setAppSettings((current) => ({ ...current, replyLength: "concise" }))}
+                  onClick={() => updateAppSettings({ replyLength: "concise" })}
                 >
                   <b>Short</b><small>One direct point</small>
                 </button>
@@ -1242,7 +1280,7 @@ export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, on
                   disabled={!appSettingsReady}
                   aria-checked={appSettings.replyLength === "standard"}
                   className={appSettings.replyLength === "standard" ? "selected" : ""}
-                  onClick={() => setAppSettings((current) => ({ ...current, replyLength: "standard" }))}
+                  onClick={() => updateAppSettings({ replyLength: "standard" })}
                 >
                   <b>Standard</b><small>More room to rebut</small>
                 </button>

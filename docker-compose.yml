@@ -15,7 +15,7 @@ services:
       timeout: 5s
       retries: 12
 
-  # Pulls the model once so the API does not start against an empty model list.
+  # Pulls the supported models once so the API does not start against an empty model list.
   model-pull:
     image: ollama/ollama:latest
     depends_on:
@@ -23,7 +23,8 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_MODEL:-qwen3.5:4b}"]
+      OLLAMA_PULL_MODELS: ${OLLAMA_PULL_MODELS:-qwen3.5:4b gemma4:e4b}
+    entrypoint: ["/bin/sh", "-c", "for model in $$OLLAMA_PULL_MODELS; do ollama pull \"$$model\" || exit 1; done"]
     restart: "no"
 
   api:

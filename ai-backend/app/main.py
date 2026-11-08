@@ -16,11 +16,13 @@ from .agents.debate import check_reply, guard_diagnostics, respond_stream
 from .agents.guard import classify_turn, redirect_reply
 from .agents.laya_selector import is_available as laya_available
 from .auth import REQUIRE_AUTH, authenticate_request
+from .local_models import LocalModel
 from .providers import (
     is_available,
     is_loaded,
     model_name,
     unavailable_hint,
+    use_model,
 )
 from .providers import (
     provider as llm_provider,
@@ -178,20 +180,23 @@ async def add_security_headers(request: Request, call_next):
 
 
 @app.get("/api/health")
-async def health() -> dict[str, str | bool]:
-    available = await is_available()
-    loaded = await is_loaded() if available else False
-    return {
-        "status": "ready" if loaded else "warming" if available else "model_unavailable",
-        "provider": llm_provider(),
-        "model": model_name(),
-        "hint": "" if available else unavailable_hint(),
-        "model_available": available,
-        "model_loaded": loaded,
-        "transcription": "ready" if transcription_available() else "unavailable",
-        "adaptive_tactics_available": True,
-        "laya_available": laya_available(),
-    }
+async def health(model: LocalModel | None = None) -> dict[str, str | bool]:
+    # The query parameter lets Settings check the model it is about to use,
+    # rather than the process default, before a learner starts a turn.
+    with use_model(model):
+        available = await is_available()
+        loaded = await is_loaded() if available else False
+        return {
+            "status": "ready" if loaded else "warming" if available else "model_unavailable",
+            "provider": llm_provider(),
+            "model": model_name(),
+            "hint": "" if available else unavailable_hint(),
+            "model_available": available,
+            "model_loaded": loaded,
+            "transcription": "ready" if transcription_available() else "unavailable",
+            "adaptive_tactics_available": True,
+            "laya_available": laya_available(),
+        }
 
 
 @app.post(
@@ -227,8 +232,9 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
             media_type="text/event-stream",
             headers={"X-Accel-Buffering": "no"},
         )
-    if not await is_available():
-        raise HTTPException(status_code=503, detail=unavailable_hint())
+    with use_model(request.model):
+        if not await is_available():
+            raise HTTPException(status_code=503, detail=unavailable_hint())
     if stream_slots.locked():
         raise HTTPException(
             status_code=429,
@@ -240,39 +246,40 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
 
     async def events() -> AsyncIterator[str]:
         try:
-            assembled: list[str] = []
-            async for kind, text in respond_stream(
-                {
-                    "topic": request.topic,
-                    "learner_position": request.learner_position,
-                    "persona": request.persona,
-                    "difficulty": request.difficulty,
-                    "history": [
-                        {
-                            "speaker": t.speaker,
-                            "content": t.content,
-                            "kind": t.kind,
-                        }
-                        for t in request.history
-                    ],
-                    "latest": request.learner_argument,
-                    "memory": [digest.model_dump() for digest in request.memory],
-                    "preferences": (
-                        request.preferences.model_dump()
-                        if request.preferences
-                        else None
-                    ),
-                    "adaptive_tactics": request.adaptive_tactics,
-                    "reply_length": request.reply_length,
-                }
-            ):
-                if kind == "final_delta":
-                    assembled.append(text)
-                yield sse_event(kind, text)
-            problem = check_reply("".join(assembled), request.topic)
-            if problem is not None:
-                logger.info("Streamed reply flagged (%s); see transcript.", problem)
-            yield STREAM_DONE
+            with use_model(request.model):
+                assembled: list[str] = []
+                async for kind, text in respond_stream(
+                    {
+                        "topic": request.topic,
+                        "learner_position": request.learner_position,
+                        "persona": request.persona,
+                        "difficulty": request.difficulty,
+                        "history": [
+                            {
+                                "speaker": t.speaker,
+                                "content": t.content,
+                                "kind": t.kind,
+                            }
+                            for t in request.history
+                        ],
+                        "latest": request.learner_argument,
+                        "memory": [digest.model_dump() for digest in request.memory],
+                        "preferences": (
+                            request.preferences.model_dump()
+                            if request.preferences
+                            else None
+                        ),
+                        "adaptive_tactics": request.adaptive_tactics,
+                        "reply_length": request.reply_length,
+                    }
+                ):
+                    if kind == "final_delta":
+                        assembled.append(text)
+                    yield sse_event(kind, text)
+                problem = check_reply("".join(assembled), request.topic)
+                if problem is not None:
+                    logger.info("Streamed reply flagged (%s); see transcript.", problem)
+                yield STREAM_DONE
         except (HTTPError, ValueError) as error:
             yield sse_event("error", BUSY_MESSAGE)
             logger.exception("Model streaming failed: %s", error)
@@ -292,55 +299,56 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
     response_model=AnalysisEnvelope,
 )
 async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
-    if not await is_available():
-        raise HTTPException(
-            status_code=503,
-            detail=unavailable_hint(),
-        )
-    if stream_slots.locked():
-        raise HTTPException(
-            status_code=429,
-            detail="The model is busy. Please retry in a moment.",
-        )
-    await stream_slots.acquire()
-    try:
-        from .agents.analysis_graph import analyze_with_graph
-        from .agents.conversation import MAX_ANALYSIS_TURNS
-
-        report, gaps = await analyze_with_graph(request)
-        if report is None:
-            detail = "The model returned an incomplete coaching review. Try the review again."
-            if gaps:
-                detail = (
-                f"Incomplete coaching review ({'; '.join(gaps[:3])}). Try the review again."
+    with use_model(request.model):
+        if not await is_available():
+            raise HTTPException(
+                status_code=503,
+                detail=unavailable_hint(),
             )
-            raise HTTPException(status_code=502, detail=detail)
-        total_turns = len(request.turns)
-        return AnalysisEnvelope.model_validate(
-            {
-                **report,
-                "gaps": gaps,
-                "reviewed_turns": min(total_turns, MAX_ANALYSIS_TURNS),
-                "total_turns": total_turns,
-                "truncated": total_turns > MAX_ANALYSIS_TURNS,
-            }
-        )
-    except HTTPError as error:
-        logger.exception("Model transcript analysis failed: %s", error)
-        raise HTTPException(
-            status_code=503,
-            detail="The model could not finish analysis.",
-        ) from error
-    except HTTPException:
-        raise
-    except (ValueError, json.JSONDecodeError) as error:
-        logger.exception("Model returned an invalid analysis: %s", error)
-        raise HTTPException(
-            status_code=502,
-            detail="The model returned an incomplete coaching review. Try the review again.",
-        ) from error
-    finally:
-        stream_slots.release()
+        if stream_slots.locked():
+            raise HTTPException(
+                status_code=429,
+                detail="The model is busy. Please retry in a moment.",
+            )
+        await stream_slots.acquire()
+        try:
+            from .agents.analysis_graph import analyze_with_graph
+            from .agents.conversation import MAX_ANALYSIS_TURNS
+
+            report, gaps = await analyze_with_graph(request)
+            if report is None:
+                detail = "The model returned an incomplete coaching review. Try the review again."
+                if gaps:
+                    detail = (
+                    f"Incomplete coaching review ({'; '.join(gaps[:3])}). Try the review again."
+                )
+                raise HTTPException(status_code=502, detail=detail)
+            total_turns = len(request.turns)
+            return AnalysisEnvelope.model_validate(
+                {
+                    **report,
+                    "gaps": gaps,
+                    "reviewed_turns": min(total_turns, MAX_ANALYSIS_TURNS),
+                    "total_turns": total_turns,
+                    "truncated": total_turns > MAX_ANALYSIS_TURNS,
+                }
+            )
+        except HTTPError as error:
+            logger.exception("Model transcript analysis failed: %s", error)
+            raise HTTPException(
+                status_code=503,
+                detail="The model could not finish analysis.",
+            ) from error
+        except HTTPException:
+            raise
+        except (ValueError, json.JSONDecodeError) as error:
+            logger.exception("Model returned an invalid analysis: %s", error)
+            raise HTTPException(
+                status_code=502,
+                detail="The model returned an incomplete coaching review. Try the review again.",
+            ) from error
+        finally:
+            stream_slots.release()
 
 
 @app.post(
@@ -349,8 +357,9 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
 )
 async def debate_analysis_stream(request: AnalysisRequest) -> StreamingResponse:
     """Stream the rubric first, then the merged review, over SSE."""
-    if not await is_available():
-        raise HTTPException(status_code=503, detail=unavailable_hint())
+    with use_model(request.model):
+        if not await is_available():
+            raise HTTPException(status_code=503, detail=unavailable_hint())
     if stream_slots.locked():
         raise HTTPException(
             status_code=429,
@@ -360,23 +369,24 @@ async def debate_analysis_stream(request: AnalysisRequest) -> StreamingResponse:
 
     async def events() -> AsyncIterator[str]:
         try:
-            from .agents.analysis_graph import stream_analysis_with_graph
+            with use_model(request.model):
+                from .agents.analysis_graph import stream_analysis_with_graph
 
-            completed = False
-            async for item in stream_analysis_with_graph(request):
-                envelope = AnalysisEnvelope.model_validate(
-                    _analysis_envelope(item.get("report"), item.get("gaps", []), request)
-                )
-                if item.get("event") == "review" and envelope.ratings is not None:
-                    completed = True
-                yield analysis_event(str(item.get("event")), envelope.model_dump())
-            if completed:
-                yield ANALYSIS_DONE
-            else:
-                yield analysis_event(
-                    "error",
-                    {"detail": "The review ended before it was complete. Try again."},
-                )
+                completed = False
+                async for item in stream_analysis_with_graph(request):
+                    envelope = AnalysisEnvelope.model_validate(
+                        _analysis_envelope(item.get("report"), item.get("gaps", []), request)
+                    )
+                    if item.get("event") == "review" and envelope.ratings is not None:
+                        completed = True
+                    yield analysis_event(str(item.get("event")), envelope.model_dump())
+                if completed:
+                    yield ANALYSIS_DONE
+                else:
+                    yield analysis_event(
+                        "error",
+                        {"detail": "The review ended before it was complete. Try again."},
+                    )
         except HTTPError as error:
             logger.exception("Model transcript analysis stream failed: %s", error)
             yield analysis_event(
@@ -427,11 +437,12 @@ async def debate_challenge(
 ) -> ChallengeResponse:
     if request.depth >= 2:
         return ChallengeResponse(done=True, depth=request.depth)
-    if not await is_available():
-        raise HTTPException(
-            status_code=503,
-            detail=unavailable_hint(),
-        )
+    with use_model(request.model):
+        if not await is_available():
+            raise HTTPException(
+                status_code=503,
+                detail=unavailable_hint(),
+            )
     if stream_slots.locked():
         raise HTTPException(
             status_code=429,
@@ -450,13 +461,14 @@ async def debate_challenge(
     try:
         from .agents.challenger import challenge_turn
 
-        result = await challenge_turn(
-            [{"speaker": t.speaker, "content": t.content} for t in request.history],
-            request.latest,
-            request.topic,
-            depth - 1,
-            request.preferences.model_dump() if request.preferences else None,
-        )
+        with use_model(request.model):
+            result = await challenge_turn(
+                [{"speaker": t.speaker, "content": t.content} for t in request.history],
+                request.latest,
+                request.topic,
+                depth - 1,
+                request.preferences.model_dump() if request.preferences else None,
+            )
         if result is None:
             follow_up_limiter.release(identity, request.latest)
             return ChallengeResponse(done=True, depth=request.depth)
@@ -487,16 +499,18 @@ async def coach_plan_endpoint(request: PlanRequest) -> PlanResponse:
     from .agents.plan_graph import coach_plan
 
     # A plan for a learner with nothing saved is deterministic, so it works with the model off.
-    use_model = bool(request.digests) and await is_available()
-    if use_model and stream_slots.locked():
+    with use_model(request.model):
+        use_model_for_plan = bool(request.digests) and await is_available()
+    if use_model_for_plan and stream_slots.locked():
         raise HTTPException(
             status_code=429,
             detail="The model is busy. Please retry in a moment.",
         )
-    if use_model:
+    if use_model_for_plan:
         await stream_slots.acquire()
     try:
-        plan, gaps = await coach_plan(request, use_model=use_model)
+        with use_model(request.model):
+            plan, gaps = await coach_plan(request, use_model=use_model_for_plan)
         if plan is None:
             raise HTTPException(
                 status_code=502,
@@ -512,7 +526,7 @@ async def coach_plan_endpoint(request: PlanRequest) -> PlanResponse:
     except HTTPException:
         raise
     finally:
-        if use_model:
+        if use_model_for_plan:
             stream_slots.release()
 
 
@@ -527,9 +541,10 @@ async def debate_judge(request: JudgeRequest) -> JudgeVerdict:
 
     report_dict = request.report.model_dump()
     delivery_dict = request.delivery.model_dump() if request.delivery else {}
-    verdict_dict, gaps = await judge_with_graph(
-        report_dict, delivery_dict, [turn.model_dump() for turn in request.turns]
-    )
+    with use_model(request.model):
+        verdict_dict, gaps = await judge_with_graph(
+            report_dict, delivery_dict, [turn.model_dump() for turn in request.turns]
+        )
     if verdict_dict is None:
         detail = "; ".join(gaps[:3]) if gaps else "Scoring failed."
         raise HTTPException(status_code=502, detail=f"{detail} Try again.")
@@ -545,6 +560,7 @@ async def debate_judge(request: JudgeRequest) -> JudgeVerdict:
 async def presentation_analysis(
     audio: UploadFile = File(...),  # noqa: B008 - FastAPI reads the upload from this default.
     topic: str | None = Form(default=None, min_length=3, max_length=240),
+    model: LocalModel | None = Form(default=None),  # noqa: B008 - FastAPI reads this form field.
 ) -> PresentationResponse:
     # Persistence stays in the browser; Python holds audio in memory and discards it.
     data = await audio.read(MAX_AUDIO_MB * 1024 * 1024 + 1)
@@ -571,9 +587,10 @@ async def presentation_analysis(
     try:
         from .agents.delivery_graph import review_delivery_with_graph
 
-        result, gaps, kind = await review_delivery_with_graph(
-            data, filename, content_type, topic or None
-        )
+        with use_model(model):
+            result, gaps, kind = await review_delivery_with_graph(
+                data, filename, content_type, topic or None
+            )
         if result is not None and not gaps:
             return PresentationResponse.model_validate({**result, "ser_reflection": []})
         detail = "; ".join(gaps[:3]) if gaps else "Delivery review failed."

@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from .local_models import LocalModel
+
 # A long debate is condensed and windowed by the prompts; these caps only bound the payload.
 MAX_HISTORY_TURNS = 200
 MAX_ANALYSIS_TURNS = 200
@@ -75,6 +77,8 @@ class DebateRequest(BaseModel):
     preferences: PracticePreferences | None = None
     adaptive_tactics: bool = True
     reply_length: Literal["concise", "standard", "voice"] = "standard"
+    # The local Ollama model the learner selected in Settings.
+    model: LocalModel | None = None
 
 
 class AnalysisTurn(BaseModel):
@@ -89,6 +93,7 @@ class AnalysisRequest(BaseModel):
     closing_statement: str | None = Field(default=None, max_length=8000)
     persona: Literal["strategist", "skeptic", "diplomat"] | None = None
     difficulty: Literal["warm-up", "challenge", "cross-examination"] | None = None
+    model: LocalModel | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -258,6 +263,7 @@ class ChallengeRequest(BaseModel):
     latest: str = Field(min_length=1, max_length=4000)
     depth: int = Field(ge=0, le=2)
     preferences: PracticePreferences | None = None
+    model: LocalModel | None = None
 
 
 class ChallengeResponse(BaseModel):
@@ -291,6 +297,7 @@ class JudgeRequest(BaseModel):
     delivery: PresentationResponse | None = None
     # The debate itself, so rebuttal is scored from the learner's own replies.
     turns: list[DebateTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
+    model: LocalModel | None = None
 
 
 class PlanWeakSpot(BaseModel):
@@ -320,6 +327,7 @@ class PlanRequest(BaseModel):
     experience: Literal["new", "developing", "confident"] | None = None
     digests: list[SessionDigest] = Field(default_factory=list, max_length=12)
     preferences: PracticePreferences | None = None
+    model: LocalModel | None = None
 
 
 class LearningPlan(BaseModel):

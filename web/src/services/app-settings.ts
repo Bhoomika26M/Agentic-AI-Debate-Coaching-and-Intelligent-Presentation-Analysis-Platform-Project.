@@ -1,6 +1,27 @@
 export type ReplyLength = "concise" | "standard";
 export type ThemePreference = "classic" | "new";
 
+/** The local Ollama models the settings screen can switch between. */
+export const LOCAL_MODEL_OPTIONS = [
+  {
+    id: "qwen3.5:4b",
+    name: "Qwen 3.5 4B",
+    detail: "The compact default. Quick replies for everyday rehearsals.",
+  },
+  {
+    id: "gemma4:e4b",
+    name: "Gemma 4 E4B",
+    detail: "A different voice and reasoning style for varied practice.",
+  },
+] as const;
+
+export type LocalModel = (typeof LOCAL_MODEL_OPTIONS)[number]["id"];
+export const DEFAULT_LOCAL_MODEL: LocalModel = "qwen3.5:4b";
+
+export function isLocalModel(value: unknown): value is LocalModel {
+  return LOCAL_MODEL_OPTIONS.some((option) => option.id === value);
+}
+
 export type ApplicationSettings = {
   adaptiveTactics: boolean;
   usePracticeHistory: boolean;
@@ -8,6 +29,8 @@ export type ApplicationSettings = {
   streamReplies: boolean;
   replyLength: ReplyLength;
   theme: ThemePreference;
+  /** Which local Ollama model answers turns and reviews practice. */
+  model: LocalModel;
 };
 
 const DEFAULT_SETTINGS: ApplicationSettings = {
@@ -16,6 +39,7 @@ const DEFAULT_SETTINGS: ApplicationSettings = {
   streamReplies: true,
   replyLength: "standard",
   theme: "new",
+  model: DEFAULT_LOCAL_MODEL,
 };
 
 const settingsKey = (userId: string) => `verdict-app-settings-v1-${userId}`;
@@ -30,6 +54,7 @@ export function normalizeApplicationSettings(value: unknown): ApplicationSetting
     streamReplies: typeof raw.streamReplies === "boolean" ? raw.streamReplies : DEFAULT_SETTINGS.streamReplies,
     replyLength: raw.replyLength === "concise" ? "concise" : "standard",
     theme: raw.theme === "classic" ? "classic" : "new",
+    model: isLocalModel(raw.model) ? raw.model : DEFAULT_LOCAL_MODEL,
   };
 }
 

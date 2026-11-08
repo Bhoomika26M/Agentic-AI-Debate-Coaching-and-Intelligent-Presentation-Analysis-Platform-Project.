@@ -1,5 +1,6 @@
 import { apiUrl } from "../config";
 import { createMarkerScrubber, stripControlMarkers } from "../utils/text";
+import type { LocalModel } from "./app-settings";
 import type { SessionDigest } from "./plan-api";
 
 export type Speaker = "learner" | "opponent";
@@ -82,6 +83,7 @@ export async function requestChallenge(
       latest,
       depth,
       preferences: options.preferences ?? undefined,
+      model: options.model,
     }),
   });
   if (!response.ok) {
@@ -111,6 +113,8 @@ export type DebateOptions = {
   preferences?: PracticePreferences | null;
   adaptive_tactics?: boolean;
   reply_length?: "concise" | "standard";
+  /** The local Ollama model selected in Settings. */
+  model?: LocalModel;
 };
 
 export type AppCapabilities = {
@@ -126,9 +130,10 @@ export type ModelStatus = {
   hint?: string;
 };
 
-export async function loadModelStatus(): Promise<ModelStatus> {
+export async function loadModelStatus(model?: LocalModel): Promise<ModelStatus> {
   try {
-    const response = await fetch(apiUrl("/api/health"), { credentials: "omit" });
+    const query = model ? `?model=${encodeURIComponent(model)}` : "";
+    const response = await fetch(apiUrl(`/api/health${query}`), { credentials: "omit" });
     if (!response.ok) return { status: "unknown" };
     const payload = (await response.json()) as Partial<ModelStatus>;
     if (payload.status !== "ready" && payload.status !== "warming" && payload.status !== "model_unavailable") {
@@ -188,6 +193,7 @@ function analysisBody(
     turns: transcript,
     persona: options.persona,
     difficulty: options.difficulty,
+    model: options.model,
     closing_statement: closingStatement?.trim() || undefined,
   };
 }
@@ -313,6 +319,7 @@ export async function requestJudge(
   delivery: object | null,
   turns: DebateMessage[],
   accessToken?: string,
+  model?: LocalModel,
 ) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
@@ -324,6 +331,7 @@ export async function requestJudge(
     body: JSON.stringify({
       report,
       delivery,
+      model,
       turns: turns
         .filter((turn) => !turn.pending && turn.content.trim())
         .map(({ speaker, content, kind }) => ({ speaker, content, ...(kind ? { kind } : {}) })),

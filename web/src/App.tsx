@@ -206,6 +206,7 @@ const SETTINGS_SECTION_IDS = new Set([
   "settings-profile",
   "settings-practice",
   "settings-coach",
+  "settings-model",
   "settings-appearance",
   "settings-data",
 ]);
@@ -620,7 +621,7 @@ export default function App() {
     if (modelChecking) return;
     setModelChecking(true);
     try {
-      setModelStatus(await loadModelStatus());
+      setModelStatus(await loadModelStatus(appSettings.model));
     } finally {
       setModelChecking(false);
     }
@@ -629,7 +630,7 @@ export default function App() {
   // The setup and arena paths tell the learner when the model is simply not running.
   useEffect(() => {
     if (view === "setup" || view === "arena") void checkModel();
-  }, [view]);
+  }, [view, appSettings.model]);
 
   // The clock measures the learner's speaking time, so drafting time is not charged.
   useEffect(() => {
@@ -685,6 +686,7 @@ export default function App() {
       preferences: learnerAim(),
       adaptive_tactics: applicationSettings.adaptiveTactics,
       reply_length: applicationSettings.replyLength,
+      model: applicationSettings.model,
     };
     const replyId = crypto.randomUUID();
     lastTurnRef.current = { history, latest: learnerArgument };
@@ -1140,7 +1142,7 @@ export default function App() {
         goals: profile?.goals ?? null,
         experience: profile?.experience ?? currentPrefs.experience,
         preferences: preferencesFor(currentPrefs),
-      }, session?.access_token);
+      }, session?.access_token, loadApplicationSettings(user.id).model);
       setPlanUpdateStatus("updated");
     } catch (error) {
       setPlanUpdateStatus("failed");
@@ -1167,6 +1169,7 @@ export default function App() {
         learner_position: position,
         persona,
         difficulty,
+        model: loadApplicationSettings(user?.id ?? "guest").model,
       }, messages, session?.access_token, (partial) => {
         setAnalysis(partial);
         if (partial.ratings) void runJudge(partial, null, messages, null);
@@ -1221,6 +1224,7 @@ export default function App() {
           learner_position: position,
           persona,
           difficulty,
+          model: loadApplicationSettings(user?.id ?? "guest").model,
         }, debateTurns, session?.access_token, delivery.transcript);
         setAnalysis(scoredReport);
         setAnalysisComplete(true);
@@ -1233,7 +1237,7 @@ export default function App() {
           }
         }
       }
-      const verdict = await requestJudge(scoredReport, delivery, debateTurns, session?.access_token);
+      const verdict = await requestJudge(scoredReport, delivery, debateTurns, session?.access_token, loadApplicationSettings(user?.id ?? "guest").model);
       if (sequence !== judgeSeqRef.current) return;
       setJudge(verdict);
       if (targetRecordId) {
@@ -1405,6 +1409,7 @@ export default function App() {
         persona,
         difficulty,
         preferences: learnerAim(),
+        model: loadApplicationSettings(user?.id ?? "guest").model,
       };
       const result = await requestChallenge(options, messages, latestLearner.content, depth, session?.access_token);
       if (result.done || !result.follow_up) {
@@ -1789,6 +1794,7 @@ export default function App() {
                     onFocusConsumed={() => setAccountFocusId(null)}
                     theme={theme}
                     initialSection={accountStartSection === "plan" ? "plan" : "progress"}
+                    onApplicationSettingsChange={updateApplicationSettings}
                   />
                 )}
             </Suspense>
@@ -2000,6 +2006,7 @@ export default function App() {
                     persona={persona}
                     difficulty={difficulty}
                     preferences={learnerAim()}
+                    model={appSettings.model}
                     streamReplies={streamReplies}
                     streamRepliesDefault={appSettings.streamReplies}
                     onStreamRepliesChange={setStreamReplies}
@@ -2376,7 +2383,7 @@ export default function App() {
                     <div className="delivery-body">
                       <p className="analysis-intro">Record or upload a closing take. Pace, fillers, and pauses are observable patterns with timestamps, not diagnoses. Your audio is discarded after the review.</p>
                       <Suspense fallback={<div className="inline-notice" role="status">Loading delivery review…</div>}>
-                        <PresentationRoom key={`${recordId ?? "new"}-${deliveryResult ? "saved" : "empty"}`} topic={activeTopic} sessionId={recordId} compact initialResult={deliveryResult} onResult={(next) => { setDeliveryResult(next); void runJudge(analysis, next); }} />
+                        <PresentationRoom key={`${recordId ?? "new"}-${deliveryResult ? "saved" : "empty"}`} topic={activeTopic} sessionId={recordId} compact model={appSettings.model} initialResult={deliveryResult} onResult={(next) => { setDeliveryResult(next); void runJudge(analysis, next); }} />
                       </Suspense>
                       <button className="text-link step-aside" type="button" onClick={openDeliveryPractice}>Or practise a take on its own <ArrowUpRight size={15} /></button>
                     </div>
@@ -2486,7 +2493,7 @@ export default function App() {
               <h1>Steady the<br /><span>next take.</span></h1>
               <p className="verdict-summary">Record or upload without a debate. Review pace, pauses, and tutor drills with timestamps. Audio is discarded after review.</p>
               <Suspense fallback={<div className="inline-notice" role="status">Loading delivery room…</div>}>
-                <PresentationRoom />
+                <PresentationRoom model={appSettings.model} />
               </Suspense>
               <div className="verdict-actions">
                 <button className="button button-dark" onClick={openPracticeDebate}>Start a debate <ArrowRight size={16} /></button>

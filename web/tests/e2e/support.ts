@@ -48,15 +48,17 @@ export async function seedSignedIn(page: Page, theme: Theme = "new") {
       JSON.stringify({
         adaptiveTactics: true,
         usePracticeHistory: true,
+        streamReplies: true,
         replyLength: "standard",
         theme,
+        model: "qwen3.5:4b",
       }),
     ],
   );
 }
 
 export async function mockHealth(page: Page, overrides: Record<string, unknown> = {}) {
-  await page.route("**/api/health", (route) =>
+  await page.route("**/api/health*", (route) =>
     route.fulfill({
       json: {
         status: "ready",
