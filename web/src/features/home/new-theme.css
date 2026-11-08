@@ -139,6 +139,7 @@ html[data-theme="new"] .fixture-next-cue small { color: #687b88; font-size: 14px
   html[data-theme="new"] .fixture-steps { margin-top: 12px; }
   html[data-theme="new"] .fixture-steps > button { min-width: 54px; font-size: 9px; letter-spacing: .08em; }
   html[data-theme="new"] .fixture-layout { grid-template-columns: minmax(0, 1fr); }
+  html[data-theme="new"] .fixture-layout .topic-list { max-height: 300px; overflow-y: auto; gap: 8px; padding-right: 4px; overscroll-behavior: contain; scrollbar-color: #8e9b91 transparent; scrollbar-width: thin; }
   html[data-theme="new"] .fixture-layout .topic-option { min-height: 56px; padding: 8px 12px; grid-template-columns: 25px 1fr 18px; gap: 9px; font-size: 17px; }
   html[data-theme="new"] .fixture-layout .fixture-summary { grid-column: 1; grid-row: auto; padding: 17px 0 0; border-left: 0; border-top: 1px solid #9ba7a8; }
   html[data-theme="new"] .fixture-layout .fixture-summary dl { grid-template-columns: 1fr; }

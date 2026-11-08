@@ -808,7 +808,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 @media (max-width: 760px) {
   .setup-carry { grid-template-columns: 1fr; gap: 10px; }
   .setup-carry-terms { text-align: left; }
-  .arena-header-actions { flex-wrap: wrap; justify-content: flex-end; gap: 8px 10px; }
-  .pause-button { padding: 0 9px; font-size: 10px; }
+  .arena-header { min-height: 0; padding-block: 8px; flex-wrap: wrap; row-gap: 7px; }
+  .arena-header-actions { width: 100%; flex-wrap: nowrap; justify-content: flex-start; gap: 7px; }
+  .arena-header-actions > button { flex: 1 1 0; min-width: 0; padding-inline: 6px; justify-content: center; font-size: 9px; }
+  .arena-header-actions .end-button { padding-inline: 6px; gap: 4px; }
+  .pause-button { padding: 0 9px; font-size: 9px; }
   .final-minute { flex-wrap: wrap; }
+  .verdict-next .verdict-actions { align-items: stretch; }
+  .verdict-next .verdict-actions > button { width: 100%; justify-content: center; }
+}
+
+.verdict-next .verdict-actions { justify-content: flex-start; }
+@media (max-width: 380px) {
+  .arena-header-actions > button { padding-inline: 4px; font-size: 8px; }
+  .arena-header-actions .end-button svg { width: 12px; }
 }

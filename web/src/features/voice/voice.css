@@ -572,19 +572,22 @@
   .voice-room {
     min-height: 0;
     height: 100%;
-    padding: 0 15px 20px;
+    padding: 0 15px calc(150px + env(safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
     overflow-y: auto;
   }
+
+  .voice-room.has-pending { padding-bottom: 24px; }
+  .voice-room.has-pending .voice-controls { display: none; }
 
   .voice-topbar,
   .voice-title-row,
   .voice-alerts { flex: 0 0 auto; }
   .voice-topbar { min-height: 58px; grid-template-columns: 1fr auto; gap: 8px; }
   .voice-brand { font-size: 11px; }
-  .voice-status { grid-column: 1; grid-row: 2; justify-self: start; min-height: 31px; margin: 0 0 10px 40px; padding-inline: 9px; font-size: 9px; }
-  .voice-top-actions { grid-column: 2; grid-row: 1 / span 2; }
+  .voice-status { grid-column: 1 / -1; grid-row: 2; justify-self: start; min-height: 31px; margin: 0 0 10px 40px; padding-inline: 9px; font-size: 9px; white-space: nowrap; }
+  .voice-top-actions { grid-column: 2; grid-row: 1; }
   .voice-ghost { min-height: 40px; padding-inline: 9px; font-size: 10px; }
   .voice-close { width: 40px; min-height: 40px; }
   .voice-title-row { min-height: 0; padding: 17px 0; grid-template-columns: 1fr; gap: 13px; }
@@ -593,14 +596,31 @@
   .voice-motion-slip p { font-size: 14px; }
   .voice-alerts { position: static; width: auto; margin: 12px 0 0; transform: none; }
   .voice-layout { min-height: 0; padding-top: 14px; display: flex; flex: 0 0 auto; flex-direction: column; gap: 12px; }
-  .voice-desk { order: -1; flex: 0 0 auto; padding: 15px; gap: 12px; overflow: visible; }
+  .voice-desk { order: 1; flex: 0 0 auto; padding: 15px; gap: 12px; overflow: visible; }
+  .voice-opponent, .voice-caption { display: none; }
+  .voice-controls {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 20;
+    padding: 8px 15px calc(8px + env(safe-area-inset-bottom));
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    border-top: 1px solid var(--voice-rule);
+    background: var(--stage-raised);
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, .35);
+  }
+  .voice-controls .voice-hold,
+  .voice-controls .voice-interrupt { grid-column: 1 / -1; }
+  .voice-controls .voice-mode { min-width: 0; padding-inline: 8px; font-size: 10px; }
   .voice-opponent { padding-bottom: 12px; }
   .voice-caption { padding-bottom: 11px; }
   .voice-caption-copy { min-height: 0; margin-top: 6px; font-size: 15px; }
   .voice-transcript-panel { min-height: 360px; flex: 0 0 auto; padding: 14px 12px 12px; }
   .voice-transcript-heading { min-height: 52px; }
   .voice-transcript-heading h2 { font-size: 19px; }
-  .voice-chat { min-height: 205px; max-height: 42vh; }
+  .voice-chat { min-height: 150px; max-height: 28vh; }
   .voice-line { max-width: 96%; padding-inline: 10px; }
   .voice-empty { padding: 16px 0; }
   .voice-alerts + .voice-layout { padding-top: 10px; }
@@ -609,8 +629,8 @@
 @media (max-width: 380px) {
   .voice-room { padding-inline: 11px; }
   .voice-topbar { gap: 5px; }
-  .voice-top-actions { gap: 5px; }
-  .voice-ghost { width: 40px; overflow: hidden; padding: 0; font-size: 0; }
+  .voice-top-actions { flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+  .voice-ghost { padding-inline: 5px; font-size: 9px; white-space: nowrap; }
   .voice-motion-slip p { font-size: 13px; }
   .voice-delivery span { font-size: 8px; }
 }

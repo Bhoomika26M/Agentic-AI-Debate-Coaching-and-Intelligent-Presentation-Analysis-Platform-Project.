@@ -503,7 +503,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, s
         closeDialog();
       }}
     >
-      <section className={`voice-room is-${status}`} aria-label="Voice debate">
+      <section className={`voice-room is-${status}${pending ? " has-pending" : ""}`} aria-label="Voice debate">
         <header className="voice-topbar">
           <div className="voice-brand" aria-label="Verdict voice rehearsal">
             <span className="voice-brand-mark"><BookOpenText size={16} /></span>
@@ -662,7 +662,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, s
                 id="voice-heard-text"
                 value={pending ? pendingDraft : heard}
                 readOnly={!pending}
-                placeholder={input.listening ? "Speak now — your words will appear here." : "Your words appear here as soon as the turn is recognised."}
+                placeholder={input.listening ? "Speak now — your words will appear here." : "Your recognised words will appear here."}
                 aria-label={pending ? "Check what you said before sending" : "Your recognised speech"}
                 onChange={(event) => setPendingDraft(event.target.value)}
                 onKeyDown={(event) => {
