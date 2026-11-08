@@ -79,6 +79,35 @@ def sse_event(kind: str, text: str) -> str:
     return f"data: {json.dumps({kind: text}, ensure_ascii=False)}\n\n"
 
 
+ANALYSIS_DONE = "event: done\ndata: [DONE]\n\n"
+
+
+def analysis_event(kind: str, payload: dict) -> str:
+    """One named server-sent event for the progressive review."""
+    return f"event: {kind}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _analysis_envelope(
+    report: dict | None, gaps: list[str], request: AnalysisRequest
+) -> dict:
+    """Shape a full or rubric-only report the same way the JSON endpoint does."""
+    from .agents.conversation import MAX_ANALYSIS_TURNS
+
+    total_turns = len(request.turns)
+    data = report or {}
+    return {
+        "ratings": data.get("ratings"),
+        "fallacies": data.get("fallacies", []),
+        "strengths": data.get("strengths", []),
+        "next_steps": data.get("next_steps", []),
+        "counterarguments": data.get("counterarguments", []),
+        "gaps": gaps[:3],
+        "reviewed_turns": min(total_turns, MAX_ANALYSIS_TURNS),
+        "total_turns": total_turns,
+        "truncated": total_turns > MAX_ANALYSIS_TURNS,
+    }
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     async def warm_until_loaded() -> None:
@@ -276,6 +305,7 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
     await stream_slots.acquire()
     try:
         from .agents.analysis_graph import analyze_with_graph
+        from .agents.conversation import MAX_ANALYSIS_TURNS
 
         report, gaps = await analyze_with_graph(request)
         if report is None:
@@ -285,7 +315,16 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
                 f"Incomplete coaching review ({'; '.join(gaps[:3])}). Try the review again."
             )
             raise HTTPException(status_code=502, detail=detail)
-        return AnalysisEnvelope.model_validate({**report, "gaps": gaps})
+        total_turns = len(request.turns)
+        return AnalysisEnvelope.model_validate(
+            {
+                **report,
+                "gaps": gaps,
+                "reviewed_turns": min(total_turns, MAX_ANALYSIS_TURNS),
+                "total_turns": total_turns,
+                "truncated": total_turns > MAX_ANALYSIS_TURNS,
+            }
+        )
     except HTTPError as error:
         logger.exception("Model transcript analysis failed: %s", error)
         raise HTTPException(
@@ -302,6 +341,78 @@ async def debate_analysis(request: AnalysisRequest) -> AnalysisEnvelope:
         ) from error
     finally:
         stream_slots.release()
+
+
+@app.post(
+    "/api/debate/analyze/stream",
+    dependencies=[Depends(authenticate_request), Depends(enforce_model_rate_limit)],
+)
+async def debate_analysis_stream(request: AnalysisRequest) -> StreamingResponse:
+    """Stream the rubric first, then the merged review, over SSE."""
+    if not await is_available():
+        raise HTTPException(status_code=503, detail=unavailable_hint())
+    if stream_slots.locked():
+        raise HTTPException(
+            status_code=429,
+            detail="The model is busy. Please retry in a moment.",
+        )
+    await stream_slots.acquire()
+
+    async def events() -> AsyncIterator[str]:
+        try:
+            from .agents.analysis_graph import stream_analysis_with_graph
+
+            completed = False
+            async for item in stream_analysis_with_graph(request):
+                envelope = AnalysisEnvelope.model_validate(
+                    _analysis_envelope(item.get("report"), item.get("gaps", []), request)
+                )
+                if item.get("event") == "review" and envelope.ratings is not None:
+                    completed = True
+                yield analysis_event(str(item.get("event")), envelope.model_dump())
+            if completed:
+                yield ANALYSIS_DONE
+            else:
+                yield analysis_event(
+                    "error",
+                    {"detail": "The review ended before it was complete. Try again."},
+                )
+        except HTTPError as error:
+            logger.exception("Model transcript analysis stream failed: %s", error)
+            yield analysis_event(
+                "error", {"detail": "The model could not finish analysis."}
+            )
+        except ValueError as error:
+            logger.exception("Model returned an invalid analysis stream: %s", error)
+            yield analysis_event(
+                "error",
+                {
+                    "detail": (
+                        str(error)
+                        or "The model returned an incomplete coaching review. "
+                        "Try the review again."
+                    )
+                },
+            )
+        except Exception as error:
+            logger.exception("Analysis stream failed unexpectedly: %s", error)
+            yield analysis_event(
+                "error",
+                {
+                    "detail": (
+                        "The model returned an incomplete coaching review. "
+                        "Try the review again."
+                    )
+                },
+            )
+        finally:
+            stream_slots.release()
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"X-Accel-Buffering": "no"},
+    )
 
 
 @app.post(

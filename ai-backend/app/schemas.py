@@ -171,6 +171,10 @@ class AnalysisEnvelope(BaseModel):
     next_steps: list[str] = Field(default_factory=list, max_length=3)
     counterarguments: list[Counterargument] = Field(default_factory=list, max_length=5)
     gaps: list[str] = Field(default_factory=list, max_length=3)
+    # Reviews are bounded by the analysis window; tell the UI when it dropped turns.
+    reviewed_turns: int = Field(default=0, ge=0)
+    total_turns: int = Field(default=0, ge=0)
+    truncated: bool = False
 
 
 class JudgeDimension(BaseModel):
@@ -272,8 +276,18 @@ class PresentationResponse(BaseModel):
     ser_reflection: list[dict] = Field(default_factory=list, max_length=8)
 
 
+class JudgeReport(BaseModel):
+    """The rubric alone is enough to score early; the other branches fill in later."""
+
+    ratings: RubricRatings
+    fallacies: list[FallacyFlag] = Field(default_factory=list, max_length=8)
+    strengths: list[str] = Field(default_factory=list, max_length=3)
+    next_steps: list[str] = Field(default_factory=list, max_length=3)
+    counterarguments: list[Counterargument] = Field(default_factory=list, max_length=5)
+
+
 class JudgeRequest(BaseModel):
-    report: AnalysisReport
+    report: JudgeReport
     delivery: PresentationResponse | None = None
     # The debate itself, so rebuttal is scored from the learner's own replies.
     turns: list[DebateTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)

@@ -4,6 +4,8 @@ export type ThemePreference = "classic" | "new";
 export type ApplicationSettings = {
   adaptiveTactics: boolean;
   usePracticeHistory: boolean;
+  /** Show opponent replies in the exchange as they are written or spoken. */
+  streamReplies: boolean;
   replyLength: ReplyLength;
   theme: ThemePreference;
 };
@@ -11,6 +13,7 @@ export type ApplicationSettings = {
 const DEFAULT_SETTINGS: ApplicationSettings = {
   adaptiveTactics: true,
   usePracticeHistory: true,
+  streamReplies: true,
   replyLength: "standard",
   theme: "new",
 };
@@ -24,6 +27,7 @@ export function normalizeApplicationSettings(value: unknown): ApplicationSetting
   return {
     adaptiveTactics: typeof raw.adaptiveTactics === "boolean" ? raw.adaptiveTactics : DEFAULT_SETTINGS.adaptiveTactics,
     usePracticeHistory: typeof raw.usePracticeHistory === "boolean" ? raw.usePracticeHistory : DEFAULT_SETTINGS.usePracticeHistory,
+    streamReplies: typeof raw.streamReplies === "boolean" ? raw.streamReplies : DEFAULT_SETTINGS.streamReplies,
     replyLength: raw.replyLength === "concise" ? "concise" : "standard",
     theme: raw.theme === "classic" ? "classic" : "new",
   };

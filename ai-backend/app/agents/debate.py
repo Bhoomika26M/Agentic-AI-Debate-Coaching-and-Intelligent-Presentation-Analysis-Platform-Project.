@@ -11,7 +11,7 @@ from langgraph.graph import END, StateGraph
 
 from ..prompts import build_messages
 from ..schemas import DebateRequest
-from .conversation import MAX_CONTEXT_TURNS
+from .conversation import MAX_CONTEXT_TURNS, build_context
 from .guard import GuardDecision, classify_turn, redirect_reply
 from .laya_selector import move_instruction, select_move
 from .llm import chat, stream
@@ -117,6 +117,8 @@ def guard_diagnostics(
     reply: str,
     *,
     history_turns: int = 0,
+    context_turns: int | None = None,
+    summarized_turns: int | None = None,
 ) -> str:
     """The same shape as a normal turn's diagnostics, marked as a guard path."""
     return json.dumps(
@@ -128,8 +130,16 @@ def guard_diagnostics(
             "guard_pattern": decision.pattern,
             "revision_attempts": 0,
             "history_turns": history_turns,
-            "context_turns": min(history_turns, MAX_CONTEXT_TURNS),
-            "summarized_turns": max(0, history_turns - MAX_CONTEXT_TURNS),
+            "context_turns": (
+                min(history_turns, MAX_CONTEXT_TURNS)
+                if context_turns is None
+                else context_turns
+            ),
+            "summarized_turns": (
+                max(0, history_turns - MAX_CONTEXT_TURNS)
+                if summarized_turns is None
+                else summarized_turns
+            ),
             "tactic": None,
             "brief_used": False,
             "memory_used": False,
@@ -366,11 +376,22 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
     if decision.route == "redirect":
         logger.info("Guard redirected the turn (%s: %s).", decision.kind, decision.pattern)
         reply = redirect_reply(state.get("topic", ""))
+        context = build_context(history, latest=state.get("latest"))
         async for event in _stream_final_reply(reply):
             yield event
-        yield ("diagnostics", guard_diagnostics(decision, reply, history_turns=history_turns))
+        yield (
+            "diagnostics",
+            guard_diagnostics(
+                decision,
+                reply,
+                history_turns=history_turns,
+                context_turns=context.context_turns,
+                summarized_turns=context.summarized_turns,
+            ),
+        )
         return
 
+    context = build_context(history, latest=state.get("latest"))
     state = {**state, **memory_node(state)}
     plan_started = perf_counter()
     state = {**state, **await planner_node(state)}
@@ -470,8 +491,8 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
                 "guard_pattern": None,
                 "revision_attempts": revision_attempts,
                 "history_turns": history_turns,
-                "context_turns": min(history_turns, MAX_CONTEXT_TURNS),
-                "summarized_turns": max(0, history_turns - MAX_CONTEXT_TURNS),
+                "context_turns": context.context_turns,
+                "summarized_turns": context.summarized_turns,
                 "tactic": state.get("tactic"),
                 "brief_used": bool(state.get("brief")),
                 "memory_used": bool(state.get("memory_brief")),

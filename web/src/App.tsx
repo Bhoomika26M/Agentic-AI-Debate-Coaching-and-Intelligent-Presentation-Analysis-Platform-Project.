@@ -19,6 +19,7 @@ import {
 import { Component, Fragment, Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   streamOpponentReply,
+  streamAnalysis,
   analyzeDebate,
   loadModelStatus,
   requestChallenge,
@@ -368,6 +369,7 @@ export default function App() {
   const [authPurpose, setAuthPurpose] = useState<"voice" | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisReport | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisComplete, setAnalysisComplete] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
   const [analysisSaved, setAnalysisSaved] = useState(false);
   const [planUpdateStatus, setPlanUpdateStatus] = useState<"idle" | "updating" | "updated" | "failed">("idle");
@@ -383,6 +385,8 @@ export default function App() {
   const [challengeError, setChallengeError] = useState("");
   const [challengeDone, setChallengeDone] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  // The room's own toggle: a session choice seeded from the permanent setting.
+  const [streamReplies, setStreamReplies] = useState(() => loadApplicationSettings("guest").streamReplies);
   const [modelStatus, setModelStatus] = useState<ModelStatus>({ status: "unknown" });
   const [modelChecking, setModelChecking] = useState(false);
   const clockPausedRef = useRef(false);
@@ -395,6 +399,7 @@ export default function App() {
   const lastTurnRef = useRef<{ history: DebateMessage[]; latest: string | null } | null>(null);
   const pendingResumeRef = useRef<string | null>(null);
   const reviewInFlightRef = useRef(false);
+  const judgeSeqRef = useRef(0);
   const planUpdateInFlightRef = useRef(false);
   const savedTurnIds = useRef(new Set<string>());
   const routedForRef = useRef<string | null>(null);
@@ -448,6 +453,11 @@ export default function App() {
   useEffect(() => {
     setAppSettings(loadApplicationSettings(user?.id ?? "guest"));
   }, [user?.id]);
+
+  // The permanent settings switch is the default; the room toggle lasts a session.
+  useEffect(() => {
+    setStreamReplies(appSettings.streamReplies);
+  }, [appSettings.streamReplies]);
 
   useEffect(() => {
     if (!user || !supabaseConfigured) {
@@ -621,13 +631,16 @@ export default function App() {
       { id: replyId, speaker: "opponent", content: "", pending: true },
     ]);
 
+    let bufferedDiagnostics: DebateMessage["diagnostics"];
     try {
-      await streamOpponentReply(
+      const reply = await streamOpponentReply(
         options,
         history,
         learnerArgument,
         session?.access_token,
         (delta) => {
+          // Skip mode still reads the whole stream; it just commits once at the end.
+          if (!streamReplies) return;
           setMessages((current) =>
             current.map((message) =>
               message.id === replyId
@@ -639,6 +652,11 @@ export default function App() {
         controller.signal,
         applicationSettings.usePracticeHistory ? memoryRef.current : [],
         (diagnostics) => {
+          // Skip mode commits the reply and its checks together at the end.
+          if (!streamReplies) {
+            bufferedDiagnostics = diagnostics;
+            return;
+          }
           setMessages((current) =>
             current.map((message) =>
               message.id === replyId ? { ...message, diagnostics } : message,
@@ -646,6 +664,15 @@ export default function App() {
           );
         },
       );
+      if (!streamReplies) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === replyId
+              ? { ...message, content: reply, ...(bufferedDiagnostics ? { diagnostics: bufferedDiagnostics } : {}) }
+              : message,
+          ),
+        );
+      }
       lastTurnRef.current = null;
       setMessages((current) =>
         current.map((message) =>
@@ -836,6 +863,7 @@ export default function App() {
     setCueVisible(false);
     setRecordNotice("");
     setAnalysis(null);
+    setAnalysisComplete(false);
     setAnalysisError("");
     setAnalysisSaved(false);
     setPlanUpdateStatus("idle");
@@ -999,6 +1027,7 @@ export default function App() {
     if (analysisLoading || reviewInFlightRef.current || learnerTurns.length === 0) return;
     reviewInFlightRef.current = true;
     setAnalysisLoading(true);
+    setAnalysisComplete(false);
     setAnalysisError("");
     setAnalysisSaved(false);
     setJudge(null);
@@ -1006,13 +1035,17 @@ export default function App() {
     setVerdictRankLoading(false);
     setJudgeError("");
     try {
-      const report = await analyzeDebate({
+      const report = await streamAnalysis({
         topic: activeTopic,
         learner_position: position,
         persona,
         difficulty,
-      }, messages, session?.access_token);
+      }, messages, session?.access_token, (partial) => {
+        setAnalysis(partial);
+        if (partial.ratings) void runJudge(partial, null, messages, null);
+      });
       setAnalysis(report);
+      setAnalysisComplete(true);
       let reviewSaved = false;
       if (recordId) {
         try {
@@ -1023,14 +1056,15 @@ export default function App() {
           setAnalysisError("The review is ready, but could not be saved to your learner archive.");
         }
       }
+      // The weighted verdict is deterministic and does not depend on the plan refresh.
+      // Start it first; the slower plan call then runs in the background.
+      if (report.ratings) void runJudge(report, deliveryResult);
       if (user && recordId && reviewSaved) {
-        await updatePlanFromSavedWork();
+        void updatePlanFromSavedWork();
       } else if (user && recordId) {
         setPlanUpdateStatus("failed");
         setPlanUpdateError("The review could not be saved, so the practice plan was not updated.");
       }
-      // The weighted verdict is deterministic, so show it without a second click.
-      if (report.ratings) void runJudge(report, deliveryResult);
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "The coach could not review this transcript.");
     } finally {
@@ -1041,6 +1075,7 @@ export default function App() {
 
   async function runJudge(report: AnalysisReport | null, delivery: PresentationResult | null, debateTurns = messages, targetRecordId = recordId) {
     if (!report?.ratings) return;
+    const sequence = ++judgeSeqRef.current;
     setJudgeLoading(true);
     setJudgeError("");
     if (delivery?.transcript.trim()) {
@@ -1061,6 +1096,7 @@ export default function App() {
           difficulty,
         }, debateTurns, session?.access_token, delivery.transcript);
         setAnalysis(scoredReport);
+        setAnalysisComplete(true);
         if (targetRecordId) {
           try {
             await saveDebateAnalysis(targetRecordId, scoredReport);
@@ -1071,6 +1107,7 @@ export default function App() {
         }
       }
       const verdict = await requestJudge(scoredReport, delivery, debateTurns, session?.access_token);
+      if (sequence !== judgeSeqRef.current) return;
       setJudge(verdict);
       if (targetRecordId) {
         let verdictSaved = false;
@@ -1083,18 +1120,22 @@ export default function App() {
         }
         if (verdictSaved) {
           try {
-            setVerdictRank(await loadDebateVerdictRank(targetRecordId));
+            const rank = await loadDebateVerdictRank(targetRecordId);
+            if (sequence === judgeSeqRef.current) setVerdictRank(rank);
           } catch {
-            setVerdictRank(null);
+            if (sequence === judgeSeqRef.current) setVerdictRank(null);
           }
         }
-        setVerdictRankLoading(false);
+        if (sequence === judgeSeqRef.current) setVerdictRankLoading(false);
       }
     } catch (error) {
+      if (sequence !== judgeSeqRef.current) return;
       setJudgeError(error instanceof Error ? error.message : "The judge could not score this rehearsal. Try again.");
     } finally {
-      setJudgeLoading(false);
-      setVerdictRankLoading(false);
+      if (sequence === judgeSeqRef.current) {
+        setJudgeLoading(false);
+        setVerdictRankLoading(false);
+      }
     }
   }
 
@@ -1118,6 +1159,7 @@ export default function App() {
     setStartedAt(new Date(record.started_at).getTime());
     setEndedAt(record.finished_at ? new Date(record.finished_at).getTime() : Date.now());
     setAnalysis(report);
+    setAnalysisComplete(Boolean(report));
     setAnalysisSaved(Boolean(report));
     setAnalysisLoading(false);
     setAnalysisError("");
@@ -1395,6 +1437,7 @@ export default function App() {
     setMessages(restoredMessages);
     setDraft("");
     setAnalysis(null);
+    setAnalysisComplete(false);
     setAnalysisError("");
     setAnalysisSaved(false);
     setPlanUpdateStatus("idle");
@@ -1796,6 +1839,8 @@ export default function App() {
                     persona={persona}
                     difficulty={difficulty}
                     preferences={learnerAim()}
+                    streamReplies={streamReplies}
+                    onStreamRepliesChange={setStreamReplies}
                     accessToken={session?.access_token}
                     history={messages
                       .filter((message) => !message.pending && message.content.trim())
@@ -1848,7 +1893,7 @@ export default function App() {
               </aside>
 
               <section className="transcript-panel" role="region" aria-label="Live debate transcript">
-                <div className="transcript-heading"><div><h2>The debate</h2>{continuation && <p>Earlier turns from your archive are part of this conversation.</p>}</div><span className="round-counter"><span>TURN</span> {Math.max(1, learnerTurns.length).toString().padStart(2, "0")}</span></div>
+                <div className="transcript-heading"><div><h2>The debate</h2>{continuation && <p>Earlier turns from your archive are part of this conversation.</p>}</div><div className="transcript-heading-actions"><button type="button" className={`stream-toggle${streamReplies ? " is-on" : ""}`} aria-pressed={streamReplies} onClick={() => setStreamReplies((value) => !value)} title="Show the reply sentence by sentence as it is written. Turn off to wait for the full, checked reply.">{streamReplies ? "Live reply" : "Full reply"}</button><span className="round-counter"><span>TURN</span> {Math.max(1, learnerTurns.length).toString().padStart(2, "0")}</span></div></div>
                 <AnimatePresence initial={false}>
                   {cueVisible && (
                     <motion.div
@@ -1927,6 +1972,7 @@ export default function App() {
                           {message.diagnostics.redirect_reason !== "guard" && (
                             <span>{diagnosticsTime(message.diagnostics.model_ms)} DRAFT + REVIEW</span>
                           )}
+                          {message.diagnostics.context_turns > 0 && <span>{message.diagnostics.context_turns} TURNS IN CONTEXT</span>}
                           {message.diagnostics.summarized_turns > 0 && <span>{message.diagnostics.summarized_turns} EARLIER TURNS CONDENSED</span>}
                         </div>
                       )}
@@ -2073,9 +2119,20 @@ export default function App() {
                     <button onClick={() => void reviewDebate()}>Retry review</button>
                   </div>
                 )}
+                {analysis?.truncated && (
+                  <div className="inline-notice" role="status">
+                    <span>This review scored your latest {analysis.reviewed_turns} of {analysis.total_turns} turns. Earlier turns are condensed context, not part of the score.</span>
+                  </div>
+                )}
+
+                {analysis && !analysisComplete && analysisLoading && (
+                  <p className="review-intro verdict-computing-status" role="status">
+                    <LoaderCircle className="spin" size={14} /> {analysis.ratings ? "Rubric scores are ready." : "Your review is still building."} Still checking fallacies and counterpoints.
+                  </p>
+                )}
 
                   {analysis && <>
-                  {!judge && !judgeError && verdictComputing && <p className="review-intro verdict-computing-status" role="status"><LoaderCircle className="spin" size={14} /> {analysisLoading ? "Updating your review and scorecard." : deliveryResult ? "Scoring your opening, replies, and closing take." : "Weighing the finished sections."}</p>}
+                  {!judge && !judgeError && verdictComputing && analysisComplete && <p className="review-intro verdict-computing-status" role="status"><LoaderCircle className="spin" size={14} /> {analysisLoading ? "Updating your review and scorecard." : deliveryResult ? "Scoring your opening, replies, and closing take." : "Weighing the finished sections."}</p>}
                   {judgeError && (
                     <div className="analysis-error" role="alert">
                       {judgeError}
@@ -2158,16 +2215,18 @@ export default function App() {
                     </details>
                   )}
 
-                  <details className="disclosure">
-                    <summary>Logic watch</summary>
-                    <section className="analysis-fallacies">
-                      {analysis.fallacies.length === 0
-                        ? <p>No clear examples of the listed fallacies appeared. Keep checking claims against their evidence.</p>
-                        : analysis.fallacies.map((item, index) => <article key={`${item.label}-${index}`}><b>{item.label}</b><blockquote>“{item.quote}”</blockquote><p>{item.explanation}</p><small>TRY THIS: {item.revision}</small></article>)}
-                    </section>
-                  </details>
+                  {analysisComplete && (
+                    <details className="disclosure">
+                      <summary>Logic watch</summary>
+                      <section className="analysis-fallacies">
+                        {analysis.fallacies.length === 0
+                          ? <p>No clear examples of the listed fallacies appeared. Keep checking claims against their evidence.</p>
+                          : analysis.fallacies.map((item, index) => <article key={`${item.label}-${index}`}><b>{item.label}</b><blockquote>“{item.quote}”</blockquote><p>{item.explanation}</p><small>TRY THIS: {item.revision}</small></article>)}
+                      </section>
+                    </details>
+                  )}
 
-                  {analysis.counterarguments.length > 0 && (
+                  {analysisComplete && analysis.counterarguments.length > 0 && (
                     <details className="disclosure">
                       <summary>Counterpoints</summary>
                       <section className="analysis-counterpoints"><div className="counterpoint-grid">

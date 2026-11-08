@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, Bot, Check, ChevronDown, ChevronUp, Download, History, LoaderCircle, MessageSquareText, Printer, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, AudioLines, Bot, Check, ChevronDown, ChevronUp, Download, History, LoaderCircle, MessageSquareText, Printer, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { EmptyCueArt } from "../../components/CueArt";
 import { MarkdownText } from "../../components/Markdown";
 import { deleteDebateRecord, listDebateRecords, loadDebateAnalysis, loadDebateRecord, loadDebateVerdict, type DebateRecord, type DebateRecordTurn } from "../../services/debate-records";
@@ -1174,6 +1174,26 @@ export function AccountView({ onStart, onContinue, onViewVerdict, onSignOut, foc
               </label>
             </div>
 
+            <div className="app-setting-row">
+              <div className="app-setting-copy">
+                <span className="app-setting-icon"><AudioLines size={17} /></span>
+                <div>
+                  <h3>Stream replies as they are written</h3>
+                  <p>Show the opponent's reply in the debate exchange and voice room sentence by sentence. Turn this off to wait for the full, checked reply.</p>
+                  <p className="app-setting-status">You can change this for one session inside the debate room.</p>
+                </div>
+              </div>
+              <label className="app-switch" aria-label="Stream replies as they are written">
+                <input
+                  type="checkbox"
+                  checked={appSettings.streamReplies}
+                  disabled={!appSettingsReady}
+                  onChange={(event) => setAppSettings((current) => ({ ...current, streamReplies: event.target.checked }))}
+                />
+                <span aria-hidden="true" />
+              </label>
+            </div>
+
             <div className="app-setting-row app-setting-length">
               <div className="app-setting-copy">
                 <span className="app-setting-icon"><MessageSquareText size={17} /></span>
@@ -1350,6 +1370,9 @@ export function AccountView({ onStart, onContinue, onViewVerdict, onSignOut, foc
               {selected.verdict && <p className="archive-verdict-score"><b>WEIGHTED VERDICT</b><strong>{selected.verdict.overall.toFixed(1)} / 5</strong></p>}
               {(selected.analysis.gaps ?? []).length > 0 && (
                 <p className="archive-partial">Partial review: {(selected.analysis.gaps ?? []).join(" ")}</p>
+              )}
+              {selected.analysis.truncated && (
+                <p className="archive-partial">This review scored the latest {selected.analysis.reviewed_turns} of {selected.analysis.total_turns} turns; earlier turns were condensed context.</p>
               )}
               {selected.analysis.ratings && (
                 <div>{Object.entries(selected.analysis.ratings).map(([key, rating]) => <p key={key}><b>{key.replaceAll("_", " ")}</b><strong>{rating.score}/5</strong></p>)}</div>

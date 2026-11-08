@@ -163,12 +163,15 @@ export type AnalysisReport = {
   next_steps: string[];
   counterarguments: { kind: string; response: string; question: string }[];
   gaps: string[];
+  /** Set by the API when the review window dropped earlier turns. */
+  reviewed_turns?: number;
+  total_turns?: number;
+  truncated?: boolean;
 };
 
-export async function analyzeDebate(
+function analysisBody(
   options: DebateOptions,
   turns: DebateMessage[],
-  accessToken?: string,
   closingStatement?: string,
 ) {
   const transcript = turns
@@ -179,26 +182,116 @@ export async function analyzeDebate(
       `This rehearsal is too long to review in one pass (${transcript.length} turns; the limit is ${MAX_ANALYSIS_TURNS}). Continue in a shorter round or review the latest turns.`,
     );
   }
+  return {
+    topic: options.topic,
+    learner_position: options.learner_position,
+    turns: transcript,
+    persona: options.persona,
+    difficulty: options.difficulty,
+    closing_statement: closingStatement?.trim() || undefined,
+  };
+}
+
+function analysisHeaders(accessToken?: string) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  return headers;
+}
+
+export async function analyzeDebate(
+  options: DebateOptions,
+  turns: DebateMessage[],
+  accessToken?: string,
+  closingStatement?: string,
+) {
   const response = await fetch(apiUrl("/api/debate/analyze"), {
     method: "POST",
-    headers,
+    headers: analysisHeaders(accessToken),
     credentials: "omit",
-    body: JSON.stringify({
-      topic: options.topic,
-      learner_position: options.learner_position,
-      turns: transcript,
-      persona: options.persona,
-      difficulty: options.difficulty,
-      closing_statement: closingStatement?.trim() || undefined,
-    }),
+    body: JSON.stringify(analysisBody(options, turns, closingStatement)),
   });
   if (!response.ok) {
     const error = await response.json().catch(() => null);
     throw new Error(detailMessage(error, "The coach could not review this transcript."));
   }
   return (await response.json()) as AnalysisReport;
+}
+
+export async function streamAnalysis(
+  options: DebateOptions,
+  turns: DebateMessage[],
+  accessToken?: string,
+  onRubric?: (report: AnalysisReport) => void,
+): Promise<AnalysisReport> {
+  const response = await fetch(apiUrl("/api/debate/analyze/stream"), {
+    method: "POST",
+    headers: { ...analysisHeaders(accessToken), Accept: "text/event-stream" },
+    credentials: "omit",
+    body: JSON.stringify(analysisBody(options, turns)),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(detailMessage(error, "The coach could not review this transcript."));
+  }
+  if (!response.body) {
+    throw new Error("The coach could not start the review stream. Try again.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalReport: AnalysisReport | null = null;
+
+  const consume = (frame: string) => {
+    let event = "message";
+    const data: string[] = [];
+    for (const rawLine of frame.split("\n")) {
+      const line = rawLine.replace(/\r$/, "");
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+    }
+    if (data.length === 0) return;
+    const body = data.join("\n");
+    if (body === "[DONE]") return;
+    const payload = JSON.parse(body) as AnalysisReport | { detail?: string };
+    if (event === "rubric") {
+      onRubric?.(payload as AnalysisReport);
+    } else if (event === "review") {
+      finalReport = payload as AnalysisReport;
+    } else if (event === "error") {
+      throw new Error(
+        (payload as { detail?: string }).detail ||
+          "The coach could not finish this review. Try again.",
+      );
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary !== -1) {
+        consume(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf("\n\n");
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) consume(buffer);
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+
+  const result = finalReport as AnalysisReport | null;
+  if (!result) {
+    throw new Error("The review ended before it was complete. Try again.");
+  }
+  return result;
 }
 
 export type JudgeDimension = {
@@ -252,7 +345,7 @@ export async function streamOpponentReply(
   signal: AbortSignal,
   memory: SessionDigest[] = [],
   onDiagnostics?: (diagnostics: TurnDiagnostics) => void,
-) {
+): Promise<string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
@@ -279,7 +372,7 @@ export async function streamOpponentReply(
   const decoder = new TextDecoder();
   const scrubber = createMarkerScrubber();
   let buffer = "";
-  let replyLength = 0;
+  let replyText = "";
 
   while (true) {
     const { value, done } = await reader.read();
@@ -299,10 +392,10 @@ export async function streamOpponentReply(
         const tail = scrubber.flush();
         if (tail) {
           onDelta(tail);
-          replyLength += tail.length;
+          replyText += tail;
         }
-        if (!replyLength) throw new Error("The opponent returned an empty reply.");
-        return;
+        if (!replyText) throw new Error("The opponent returned an empty reply.");
+        return replyText;
       }
       if (data) {
         let payload: { final_delta?: string; diagnostics?: string; error?: string };
@@ -327,7 +420,7 @@ export async function streamOpponentReply(
           const clean = scrubber.push(payload.final_delta);
           if (clean) {
             onDelta(clean);
-            replyLength += clean.length;
+            replyText += clean;
           }
         }
       }

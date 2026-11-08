@@ -154,6 +154,7 @@
 
 .voice-close { width: 44px; padding: 0; }
 .voice-ghost:hover, .voice-close:hover { color: var(--paper-light); border-color: #9a8e75; background: #20222a; }
+.voice-ghost.is-on { border-color: var(--cue-deep); color: var(--paper-light); }
 .voice-ghost:active, .voice-close:active { background: #292b32; }
 
 .voice-title-row {
@@ -357,6 +358,10 @@
 .voice-line-content code { padding: 1px 4px; border: 1px solid #d8cdbb; background: #f2ecdf; font: 12px/1.5 var(--mono); }
 .voice-line-content > em { color: #9b3d33; font-style: italic; }
 
+.voice-line.is-streaming { border-bottom-color: transparent; }
+.voice-stream-caret { display: inline-block; width: 2px; height: 1em; margin-left: 3px; vertical-align: -2px; background: var(--cue); animation: voice-stream-blink 1s steps(2, start) infinite; }
+@keyframes voice-stream-blink { 50% { opacity: 0; } }
+
 .voice-pending {
   padding: 12px 0 0;
   display: grid;
@@ -365,6 +370,9 @@
 }
 
 .voice-pending label { color: #514a40; }
+
+.voice-pending-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.voice-pending-head > span { color: #6c6458; font: 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
 
 .voice-pending input {
   width: 100%;
@@ -375,6 +383,11 @@
   background: #fffdf7;
   font-size: 14px;
 }
+
+.voice-pending.is-idle input { border-style: dashed; color: #4a443a; background: #f7f1e5; }
+.voice-pending.is-listening input { border-color: var(--cue-deep); background: #fffaf0; }
+.voice-pending.is-listening input::placeholder { color: #8a5a3e; }
+.voice-heard-note { margin: 0; color: #6c6458; font-size: 11px; line-height: 1.5; }
 
 .voice-pending-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 

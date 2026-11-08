@@ -56,7 +56,7 @@ scores directly, with the gap disclosed to the learner.
 |---|---|---|
 | Presentation analysis engine | Partial | `delivery_graph.py` (transcribe → signals → coach), `speech.py`, `delivery.py`. Pace, fillers, pauses and repeats only; no confidence, engagement, or prosody, and no slides or video |
 | Reports and visualization modules | Partial | Verdict delivery section, signal rows, drills, archive CSV, print. No native PDF or Excel export |
-| Testing and validations | Done | `ai-backend/tests/` (390 tests) covers the deterministic gates, the agent graphs and the request contracts with deterministic model fakes, so no Ollama is needed; 13 Playwright tests cover the browser paths, including a full spoken turn. `.github/workflows/ci.yml` defines pytest, the fallacy-set check, the typecheck and a build; it has not yet run on a GitHub runner |
+| Testing and validations | Done | `ai-backend/tests/` (395 tests) covers the deterministic gates, the agent graphs and the request contracts with deterministic model fakes, so no Ollama is needed; 13 Playwright tests cover the browser paths, including a full spoken turn, and all pass in a clean run. `.github/workflows/ci.yml` defines pytest, the fallacy-set check, the typecheck and a build; it has not yet run on a GitHub runner |
 | Deploy with Docker and cloud services | Partial | `ai-backend/Dockerfile` (runtime + test stages), `web/Dockerfile` + `nginx.conf`, `docker-compose.yml`, `.env.docker.example`, and hosted OpenAI-compatible routing in `app/providers.py`. **No public deployment exists.** |
 | Final documentation and presentation | Partial | `README.md`, `PROGRESS.md`, this file, and `docs/demo.webm`; documentation and a recorded walkthrough exist, but there is no slide deck |
 
@@ -106,16 +106,16 @@ window. Those are the next architectural steps, not gaps against the milestones.
    landing page and relies on the resume banner.
 3. No deployment exists. Hosted generation works through `OPENAI_API_KEY` with any
    OpenAI-compatible endpoint, but nobody has hosted it, so there is no URL, no monitoring, and
-   no public URL. A real local capture is in `docs/demo.webm`, but it was recorded on this machine
-   against Ollama, so it is a walkthrough rather than a demo anyone can try. Do not expose the
-   guest-mode API publicly.
+   no public URL. The current walkthrough is in `docs/demo.webm`, captured from the browser-test
+   fixture rather than a live model call, so it shows the interface but is not a demo anyone can
+   try. Do not expose the guest-mode API publicly.
 4. Fallacy recall is weak: 35–45% at 73.7–77.8% precision on 50 author-labelled snippets with one
    local model. The set is small and author-labelled, only one model was measured, and a correct
    label does not prove the quote is the best span. Raw runs are in `ai-backend/evals/`.
 5. `ruff check app tests` passes with no findings.
-6. The learner-space screenshot in the README is the seeded browser-test fixture, not a real
-   learner's account; its caption says so. The setup, arena, verdict, and demo artifacts come from
-   real local runs against `qwen3.5:4b`. The recorded round predates the browser sign-in gate.
+6. The current screenshots and `docs/demo.webm` are seeded browser-test fixture captures, not a
+   real learner's account or live model calls; their README captions say so. A full local round
+   against `qwen3.5:4b` also ran end to end before the browser sign-in gate.
 7. The reply verifier is a heuristic, not a fact-check. A draft that addresses the learner
    directly ("you should…") can pass the engagement check without sharing the latest point's
    vocabulary. "Checked" in the room means the deterministic form checks passed; it does not

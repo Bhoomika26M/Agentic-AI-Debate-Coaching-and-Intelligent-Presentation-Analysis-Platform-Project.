@@ -249,6 +249,28 @@ for **1.5 s** with an editable field. The learner can send the corrected text or
 discard it. Only on `confirm` does the turn reach the guard. Push-to-talk sends
 immediately, because the learner chose to send it.
 
+The same **Your words** input is always visible under the exchange. While the
+microphone is open it reads "Listening…"; the recognised turn fills it as soon
+as local transcription returns, and it stays readable until the next turn. Local
+faster-whisper accepts a finished clip rather than a live audio stream, so the
+field cannot show words before the utterance ends — no partial or cloud
+recogniser is added to fake that. The field is read-only except during the
+hands-free edit window, so it never implies a correction changed a turn that was
+already sent.
+
+### Streamed reply lines
+
+The opponent's exchange line grows one sentence at a time. It is driven by
+playback, not synthesis: each sentence is appended when its audio actually
+starts (or when the browser's own voice starts it, when Kokoro is unavailable),
+so the text keeps pace with what is being heard. The final `transcript` event
+replaces the streamed line with the canonical reply — or, after an interrupt,
+with only the sentences that played. The **Streaming / Full reply** control in
+the room turns this off for the session; **Settings → Stream replies as they are
+written** is the permanent choice. Skip mode still consumes the whole stream, so
+the reply and its diagnostics are committed together when `[DONE]` / the final
+transcript arrives; it never changes what the model produced.
+
 ### Barge-in (P2)
 
 The learner can interrupt while the opponent speaks. Interrupting stops every
@@ -282,7 +304,7 @@ audio asset and no licence to track.
 
 ## Tests
 
-The current backend suite has 390 passing tests. Voice-path coverage includes:
+The current backend suite has 395 passing tests. Voice-path coverage includes:
 
 - `tests/test_voice_recognition.py` — every fixture hallucination, word counts,
   confidence gates, stutter collapsing, filler stripping for matching only.

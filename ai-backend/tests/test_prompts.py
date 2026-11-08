@@ -1,5 +1,6 @@
 """The opponent prompt must carry the learner's own answers, and nothing invented."""
 
+from app.agents.conversation import estimate_tokens
 from app.prompts import build_messages, preference_lines, preference_text
 from app.schemas import DebateRequest, PracticePreferences
 
@@ -52,18 +53,68 @@ def test_an_unusable_preference_mapping_is_ignored_rather_than_raised():
     assert "evidence" in preference_text({"goal": "evidence"})
 
 
+def _long_history(turns: int = 40) -> list[dict]:
+    return [
+        {
+            "speaker": "learner" if index % 2 == 0 else "opponent",
+            "content": f"turn {index} " + " ".join(["filler"] * 90) + f" point{index}",
+        }
+        for index in range(turns)
+    ]
+
+
 def test_a_long_debate_is_condensed_before_it_reaches_the_model():
+    messages = build_messages(
+        _request(history=_long_history(), learner_argument="My latest point.")
+    )
+    assert messages[0]["role"] == "system"
+    assert any(
+        "Earlier in this debate" in message["content"]
+        for message in messages
+        if message["role"] == "system"
+    )
+    assert messages[-1]["content"].startswith("<<learner turn")
+    # The bounded context stays well inside the local model's 8192-token window.
+    assert sum(estimate_tokens(message["content"]) for message in messages) < 6000
+
+
+def test_the_learners_opening_case_is_pinned_in_a_long_debate():
+    history = _long_history()
+    history[0] = {"speaker": "learner", "content": "Opening case: phones distract students."}
+    history[1] = {"speaker": "opponent", "content": "Which study shows that distraction ends?"}
+    messages = build_messages(_request(history=history, learner_argument="My latest point."))
+    joined = "\n".join(message["content"] for message in messages)
+    assert "Opening case: phones distract students." in joined
+    assert "Which study shows that distraction ends?" in joined
+
+
+def test_a_claim_planted_early_in_a_long_debate_reaches_the_prompt():
+    history = _long_history(40)
+    history[2] = {
+        "speaker": "learner",
+        "content": "The key claim: a phone ban improves focus by twelve percent.",
+    }
+    messages = build_messages(
+        _request(
+            history=history,
+            learner_argument="Does a phone ban really improve focus in class?",
+        )
+    )
+    joined = "\n".join(message["content"] for message in messages)
+    assert "a phone ban improves focus by twelve percent" in joined
+
+
+def test_short_voice_turns_keep_more_history_than_a_fixed_eight_turn_window():
     history = [
-        {"speaker": "learner" if index % 2 == 0 else "opponent", "content": f"turn {index}"}
-        for index in range(40)
+        {"speaker": "learner" if index % 2 == 0 else "opponent", "content": f"short line {index}"}
+        for index in range(30)
     ]
     messages = build_messages(_request(history=history, learner_argument="My latest point."))
-    assert messages[0]["role"] == "system"
-    assert messages[1]["role"] == "system"
-    assert "Earlier in this debate" in messages[1]["content"]
-    # One system prompt, one summary, the recent window, and the latest turn.
-    assert len(messages) == 1 + 1 + 8 + 1
-    assert messages[-1]["content"].startswith("<<learner turn")
+    context_turns = [
+        message for message in messages if message["role"] in ("user", "assistant")
+    ]
+    # The final message is the latest turn, not history.
+    assert len(context_turns) - 1 > 8
 
 
 def test_learner_text_cannot_forge_or_close_the_wrapper():

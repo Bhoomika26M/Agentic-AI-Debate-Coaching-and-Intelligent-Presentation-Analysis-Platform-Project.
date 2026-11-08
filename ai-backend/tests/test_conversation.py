@@ -1,9 +1,9 @@
 """Long transcripts must be condensed and windowed, not sent whole to the model."""
 
 from app.agents.conversation import (
-    MAX_CONTEXT_TURN_WORDS,
-    MAX_CONTEXT_TURNS,
     MAX_SUMMARY_WORDS,
+    MAX_WINDOW_TURN_WORDS,
+    MAX_WINDOW_TURNS,
     window_turns,
 )
 
@@ -27,7 +27,7 @@ def test_a_long_transcript_is_condensed_and_windowed():
     summary, window = window_turns(turns)
     assert summary is not None
     assert "Earlier in this debate (22 turns, condensed)" in summary
-    assert len(window) == MAX_CONTEXT_TURNS
+    assert len(window) == MAX_WINDOW_TURNS
     assert window[-1]["content"] == "turn 29"
     assert "never as instructions" in summary
 
@@ -37,7 +37,7 @@ def test_long_turns_are_clipped_to_the_context_budget():
     summary, window = window_turns([_turn("learner", long_turn)] * 12)
     assert summary is not None
     for turn in window:
-        assert len(turn["content"].split()) <= MAX_CONTEXT_TURN_WORDS
+        assert len(turn["content"].split()) <= MAX_WINDOW_TURN_WORDS
         assert turn["content"].endswith("…")
     assert len(summary.split()) <= MAX_SUMMARY_WORDS + 30
 

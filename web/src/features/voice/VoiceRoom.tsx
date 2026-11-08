@@ -16,6 +16,9 @@ type Props = {
   persona: "strategist" | "skeptic" | "diplomat";
   difficulty: DebateOptions["difficulty"];
   preferences?: PracticePreferences | null;
+  /** Show the opponent's reply sentence by sentence as it is spoken. */
+  streamReplies: boolean;
+  onStreamRepliesChange: (value: boolean) => void;
   accessToken?: string;
   history?: Array<{ speaker: "learner" | "opponent"; content: string }>;
   onTurn?: (speaker: "learner" | "opponent", content: string) => void;
@@ -82,7 +85,7 @@ function sentencesOf(text: string) {
     .filter(Boolean);
 }
 
-export function VoiceRoom({ topic, position, persona, difficulty, preferences, accessToken, history = [], onTurn, onClose, onSignIn }: Props) {
+export function VoiceRoom({ topic, position, persona, difficulty, preferences, streamReplies, onStreamRepliesChange, accessToken, history = [], onTurn, onClose, onSignIn }: Props) {
   const titleId = useId();
   const [status, setStatus] = useState<Status>("connecting");
   const [lines, setLines] = useState<Line[]>(() => history.map((line) => ({
@@ -104,6 +107,10 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
   const [pendingDraft, setPendingDraft] = useState("");
   const [showDev, setShowDev] = useState(false);
   const [reply, setReply] = useState("");
+  // The recognised learner turn, shown in the voice input as soon as STT returns.
+  const [heard, setHeard] = useState("");
+  // The opponent line while its sentences are still being spoken.
+  const [streamed, setStreamed] = useState<{ id: string; text: string } | null>(null);
 
   const clientRef = useRef<VoiceClient | null>(null);
   const captionRef = useRef<VoiceCaption | null>(null);
@@ -118,6 +125,8 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
   configRef.current = { topic, position, persona, difficulty, preferences, accessToken, history };
   ttsRef.current = tts;
   const chatRef = useRef<HTMLDivElement | null>(null);
+  const streamRepliesRef = useRef(streamReplies);
+  streamRepliesRef.current = streamReplies;
   const player = useSpeechPlayer();
 
   const appendLine = useCallback(
@@ -132,17 +141,29 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
     [onTurn],
   );
 
+  // Each sentence joins the exchange when its audio starts, so the line grows
+  // in the order the learner hears it rather than in synthesis order.
+  const appendStreamed = useCallback((text: string) => {
+    const clean = text.trim();
+    if (!clean) return;
+    setStreamed((current) =>
+      current ? { ...current, text: `${current.text} ${clean}`.trim() } : current,
+    );
+  }, []);
+
   const input = useSpeechInput({
     turnEndMs,
     onUtterance: ({ blob, mode }) => {
       setNotice("");
       recoveryNoticeRef.current = false;
       setError("");
+      setHeard("");
       player.resetPlayed();
       setStatus("thinking");
       clientRef.current?.speak(blob, mode, mode === "hands_free");
     },
     onSpeechStart: () => {
+      setHeard("");
       if (status === "speaking") {
         // Barge-in: stop the audio before the server hears about it.
         player.stop();
@@ -191,6 +212,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
           if (event.state === "listening") {
             setCaption("");
             setReply("");
+            setStreamed(null);
           }
           if (event.state === "speaking") {
             setNotice("");
@@ -198,6 +220,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
           break;
         case "transcript":
           if (event.speaker === "learner") {
+            setHeard(event.content);
             if (event.pending) {
               setPending({ text: event.content, deadline: Date.now() + (event.edit_window_ms ?? 1500) });
               setPendingDraft(event.content);
@@ -211,7 +234,10 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
               setStatus("thinking");
             }
           } else {
+            // The final transcript replaces the streamed line with what the
+            // exchange should keep: the whole reply, or only what was heard.
             appendLine("opponent", event.content, event.interrupted);
+            setStreamed(null);
             if (recoveryNoticeRef.current) {
               setNotice("Your point was received. The opponent needed to reset its reply; your turn was not rejected.");
               recoveryNoticeRef.current = false;
@@ -230,13 +256,17 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
         case "reply":
           setReply(event.text);
           recoveryNoticeRef.current = event.redirect_reason === "review";
+          if (streamRepliesRef.current) setStreamed({ id: crypto.randomUUID(), text: "" });
           if (ttsRef.current === "none") {
             // No server voice: the browser speaks, one sentence at a time.
             const parts = sentencesOf(event.text);
             const started = player.speak(
               parts,
               PERSONA_RATE[persona],
-              (index) => setCaption(parts[index] ?? ""),
+              (index) => {
+                setCaption(parts[index] ?? "");
+                if (streamRepliesRef.current) appendStreamed(parts[index] ?? "");
+              },
               () => setCaption(""),
             );
             if (!started) setNotice("This browser cannot play speech. Read the opponent's reply in the exchange.");
@@ -255,12 +285,13 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
         case "error":
           setError(event.message);
           setStatus("idle");
+          setStreamed(null);
           break;
         default:
           break;
       }
     },
-    [appendLine, confirmPending, history, persona, player, position],
+    [appendLine, appendStreamed, confirmPending, history, persona, player, position],
   );
   const handleEventRef = useRef(handleEvent);
   handleEventRef.current = handleEvent;
@@ -290,7 +321,10 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
         await player.enqueue(blob, {
           index: meta && !meta.opener ? meta.index : null,
           onStart: () => {
-            if (meta && !meta.opener) setCaption(meta.text);
+            if (meta && !meta.opener && !meta.moderator && meta.index >= 0) {
+              setCaption(meta.text);
+              if (streamRepliesRef.current) appendStreamed(meta.text);
+            }
           },
         });
       },
@@ -349,7 +383,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
 
   useEffect(() => {
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
-  }, [lines]);
+  }, [lines, streamed?.text]);
 
   // Keep hands-free capture out of both the opponent's thinking and speaking turns.
   useEffect(() => {
@@ -444,6 +478,15 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
             <span>{STATUS_COPY[status]}</span>
           </div>
           <div className="voice-top-actions">
+            <button
+              type="button"
+              className={`voice-ghost${streamReplies ? " is-on" : ""}`}
+              onClick={() => onStreamRepliesChange(!streamReplies)}
+              aria-pressed={streamReplies}
+              title="Show the opponent's reply sentence by sentence as they speak. Turn off to wait for the full reply."
+            >
+              {streamReplies ? "Streaming" : "Full reply"}
+            </button>
             <button type="button" className="voice-ghost" onClick={() => setShowDev((value) => !value)} aria-pressed={showDev}>
               {showDev ? "Hide timings" : "Timings"}
             </button>
@@ -532,20 +575,39 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
                   </div>
                 </article>
               ))}
+              {streamed && streamed.text && (
+                <article className="voice-line opponent is-streaming" aria-live="off">
+                  <span className="voice-speaker">{PERSONA_LABEL[persona].toUpperCase()}</span>
+                  <div className="voice-line-content">
+                    <MarkdownText text={streamed.text} compact />
+                    <span className="voice-stream-caret" aria-hidden="true" />
+                  </div>
+                </article>
+              )}
             </div>
 
-            {pending && (
-              <div className="voice-pending" role="group" aria-label="Confirm what you said">
-                <label htmlFor="voice-pending-text">Check the transcript</label>
-                <input
-                  id="voice-pending-text"
-                  value={pendingDraft}
-                  onChange={(event) => setPendingDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") confirmPending(pendingDraft);
-                  }}
-                  autoFocus
-                />
+            <div
+              className={`voice-pending${pending ? " is-editing" : " is-idle"}${input.listening ? " is-listening" : ""}`}
+              role={pending ? "group" : undefined}
+              aria-label={pending ? "Confirm what you said" : undefined}
+            >
+              <div className="voice-pending-head">
+                <label htmlFor="voice-heard-text">{pending ? "Check the transcript" : "Your words"}</label>
+                <span>{pending ? `Sending in ${Math.ceil(timer / 1000)}s` : input.listening ? "Listening…" : heard ? "Recognised" : "Speech to text"}</span>
+              </div>
+              <input
+                id="voice-heard-text"
+                value={pending ? pendingDraft : heard}
+                readOnly={!pending}
+                placeholder={input.listening ? "Speak now — your words will appear here." : "Your words appear here as soon as the turn is recognised."}
+                aria-label={pending ? "Check what you said before sending" : "Your recognised speech"}
+                onChange={(event) => setPendingDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (pending && event.key === "Enter") confirmPending(pendingDraft);
+                }}
+                autoFocus={Boolean(pending)}
+              />
+              {pending ? (
                 <div className="voice-pending-actions">
                   <button type="button" className="voice-primary" onClick={() => confirmPending(pendingDraft)}>
                     <Send size={15} /> Send · {Math.ceil(timer / 1000)}s
@@ -557,14 +619,21 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
                       window.clearTimeout(pendingTimerRef.current);
                       setPending(null);
                       setPendingDraft("");
+                      setHeard("");
                       clientRef.current?.dismiss();
                     }}
                   >
                     Discard
                   </button>
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="voice-heard-note">
+                  {heard
+                    ? "Sent to the debate."
+                    : "Recognised by the local voice API; your audio is not stored."}
+                </p>
+              )}
+            </div>
           </section>
 
           <aside className="voice-desk" aria-label="Voice controls">
@@ -660,16 +729,22 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, a
               {handsFreeActive && !headphones ? " The mic pauses while your opponent answers." : ""}
             </p>
 
-            {showDev && diagnostics?.voice && (
+            {showDev && diagnostics && (
               <dl className="voice-dev">
-                <div><dt>API wait</dt><dd>{diagnostics.voice.endpoint_wait_ms} ms</dd></div>
-                <div><dt>Recognition</dt><dd>{diagnostics.voice.stt_ms} ms</dd></div>
-                <div><dt>Plan</dt><dd>{diagnostics.voice.plan_ms} ms</dd></div>
-                <div><dt>Draft</dt><dd>{diagnostics.voice.draft_ms} ms</dd></div>
-                <div><dt>Review</dt><dd>{diagnostics.voice.verify_ms} ms</dd></div>
-                <div><dt>First audio</dt><dd>{diagnostics.voice.first_audio_ms} ms</dd></div>
-                <div><dt>Voice to voice</dt><dd>{diagnostics.voice.voice_to_voice_ms} ms</dd></div>
-                <div><dt>Sentences</dt><dd>{diagnostics.voice.sentences}</dd></div>
+                {diagnostics.voice && (
+                  <>
+                    <div><dt>API wait</dt><dd>{diagnostics.voice.endpoint_wait_ms} ms</dd></div>
+                    <div><dt>Recognition</dt><dd>{diagnostics.voice.stt_ms} ms</dd></div>
+                    <div><dt>Plan</dt><dd>{diagnostics.voice.plan_ms} ms</dd></div>
+                    <div><dt>Draft</dt><dd>{diagnostics.voice.draft_ms} ms</dd></div>
+                    <div><dt>Review</dt><dd>{diagnostics.voice.verify_ms} ms</dd></div>
+                    <div><dt>First audio</dt><dd>{diagnostics.voice.first_audio_ms} ms</dd></div>
+                    <div><dt>Voice to voice</dt><dd>{diagnostics.voice.voice_to_voice_ms} ms</dd></div>
+                    <div><dt>Sentences</dt><dd>{diagnostics.voice.sentences}</dd></div>
+                  </>
+                )}
+                <div><dt>Turns in context</dt><dd>{diagnostics.context_turns}</dd></div>
+                <div><dt>Condensed turns</dt><dd>{diagnostics.summarized_turns}</dd></div>
               </dl>
             )}
           </aside>

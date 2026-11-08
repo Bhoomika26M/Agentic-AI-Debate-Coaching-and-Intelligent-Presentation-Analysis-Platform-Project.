@@ -115,6 +115,9 @@ export function useSpeechInput(options: Options) {
       recordingRef.current = true;
       startedAtRef.current = performance.now();
       setListening(true);
+      // Same hook the VAD path uses, so the voice room can show it is hearing
+      // the learner (and clear the previous transcript) in both modes.
+      optionsRef.current.onSpeechStart();
     } catch {
       pushToTalkPressedRef.current = false;
       release();
@@ -141,6 +144,7 @@ export function useSpeechInput(options: Options) {
       setError("Hold the key a little longer so the turn registers.");
       return;
     }
+    optionsRef.current.onSpeechEnd();
     optionsRef.current.onUtterance({ blob, durationMs, mode: "push_to_talk" });
   }, []);
 

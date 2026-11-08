@@ -4,6 +4,7 @@ from pydantic import ValidationError
 from app.schemas import (
     AnalysisRequest,
     DebateRequest,
+    JudgeRequest,
     PlanRequest,
     SessionDigest,
 )
@@ -136,3 +137,22 @@ def test_scores_stay_inside_the_rubric():
                 }
             }
         )
+
+
+def test_a_rubric_only_report_can_be_judged_before_the_other_branches_finish():
+    request = JudgeRequest.model_validate(
+        {
+            "report": {
+                "ratings": {
+                    "clarity": {"score": 4, "note": "clear"},
+                    "relevance": {"score": 3, "note": "mostly on point"},
+                    "evidence_strength": {"score": 2, "note": "thin"},
+                    "logical_consistency": {"score": 4, "note": "sound"},
+                    "persuasiveness": {"score": 3, "note": "flat start"},
+                }
+            },
+            "turns": [{"speaker": "learner", "content": "Make the case."}],
+        }
+    )
+    assert request.report.counterarguments == []
+    assert request.report.fallacies == []

@@ -104,6 +104,10 @@ async function startRehearsal(page: Page) {
   await openSetup(page);
   for (const heading of ["Your motion", "Choose your side.", "Your opponent", "Set the round."]) {
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    if (heading === "Choose your side.") {
+      // The affirmative (For) side opens, so pick Against to put the opponent first.
+      await page.locator(".fixture-side-options").getByRole("button", { name: /Against/ }).click();
+    }
     if (heading !== "Set the round.") {
       await page.getByRole("button", { name: "Continue" }).click();
     }
@@ -162,7 +166,7 @@ test("a follow-up the coach cannot extend is disabled after the attempt", async 
 
 test("ending a rehearsal clears its resumable snapshot", async ({ page }) => {
   await mockDebateApi(page);
-  await page.route("**/api/debate/analyze", (route) =>
+  await page.route("**/api/debate/analyze/stream", (route) =>
     route.fulfill({ status: 503, json: { detail: "Analysis is outside this rehearsal test." } }),
   );
   await startRehearsal(page);
@@ -170,7 +174,7 @@ test("ending a rehearsal clears its resumable snapshot", async ({ page }) => {
 
   await page.getByRole("button", { name: "End session" }).click();
   await page.getByRole("button", { name: /Tap again to end/ }).click();
-  await expect(page.getByText("REHEARSAL COMPLETE / CASE REVIEW")).toBeVisible();
+  await expect(page.getByText(/DEBATE REVIEW — COMPLETED/)).toBeVisible();
   await expect(page.getByRole("heading", { name: /is in the book/i })).toBeVisible();
 
   await page.reload();

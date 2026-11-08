@@ -365,6 +365,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .transcript-heading p { margin: 5px 0 0; color: #5e574d; font-size: 10px; line-height: 1.5; }
 .round-counter { color: #302a24; font: 13px var(--mono); font-variant-numeric: tabular-nums; }
 .round-counter span { margin-right: 5px; color: #635b50; font-size: 8px; }
+.transcript-heading-actions { display: flex; align-items: center; gap: 14px; }
+.stream-toggle { min-height: 26px; padding: 0 8px; border: 1px solid #c3b7a4; color: #5e574d; background: transparent; font: 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+.stream-toggle:hover { border-color: #8a7c67; color: #302a24; }
+.stream-toggle.is-on { border-color: #b5904d; color: #6b4d1c; background: #f3e7cc; }
 .scene-transition { min-height: 47px; margin-top: 11px; padding: 0 12px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; overflow: hidden; color: var(--paper-light); background: var(--stage); }
 .scene-transition > span { color: var(--brass); font: 8px var(--mono); letter-spacing: .07em; white-space: nowrap; }
 .scene-transition strong { font: 500 15px var(--serif); }
