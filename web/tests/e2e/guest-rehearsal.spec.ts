@@ -89,6 +89,38 @@ async function mockDebateApi(page: Page) {
   });
 }
 
+async function mockVoiceRoom(page: Page) {
+  await page.routeWebSocket(/\/ws\/voice/, (socket) => {
+    socket.onMessage((message) => {
+      if (typeof message !== "string") {
+        // Echo a finished turn so both sides reach the arena transcript.
+        socket.send(JSON.stringify({ type: "state", state: "thinking" }));
+        socket.send(JSON.stringify({ type: "transcript", speaker: "learner", content: SPOKEN_LEARNER }));
+        socket.send(JSON.stringify({ type: "transcript", speaker: "opponent", content: SPOKEN_OPPONENT }));
+        socket.send(JSON.stringify({ type: "state", state: "idle" }));
+        return;
+      }
+      const payload = JSON.parse(message) as { type?: string };
+      if (payload.type === "auth") {
+        socket.send(JSON.stringify({ type: "authenticated" }));
+        return;
+      }
+      if (payload.type === "start") {
+        socket.send(
+          JSON.stringify({
+            type: "ready",
+            tts: "kokoro",
+            persona_voices: {},
+            recognition: "local",
+            turn_end_ms: 1100,
+          }),
+        );
+        socket.send(JSON.stringify({ type: "started", topic: "Test motion", persona: "skeptic", reply_length: "standard" }));
+      }
+    });
+  });
+}
+
 async function openSetup(page: Page) {
   await seedSignedIn(page);
   await mockSupabase(page);
@@ -100,13 +132,16 @@ async function openSetup(page: Page) {
   await expect(page.getByRole("heading", { name: /Set up your debate/ })).toBeVisible();
 }
 
-async function startRehearsal(page: Page) {
+async function startRehearsal(page: Page, minutes?: number) {
   await openSetup(page);
   for (const heading of ["Your motion", "Choose your side.", "Your opponent", "Set the round."]) {
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
     if (heading === "Choose your side.") {
       // The affirmative (For) side opens, so pick Against to put the opponent first.
       await page.locator(".fixture-side-options").getByRole("button", { name: /Against/ }).click();
+    }
+    if (heading === "Set the round." && minutes) {
+      await page.getByLabel("Debate duration in minutes").fill(String(minutes));
     }
     if (heading !== "Set the round.") {
       await page.getByRole("button", { name: "Continue" }).click();
@@ -363,6 +398,50 @@ test("a complete spoken turn sends microphone audio and renders both transcript 
   await expect(dialog.locator(".voice-line.learner").getByText(SPOKEN_LEARNER)).toBeVisible();
   await expect(dialog.locator(".voice-line.opponent").getByText(SPOKEN_OPPONENT)).toBeVisible();
   expect(received).toContain("utterance_start");
+});
+
+test("a spoken round ends in the voice room with the closing-take choice", async ({ page }) => {
+  await mockDebateApi(page);
+  await mockVoiceRoom(page);
+  await page.route("**/api/debate/analyze/stream", (route) =>
+    route.fulfill({ status: 503, json: { detail: "Analysis is outside this rehearsal test." } }),
+  );
+  await startRehearsal(page);
+
+  await page.getByRole("button", { name: "Open voice debate" }).click();
+  const dialog = page.getByRole("dialog");
+  const microphone = dialog.getByRole("button", { name: "Hold to speak your turn" });
+  await expect(microphone).toBeEnabled();
+
+  // One spoken turn, so the round has a transcript and a voice exchange.
+  await microphone.hover();
+  await page.mouse.down();
+  await expect(dialog.getByRole("button", { name: "Release to send your spoken turn" })).toBeVisible();
+  await page.waitForTimeout(1200);
+  await page.mouse.up();
+  await expect(dialog.locator(".voice-line.learner")).toBeVisible();
+
+  // End the round with the same handler the clock calls. The arena's button
+  // sits behind the modal, so trigger it directly rather than waiting minutes.
+  await page.evaluate(() => document.querySelector<HTMLButtonElement>(".end-button")?.click());
+  await expect(page.getByRole("button", { name: /Tap again to finish/ })).toBeVisible();
+  await page.evaluate(() => document.querySelector<HTMLButtonElement>(".end-button")?.click());
+
+  // The room takes the closing take itself instead of handing the learner
+  // back to the typed arena.
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("region", { name: "Closing take" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: /closes the round/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /is in the book/i })).toHaveCount(0);
+
+  await dialog.getByRole("button", { name: "Skip the take" }).click();
+  await expect(dialog.getByText(/Delivery stays unscored/i)).toBeVisible();
+  await dialog.getByRole("button", { name: /Skip — see my scores/ }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /is in the book/i })).toBeVisible();
+  // The room already asked for the take, so the page gate is not shown again.
+  await expect(page.getByRole("heading", { name: /closes the round/i })).toHaveCount(0);
 });
 
 test("the score run can be stopped and resumed from the verdict", async ({ page }) => {

@@ -9,6 +9,8 @@ import { personaFor } from "../debate-catalog";
 import { OpponentEmblem } from "../../components/OpponentEmblem";
 import { useSpeechInput } from "./useSpeechInput";
 import { useSpeechPlayer } from "./useSpeechPlayer";
+import { ClosingTakePanel } from "../closing/ClosingTake";
+import type { PresentationResult } from "../../services/presentation-api";
 import "./voice.css";
 
 type Props = {
@@ -32,6 +34,12 @@ type Props = {
   onTurn?: (speaker: "learner" | "opponent", content: string) => void;
   onClose: () => void;
   onSignIn?: () => void;
+  /** The clock has reached zero: the room itself takes the closing take. */
+  roundOver?: boolean;
+  recordId?: string | null;
+  deliveryResult?: PresentationResult | null;
+  onDeliveryResult?: (result: PresentationResult | null) => void;
+  onFinishRound?: () => void;
 };
 
 type Status = "connecting" | "idle" | "listening" | "thinking" | "speaking" | "interrupted" | "closed";
@@ -97,7 +105,7 @@ function sentencesOf(text: string) {
     .filter(Boolean);
 }
 
-export function VoiceRoom({ topic, position, persona, difficulty, preferences, model = DEFAULT_LOCAL_MODEL, streamReplies, streamRepliesDefault, onStreamRepliesChange, onRememberStreamReplies, onTypeInstead, accessToken, history = [], onTurn, onClose, onSignIn }: Props) {
+export function VoiceRoom({ topic, position, persona, difficulty, preferences, model = DEFAULT_LOCAL_MODEL, streamReplies, streamRepliesDefault, onStreamRepliesChange, onRememberStreamReplies, onTypeInstead, accessToken, history = [], onTurn, onClose, onSignIn, roundOver = false, recordId = null, deliveryResult = null, onDeliveryResult, onFinishRound }: Props) {
   const titleId = useId();
   const [status, setStatus] = useState<Status>("connecting");
   const [lines, setLines] = useState<Line[]>(() => history.map((line) => ({
@@ -128,6 +136,9 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
   const [listenSeconds, setListenSeconds] = useState(0);
 
   const clientRef = useRef<VoiceClient | null>(null);
+  // Read inside the audio callback, which outlives a single render.
+  const roundOverRef = useRef(roundOver);
+  roundOverRef.current = roundOver;
   const pendingTimerRef = useRef(0);
   const connectionTimerRef = useRef(0);
   const connectionEpochRef = useRef(0);
@@ -360,6 +371,8 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
       },
       onEvent: (event) => handleEventRef.current(event),
       onAudio: async (blob, caption) => {
+        // A late clip must never play over the closing take's microphone.
+        if (roundOverRef.current) return;
         // VoiceClient binds each blob to the caption that preceded it. Do not
         // read a shared "current caption": a newer sentence can arrive while
         // this clip is still decoding, which would relabel the audio.
@@ -432,6 +445,16 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
       if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
   }, []);
+
+  // The round is over: release the microphone so the closing take can record,
+  // and stop any reply still playing over it.
+  useEffect(() => {
+    if (!roundOver) return;
+    void inputRef.current.stopHandsFree();
+    inputRef.current.release();
+    player.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundOver]);
 
   useEffect(() => {
     const node = chatRef.current;
@@ -529,7 +552,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
         closeDialog();
       }}
     >
-      <section className={`voice-room is-${status}${pending ? " has-pending" : ""}`} aria-label="Voice debate">
+      <section className={`voice-room is-${status}${pending ? " has-pending" : ""}${roundOver ? " is-round-over" : ""}`} aria-label="Voice debate">
         <header className="voice-topbar">
           <div className="voice-brand" aria-label="Verdict voice rehearsal">
             <span className="voice-brand-mark"><BookOpenText size={16} /></span>
@@ -537,37 +560,42 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
           </div>
           <div className={`voice-status state-${status}`} role="status" aria-live="polite">
             <span className="voice-status-mark" aria-hidden="true"><i /><i /><i /></span>
-            <span>{STATUS_COPY[status]}</span>
+            <span>{roundOver ? "Round complete" : STATUS_COPY[status]}</span>
           </div>
           <div className="voice-top-actions">
-            <button
-              type="button"
-              className={`voice-ghost${streamReplies ? " is-on" : ""}`}
-              onClick={() => onStreamRepliesChange(!streamReplies)}
-              aria-pressed={streamReplies}
-              title="This session only: show the opponent's reply sentence by sentence as they speak."
-            >
-              {streamReplies ? "Streaming" : "Full reply"}
-            </button>
-            {streamReplies !== streamRepliesDefault && (
-              <button
-                type="button"
-                className="voice-ghost voice-remember"
-                onClick={onRememberStreamReplies}
-                title="Save this as your default for future rooms"
-              >
-                Remember
-              </button>
+            {!roundOver && (
+              <>
+                <button
+                  type="button"
+                  className={`voice-ghost${streamReplies ? " is-on" : ""}`}
+                  onClick={() => onStreamRepliesChange(!streamReplies)}
+                  aria-pressed={streamReplies}
+                  title="This session only: show the opponent's reply sentence by sentence as they speak."
+                >
+                  {streamReplies ? "Streaming" : "Full reply"}
+                </button>
+                {streamReplies !== streamRepliesDefault && (
+                  <button
+                    type="button"
+                    className="voice-ghost voice-remember"
+                    onClick={onRememberStreamReplies}
+                    title="Save this as your default for future rooms"
+                  >
+                    Remember
+                  </button>
+                )}
+                <button type="button" className="voice-ghost" onClick={() => setShowDev((value) => !value)} aria-pressed={showDev}>
+                  {showDev ? "Hide timings" : "Timings"}
+                </button>
+              </>
             )}
-            <button type="button" className="voice-ghost" onClick={() => setShowDev((value) => !value)} aria-pressed={showDev}>
-              {showDev ? "Hide timings" : "Timings"}
-            </button>
             <button type="button" className="voice-close" onClick={closeDialog} aria-label="Close voice debate">
               <X size={18} />
             </button>
           </div>
         </header>
 
+        <div className="voice-room-live" inert={roundOver || undefined} aria-hidden={roundOver || undefined}>
         <div className="voice-title-row">
           <div className="voice-persona-title">
             <h1 id={titleId}>{PERSONA_LABEL[persona]}</h1>
@@ -861,6 +889,23 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
             )}
           </aside>
         </main>
+        </div>
+
+        {roundOver && (
+          <div className="voice-closing" role="region" aria-label="Closing take">
+            <div className="voice-closing-sheet">
+              <ClosingTakePanel
+                embedded
+                topic={topic}
+                recordId={recordId}
+                model={model}
+                initialResult={deliveryResult}
+                onDelivery={onDeliveryResult ?? (() => {})}
+                onContinue={() => onFinishRound?.()}
+              />
+            </div>
+          </div>
+        )}
       </section>
     </dialog>,
     document.body,

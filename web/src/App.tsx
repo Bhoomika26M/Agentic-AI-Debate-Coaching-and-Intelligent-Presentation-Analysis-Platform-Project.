@@ -450,6 +450,8 @@ export default function App() {
   const [challengeError, setChallengeError] = useState("");
   const [challengeDone, setChallengeDone] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  // A spoken round ends inside the room; this hands the closing take to it.
+  const [voiceRoundOver, setVoiceRoundOver] = useState(false);
   // The closing-take gate sits between the arena and the verdict page.
   const [closingGate, setClosingGate] = useState(false);
   const [scoringStopped, setScoringStopped] = useState(false);
@@ -870,7 +872,7 @@ export default function App() {
   }, [view]);
 
   useEffect(() => {
-    if (view !== "arena" || secondsLeft > 0 || streaming) return;
+    if (view !== "arena" || secondsLeft > 0 || streaming || voiceRoundOver) return;
     // If a point is already in the composer, offer one grace turn instead of
     // cutting the learner off mid-sentence. The clock stays at zero.
     if (!graceOfferedRef.current && draft.trim() && learnerTurns.length > 0) {
@@ -882,7 +884,7 @@ export default function App() {
     if (graceTurn) return;
     setRecordNotice("Time — wrapping up with the reply on screen.");
     finishSession();
-  }, [view, secondsLeft, streaming, draft, graceTurn, learnerTurns.length]);
+  }, [view, secondsLeft, streaming, draft, graceTurn, learnerTurns.length, voiceRoundOver]);
 
   function handleTranscriptScroll() {
     const element = transcriptRef.current;
@@ -997,6 +999,7 @@ export default function App() {
     reviewAbortRef.current?.abort();
     clearSnapshot();
     setVoiceOpen(false);
+    setVoiceRoundOver(false);
     setClosingGate(false);
     setScoringStopped(false);
     lastTurnRef.current = null;
@@ -1405,6 +1408,7 @@ export default function App() {
     setJudgeError("");
     setPlanUpdateStatus("idle");
     setPlanUpdateError("");
+    setVoiceRoundOver(false);
     setClosingGate(false);
     setScoringStopped(false);
     setDeliveryResult(delivery);
@@ -1443,7 +1447,10 @@ export default function App() {
     setConfirmEnd(true);
   }
 
-  function finishSession() {
+  function finishSession(options?: { closingHandled?: boolean }) {
+    // A spoken round ends inside the voice room, not by dropping the learner
+    // back into the typed arena: the room offers the closing take itself.
+    const askInRoom = Boolean(voiceOpen) && !options?.closingHandled && learnerTurns.length > 0;
     setEndedAt(Date.now());
     abortRef.current?.abort();
     reviewAbortRef.current?.abort();
@@ -1461,7 +1468,19 @@ export default function App() {
         setRecordNotice("The transcript is saved, but the rehearsal could not be marked complete. It will remain in your archive.");
       });
     }
+    if (askInRoom) {
+      setVoiceRoundOver(true);
+      return;
+    }
+    setVoiceRoundOver(false);
+    setVoiceOpen(false);
     setView("verdict");
+    if (options?.closingHandled) {
+      // The room already asked for the take; go straight to the scorecard.
+      setClosingGate(false);
+      if (user && recordId && learnerTurns.length > 0) void reviewDebate();
+      return;
+    }
     // Ask for the closing take before the scorecard is written: it is the only
     // input that scores Delivery, so both outcomes belong on one screen.
     if (user && learnerTurns.length > 0) {
@@ -1470,6 +1489,11 @@ export default function App() {
       return;
     }
     if (user && recordId && learnerTurns.length > 0) void reviewDebate();
+  }
+
+  function finishVoiceRound() {
+    setVoiceOpen(false);
+    finishSession({ closingHandled: true });
   }
 
   function enterVerdictFromClosing() {
@@ -2137,7 +2161,15 @@ export default function App() {
                     onTurn={(speaker, content) =>
                       setMessages((current) => [...current, { id: crypto.randomUUID(), speaker, content }])
                     }
-                    onClose={() => setVoiceOpen(false)}
+                    roundOver={voiceRoundOver}
+                    recordId={recordId}
+                    deliveryResult={deliveryResult}
+                    onDeliveryResult={setDeliveryResult}
+                    onFinishRound={finishVoiceRound}
+                    onClose={() => {
+                      setVoiceOpen(false);
+                      setVoiceRoundOver(false);
+                    }}
                     onSignIn={() => {
                       setVoiceOpen(false);
                       routedForRef.current = null;
@@ -2283,7 +2315,7 @@ export default function App() {
                 {graceTurn && secondsLeft === 0 && (
                   <div className="final-minute is-time-up" role="status">
                     <span><Clock3 size={14} aria-hidden="true" /> Time — send your final point, or review now.</span>
-                    <button type="button" onClick={finishSession}>Review now</button>
+                    <button type="button" onClick={() => finishSession()}>Review now</button>
                   </div>
                 )}
                 <form className="argument-composer" onSubmit={(event) => void submitArgument(event)}>

@@ -166,3 +166,16 @@
   .closing-booth-head { flex-direction: column; gap: 12px; padding: 16px; }
   .closing-booth-body { padding: 12px; grid-template-columns: 1fr; }
 }
+
+/* Embedded in the voice room: the same decision on the room's paper sheet. */
+.closing-take.is-embedded .closing-hero { padding-top: 12px; }
+.closing-take.is-embedded h1 { font-size: clamp(2.1rem, 3.4vw, 3.2rem); }
+.closing-take.is-embedded .verdict-summary { margin-top: 14px; font-size: 13px; }
+.closing-take.is-embedded .closing-ledger { box-shadow: none; }
+.closing-embedded-top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: #5c554b; font: 8px var(--mono); letter-spacing: .12em; }
+.closing-embedded-context { margin-left: auto; opacity: .72; }
+.closing-embedded-top .verdict-seal { width: 36px; height: 36px; }
+
+@media (max-width: 760px) {
+  .closing-take.is-embedded h1 { font-size: clamp(1.9rem, 8vw, 2.4rem); }
+}

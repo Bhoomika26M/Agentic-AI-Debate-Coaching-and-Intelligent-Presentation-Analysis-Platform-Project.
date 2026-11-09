@@ -301,6 +301,18 @@ The server overlaps as well: while a sentence's audio is being sent, the next
 final sentence renders in the background. Synthesis stays ordered, runs only on
 the verified reply, and an interrupt cancels the pending render.
 
+### Round end and the closing take
+
+When the clock reaches zero while the voice room is open, the room stays open.
+It releases the microphone, stops any reply still playing, and replaces the
+exchange with the closing-take sheet: record a take, or skip it and see what
+that costs. Both choices state that Delivery is 15% of the weighted score and
+that the remaining dimensions are rescaled when it is missing, so the learner
+decides with the consequence in view. Continuing closes the room and opens the
+verdict, which starts the review; closing the room without deciding falls back
+to the same choice on the verdict page. A typed round shows the choice as its
+own page before the scorecard.
+
 ### Barge-in (P2)
 
 The learner can interrupt while the opponent speaks. Interrupting stops every
@@ -355,7 +367,9 @@ The current backend suite has 413 passing tests. Voice-path coverage includes:
 
 The Playwright suite includes a full spoken turn using Chromium's fake audio
 device against the mocked API. This checks microphone capture, the voice socket
-turn, and both transcript lines in the room. It does not measure real-device
+turn, and both transcript lines in the room. It also ends a spoken round and
+checks that the closing-take choice appears inside the room, and that the score
+run can be stopped and resumed. It does not measure real-device
 barge-in latency; that still needs a human/device measurement.
 
 ## When the room will not open

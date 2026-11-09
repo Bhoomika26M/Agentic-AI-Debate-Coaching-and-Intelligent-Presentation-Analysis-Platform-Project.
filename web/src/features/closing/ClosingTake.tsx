@@ -16,28 +16,34 @@ const LEDGER = [
   { label: "DELIVERY", weight: "15%", affected: true },
 ];
 
-/**
- * The choice between the round and the scorecard.
- *
- * A closing take is the only input that scores Delivery, so declining has to be
- * as explicit as accepting: both cards state what happens to the weighted
- * score, and the skip path repeats the consequence before it is taken.
- */
-export function ClosingTake({
-  topic,
-  recordId,
-  model,
-  initialResult,
-  onDelivery,
-  onContinue,
-}: {
+export type ClosingTakeProps = {
   topic: string;
   recordId: string | null;
   model: LocalModel;
   initialResult: PresentationResult | null;
   onDelivery: (result: PresentationResult | null) => void;
   onContinue: () => void;
-}) {
+};
+
+/**
+ * The choice between the round and the scorecard.
+ *
+ * A closing take is the only input that scores Delivery, so declining has to be
+ * as explicit as accepting: both cards state what happens to the weighted
+ * score, and the skip path repeats the consequence before it is taken.
+ *
+ * `embedded` renders the same decision inside the voice room sheet, where the
+ * page header and overline would be out of place.
+ */
+export function ClosingTakePanel({
+  topic,
+  recordId,
+  model,
+  initialResult,
+  onDelivery,
+  onContinue,
+  embedded = false,
+}: ClosingTakeProps & { embedded?: boolean }) {
   const [stage, setStage] = useState<Stage>("offer");
   const declineRef = useRef<HTMLElement | null>(null);
   const takeReviewed = Boolean(initialResult?.transcript.trim());
@@ -46,6 +52,183 @@ export function ClosingTake({
     if (stage === "decline") declineRef.current?.focus();
   }, [stage]);
 
+  return (
+    <div className={`closing-take${embedded ? " is-embedded" : ""}`}>
+      {embedded && (
+        <div className="closing-embedded-top">
+          <span className="verdict-seal"><BookOpenText size={20} /></span>
+          <span>THE ROUND IS OVER.</span>
+          <span className="closing-embedded-context">BEFORE THE SCORECARD</span>
+        </div>
+      )}
+
+      <div className="closing-hero">
+        <div className="closing-hero-copy">
+          <span className="closing-act">{embedded ? "YOUR CLOSING STATEMENT" : "ACT V / CLOSING STATEMENT"}</span>
+          <h1 id="closing-title">One last word<br /><span>closes the round.</span></h1>
+          <p className="verdict-summary">
+            The debate has ended, but the scorecard is not written yet. Add a closing take — up to three
+            minutes in your own voice — or leave it out knowing exactly which score changes.
+          </p>
+        </div>
+
+        <aside className="closing-ledger" aria-label="The five weighted scores">
+          <span className="closing-ledger-label">THE SCORECARD</span>
+          <ul>
+            {LEDGER.map((row) => (
+              <li key={row.label} className={row.affected ? "is-affected" : ""}>
+                <span>{row.label}</span>
+                <b>{row.weight}</b>
+              </li>
+            ))}
+          </ul>
+          <p className="closing-ledger-note">
+            Delivery is read from a closing take only. The other four come from the transcript.
+          </p>
+        </aside>
+      </div>
+
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={stage}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.22 }}
+        >
+          {stage === "offer" && (
+            <div className="closing-choice">
+              <div className="closing-choice-head">
+                <h2>Two ways to finish.</h2>
+                <p>Both are honest. Only one scores Delivery.</p>
+              </div>
+
+              <div className="closing-options">
+                <article className="closing-option is-primary">
+                  <span className="closing-option-index">01 / RECORD</span>
+                  <h3>Record a closing take</h3>
+                  <p>
+                    Sum up the round in your own voice. Delivery is scored from this take, and the closing
+                    words join the argument review.
+                  </p>
+                  <ul>
+                    <li><Check size={13} aria-hidden="true" /> Delivery scored — 15% of the weighted total</li>
+                    <li><Check size={13} aria-hidden="true" /> All five dimensions on the scorecard</li>
+                  </ul>
+                  <button className="button button-dark" type="button" onClick={() => setStage("record")}>
+                    <Mic size={15} /> Record a closing take
+                  </button>
+                </article>
+
+                <article className="closing-option">
+                  <span className="closing-option-index">02 / SKIP</span>
+                  <h3>Go straight to the verdict</h3>
+                  <p>
+                    Delivery stays unscored. The remaining dimensions are rescaled to 100%, so this
+                    weighted score is not comparable to a round that recorded one.
+                  </p>
+                  <ul>
+                    <li><span className="closing-dash" aria-hidden="true">—</span> One of five scores is missing</li>
+                    <li><span className="closing-dash" aria-hidden="true">—</span> The review reads the transcript only</li>
+                  </ul>
+                  <button className="button button-light" type="button" onClick={() => setStage("decline")}>
+                    Skip the take
+                  </button>
+                </article>
+              </div>
+
+              <p className="closing-footnote">
+                Audio is discarded after the review unless you choose to keep it. A take can also be added
+                from the verdict later, and the weighted score is recalculated then.
+              </p>
+            </div>
+          )}
+
+          {stage === "decline" && (
+            <section
+              className="closing-decline"
+              ref={declineRef}
+              tabIndex={-1}
+              aria-labelledby="closing-decline-title"
+            >
+              <span className="closing-decline-label">IF YOU SKIP</span>
+              <h2 id="closing-decline-title">Delivery stays unscored.</h2>
+              <p>
+                Delivery is one of your five scores — <b>15% of the weighted total</b>. Without a closing
+                take the other four are rescaled to 100%, so the number you see will differ from a round
+                that recorded one. The argument review also reads the closing statement, so it will see the
+                debate transcript only.
+              </p>
+              <div className="closing-take-actions">
+                <button className="button closing-skip" type="button" onClick={onContinue}>
+                  Skip — see my scores
+                </button>
+                <button className="button button-light" type="button" onClick={() => setStage("offer")}>
+                  Record instead
+                </button>
+              </div>
+              <p className="closing-footnote">
+                You can still add a closing take from the verdict later; the weighted score is recalculated
+                when you do.
+              </p>
+            </section>
+          )}
+
+          {stage === "record" && (
+            <section className="closing-booth" aria-labelledby="closing-booth-title">
+              <div className="closing-booth-head">
+                <div>
+                  <span className="closing-booth-label">TAKE 01 / UP TO 3:00</span>
+                  <h2 id="closing-booth-title">Deliver the closing statement.</h2>
+                  <p>
+                    Wrap the round: the clash, your strongest ground, and what should decide it. Record, then
+                    choose <b>Review delivery</b> so the take is scored before you continue.
+                  </p>
+                </div>
+                <span className={`closing-booth-state${takeReviewed ? " is-ready" : ""}`}>
+                  {takeReviewed ? "TAKE REVIEWED" : "NOT REVIEWED"}
+                </span>
+              </div>
+
+              <div className="closing-booth-body">
+                <Suspense fallback={<p className="closing-booth-loading" role="status">Loading the delivery coach…</p>}>
+                  <PresentationRoom
+                    compact
+                    topic={topic}
+                    sessionId={recordId}
+                    model={model}
+                    initialResult={initialResult}
+                    onResult={onDelivery}
+                  />
+                </Suspense>
+                <aside className="closing-booth-aside">
+                  <span>WHAT A CLOSING DOES</span>
+                  <ol>
+                    <li>Name the clash the round came down to.</li>
+                    <li>Give your strongest ground in one clear claim.</li>
+                    <li>Say what should decide it — and why.</li>
+                  </ol>
+                  <p>Aim for 45–90 seconds. The cap is three minutes, and audio is discarded after review unless you keep it.</p>
+                </aside>
+              </div>
+
+              <div className="closing-booth-foot">
+                <button className="button button-dark" type="button" onClick={onContinue}>
+                  {takeReviewed ? "Read my verdict" : "Continue to the verdict"} <ArrowRight size={16} />
+                </button>
+                <button className="text-link" type="button" onClick={() => setStage("offer")}>
+                  Back to the choice
+                </button>
+              </div>
+            </section>
+          )}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+export function ClosingTake(props: ClosingTakeProps) {
   return (
     <>
       <header className="verdict-header closing-header">
@@ -62,169 +245,7 @@ export function ClosingTake({
           <span>THE BOOK IS ALMOST CLOSED.</span>
           <span className="verdict-overline-context">AFTER THE ROUND / BEFORE THE REVIEW</span>
         </div>
-
-        <div className="closing-hero">
-          <div className="closing-hero-copy">
-            <span className="closing-act">ACT V / CLOSING STATEMENT</span>
-            <h1 id="closing-title">One last word<br /><span>closes the round.</span></h1>
-            <p className="verdict-summary">
-              The debate has ended, but the scorecard is not written yet. Add a closing take — up to three
-              minutes in your own voice — or leave it out knowing exactly which score changes.
-            </p>
-          </div>
-
-          <aside className="closing-ledger" aria-label="The five weighted scores">
-            <span className="closing-ledger-label">THE SCORECARD</span>
-            <ul>
-              {LEDGER.map((row) => (
-                <li key={row.label} className={row.affected ? "is-affected" : ""}>
-                  <span>{row.label}</span>
-                  <b>{row.weight}</b>
-                </li>
-              ))}
-            </ul>
-            <p className="closing-ledger-note">
-              Delivery is read from a closing take only. The other four come from the transcript.
-            </p>
-          </aside>
-        </div>
-
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={stage}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.22 }}
-          >
-            {stage === "offer" && (
-              <div className="closing-choice">
-                <div className="closing-choice-head">
-                  <h2>Two ways to finish.</h2>
-                  <p>Both are honest. Only one scores Delivery.</p>
-                </div>
-
-                <div className="closing-options">
-                  <article className="closing-option is-primary">
-                    <span className="closing-option-index">01 / RECORD</span>
-                    <h3>Record a closing take</h3>
-                    <p>
-                      Sum up the round in your own voice. Delivery is scored from this take, and the closing
-                      words join the argument review.
-                    </p>
-                    <ul>
-                      <li><Check size={13} aria-hidden="true" /> Delivery scored — 15% of the weighted total</li>
-                      <li><Check size={13} aria-hidden="true" /> All five dimensions on the scorecard</li>
-                    </ul>
-                    <button className="button button-dark" type="button" onClick={() => setStage("record")}>
-                      <Mic size={15} /> Record a closing take
-                    </button>
-                  </article>
-
-                  <article className="closing-option">
-                    <span className="closing-option-index">02 / SKIP</span>
-                    <h3>Go straight to the verdict</h3>
-                    <p>
-                      Delivery stays unscored. The remaining dimensions are rescaled to 100%, so this
-                      weighted score is not comparable to a round that recorded one.
-                    </p>
-                    <ul>
-                      <li><span className="closing-dash" aria-hidden="true">—</span> One of five scores is missing</li>
-                      <li><span className="closing-dash" aria-hidden="true">—</span> The review reads the transcript only</li>
-                    </ul>
-                    <button className="button button-light" type="button" onClick={() => setStage("decline")}>
-                      Skip the take
-                    </button>
-                  </article>
-                </div>
-
-                <p className="closing-footnote">
-                  Audio is discarded after the review unless you choose to keep it. A take can also be added
-                  from the verdict later, and the weighted score is recalculated then.
-                </p>
-              </div>
-            )}
-
-            {stage === "decline" && (
-              <section
-                className="closing-decline"
-                ref={declineRef}
-                tabIndex={-1}
-                aria-labelledby="closing-decline-title"
-              >
-                <span className="closing-decline-label">IF YOU SKIP</span>
-                <h2 id="closing-decline-title">Delivery stays unscored.</h2>
-                <p>
-                  Delivery is one of your five scores — <b>15% of the weighted total</b>. Without a closing
-                  take the other four are rescaled to 100%, so the number you see will differ from a round
-                  that recorded one. The argument review also reads the closing statement, so it will see the
-                  debate transcript only.
-                </p>
-                <div className="closing-take-actions">
-                  <button className="button closing-skip" type="button" onClick={onContinue}>
-                    Skip — see my scores
-                  </button>
-                  <button className="button button-light" type="button" onClick={() => setStage("offer")}>
-                    Record instead
-                  </button>
-                </div>
-                <p className="closing-footnote">
-                  You can still add a closing take from the verdict later; the weighted score is recalculated
-                  when you do.
-                </p>
-              </section>
-            )}
-
-            {stage === "record" && (
-              <section className="closing-booth" aria-labelledby="closing-booth-title">
-                <div className="closing-booth-head">
-                  <div>
-                    <span className="closing-booth-label">TAKE 01 / UP TO 3:00</span>
-                    <h2 id="closing-booth-title">Deliver the closing statement.</h2>
-                    <p>
-                      Wrap the round: the clash, your strongest ground, and what should decide it. Record, then
-                      choose <b>Review delivery</b> so the take is scored before you continue.
-                    </p>
-                  </div>
-                  <span className={`closing-booth-state${takeReviewed ? " is-ready" : ""}`}>
-                    {takeReviewed ? "TAKE REVIEWED" : "NOT REVIEWED"}
-                  </span>
-                </div>
-
-                <div className="closing-booth-body">
-                  <Suspense fallback={<p className="closing-booth-loading" role="status">Loading the delivery coach…</p>}>
-                    <PresentationRoom
-                      compact
-                      topic={topic}
-                      sessionId={recordId}
-                      model={model}
-                      initialResult={initialResult}
-                      onResult={onDelivery}
-                    />
-                  </Suspense>
-                  <aside className="closing-booth-aside">
-                    <span>WHAT A CLOSING DOES</span>
-                    <ol>
-                      <li>Name the clash the round came down to.</li>
-                      <li>Give your strongest ground in one clear claim.</li>
-                      <li>Say what should decide it — and why.</li>
-                    </ol>
-                    <p>Aim for 45–90 seconds. The cap is three minutes, and audio is discarded after review unless you keep it.</p>
-                  </aside>
-                </div>
-
-                <div className="closing-booth-foot">
-                  <button className="button button-dark" type="button" onClick={onContinue}>
-                    {takeReviewed ? "Read my verdict" : "Continue to the verdict"} <ArrowRight size={16} />
-                  </button>
-                  <button className="text-link" type="button" onClick={() => setStage("offer")}>
-                    Back to the choice
-                  </button>
-                </div>
-              </section>
-            )}
-          </motion.div>
-        </AnimatePresence>
+        <ClosingTakePanel {...props} />
       </section>
     </>
   );

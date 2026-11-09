@@ -643,3 +643,32 @@
   .voice-close,
   .voice-mode { transition: none; }
 }
+
+/* The round is over: the room becomes a paper closing-take sheet. */
+.voice-room-live { display: contents; }
+.voice-room.is-round-over { position: relative; }
+.voice-closing {
+  position: absolute;
+  inset: 62px 0 0;
+  z-index: 2;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--ink);
+  background: var(--paper);
+}
+.voice-closing-sheet {
+  width: min(100%, 940px);
+  margin: 0 auto;
+  padding: 20px clamp(16px, 3vw, 34px) 34px;
+}
+.voice-closing .closing-hero { padding-top: 2px; }
+.voice-closing .closing-options { margin-top: 14px; }
+
+@media (max-width: 760px) {
+  .voice-closing-sheet { padding: 14px 14px 24px; }
+  .voice-closing .closing-hero { padding-top: 0; }
+}
+
+/* The live room is inert during the closing take; hide it rather than let its
+   sticky mobile controls paint above the sheet. */
+.voice-room.is-round-over .voice-room-live { display: none; }
