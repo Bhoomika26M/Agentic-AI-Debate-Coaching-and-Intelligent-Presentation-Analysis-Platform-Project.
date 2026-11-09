@@ -412,6 +412,8 @@ test("a spoken round ends in the voice room with the closing-take choice", async
   const dialog = page.getByRole("dialog");
   const microphone = dialog.getByRole("button", { name: "Hold to speak your turn" });
   await expect(microphone).toBeEnabled();
+  // The room carries the round clock, so time is visible without the arena.
+  await expect(dialog.locator(".voice-clock")).toContainText(/0[45]:\d\d/);
 
   // One spoken turn, so the round has a transcript and a voice exchange.
   await microphone.hover();
@@ -431,6 +433,8 @@ test("a spoken round ends in the voice room with the closing-take choice", async
   // back to the typed arena.
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("region", { name: "Closing take" })).toBeVisible();
+  await expect(dialog.locator(".voice-clock")).toHaveCount(0);
+  await expect(dialog.getByText("Round complete")).toBeVisible();
   await expect(dialog.getByRole("heading", { name: /closes the round/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: /is in the book/i })).toHaveCount(0);
 

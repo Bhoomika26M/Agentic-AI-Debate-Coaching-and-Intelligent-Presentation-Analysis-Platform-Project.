@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BookOpenText, Headphones, Keyboard, Mic, MicOff, Pause, Send, Square, X } from "lucide-react";
+import { BookOpenText, Clock3, Headphones, Keyboard, Mic, MicOff, Pause, Send, Square, X } from "lucide-react";
 import { VoiceClient, type DeliverySignals, type VoiceDiagnostics, type VoiceEvent } from "../../services/voice-api";
 import { DEFAULT_LOCAL_MODEL, type LocalModel } from "../../services/app-settings";
 import type { DebateOptions, PracticePreferences } from "../../services/debate-api";
@@ -34,6 +34,8 @@ type Props = {
   onTurn?: (speaker: "learner" | "opponent", content: string) => void;
   onClose: () => void;
   onSignIn?: () => void;
+  /** Seconds left in the round, from the arena's own clock. */
+  secondsLeft?: number | null;
   /** The clock has reached zero: the room itself takes the closing take. */
   roundOver?: boolean;
   recordId?: string | null;
@@ -97,6 +99,11 @@ function elapsedLabel(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+/** The round clock matches the arena's mm:ss instead of m:ss. */
+function clockLabel(seconds: number) {
+  return `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 function sentencesOf(text: string) {
   return text
     .replace(/[*_`#>]+/g, " ")
@@ -105,7 +112,7 @@ function sentencesOf(text: string) {
     .filter(Boolean);
 }
 
-export function VoiceRoom({ topic, position, persona, difficulty, preferences, model = DEFAULT_LOCAL_MODEL, streamReplies, streamRepliesDefault, onStreamRepliesChange, onRememberStreamReplies, onTypeInstead, accessToken, history = [], onTurn, onClose, onSignIn, roundOver = false, recordId = null, deliveryResult = null, onDeliveryResult, onFinishRound }: Props) {
+export function VoiceRoom({ topic, position, persona, difficulty, preferences, model = DEFAULT_LOCAL_MODEL, streamReplies, streamRepliesDefault, onStreamRepliesChange, onRememberStreamReplies, onTypeInstead, accessToken, history = [], onTurn, onClose, onSignIn, secondsLeft = null, roundOver = false, recordId = null, deliveryResult = null, onDeliveryResult, onFinishRound }: Props) {
   const titleId = useId();
   const [status, setStatus] = useState<Status>("connecting");
   const [lines, setLines] = useState<Line[]>(() => history.map((line) => ({
@@ -136,6 +143,8 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
   const [listenSeconds, setListenSeconds] = useState(0);
 
   const clientRef = useRef<VoiceClient | null>(null);
+  const remainingSeconds = secondsLeft === null ? null : Math.max(0, secondsLeft);
+  const lastMinute = remainingSeconds !== null && remainingSeconds > 0 && remainingSeconds <= 60;
   // Read inside the audio callback, which outlives a single render.
   const roundOverRef = useRef(roundOver);
   roundOverRef.current = roundOver;
@@ -558,10 +567,24 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
             <span className="voice-brand-mark"><BookOpenText size={16} /></span>
             <span>VERDICT<span className="voice-brand-period">.</span></span>
           </div>
-          <div className={`voice-status state-${status}`} role="status" aria-live="polite">
-            <span className="voice-status-mark" aria-hidden="true"><i /><i /><i /></span>
-            <span>{roundOver ? "Round complete" : STATUS_COPY[status]}</span>
+          <div className="voice-topbar-center">
+            {!roundOver && remainingSeconds !== null && (
+              <div
+                className={`voice-clock${lastMinute ? " is-urgent" : ""}`}
+                role="timer"
+                aria-label={`${Math.floor(remainingSeconds / 60)} minutes ${remainingSeconds % 60} seconds left in the round`}
+              >
+                <Clock3 size={13} aria-hidden="true" />
+                <b>{clockLabel(remainingSeconds)}</b>
+                <span>LEFT</span>
+              </div>
+            )}
+            <div className={`voice-status state-${status}`} role="status" aria-live="polite">
+              <span className="voice-status-mark" aria-hidden="true"><i /><i /><i /></span>
+              <span>{roundOver ? "Round complete" : STATUS_COPY[status]}</span>
+            </div>
           </div>
+          {lastMinute && <span className="visually-hidden" role="status">One minute left in the round.</span>}
           <div className="voice-top-actions">
             {!roundOver && (
               <>

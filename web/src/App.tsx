@@ -2161,6 +2161,7 @@ export default function App() {
                     onTurn={(speaker, content) =>
                       setMessages((current) => [...current, { id: crypto.randomUUID(), speaker, content }])
                     }
+                    secondsLeft={secondsLeft}
                     roundOver={voiceRoundOver}
                     recordId={recordId}
                     deliveryResult={deliveryResult}

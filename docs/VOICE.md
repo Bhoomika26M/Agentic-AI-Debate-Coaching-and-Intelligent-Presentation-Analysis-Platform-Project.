@@ -303,7 +303,10 @@ the verified reply, and an interrupt cancels the pending render.
 
 ### Round end and the closing take
 
-When the clock reaches zero while the voice room is open, the room stays open.
+The room carries the arena's round clock in its top bar (`mm:ss`, with an urgent
+style and a one-minute screen-reader announcement in the last minute), so time
+never depends on seeing the arena behind the dialog. When the clock reaches zero
+while the voice room is open, the room stays open.
 It releases the microphone, stops any reply still playing, and replaces the
 exchange with the closing-take sheet: record a take, or skip it and see what
 that costs. Both choices state that Delivery is 15% of the weighted score and

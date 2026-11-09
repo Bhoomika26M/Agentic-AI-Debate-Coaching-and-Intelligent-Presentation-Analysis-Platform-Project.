@@ -672,3 +672,46 @@
 /* The live room is inert during the closing take; hide it rather than let its
    sticky mobile controls paint above the sheet. */
 .voice-room.is-round-over .voice-room-live { display: none; }
+
+/* The round clock lives in the room, so time is visible without the arena. */
+.voice-topbar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+.voice-clock {
+  min-height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--voice-rule);
+  color: #d3ccbd;
+  font: 10px var(--mono);
+  letter-spacing: .045em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.voice-clock svg { flex: 0 0 auto; color: var(--brass); }
+.voice-clock b { color: var(--paper-light); font: 400 13px/1 var(--mono); letter-spacing: .04em; }
+.voice-clock > span { color: #a9a294; font: 8px var(--mono); letter-spacing: .14em; }
+.voice-clock.is-urgent { border-color: #a34539; color: #ffd9d0; background: #2a1c1c; }
+.voice-clock.is-urgent svg { color: #ff8574; }
+.voice-clock.is-urgent b { color: #ff9d8d; }
+.voice-clock.is-urgent > span { color: #e7a79c; }
+
+@media (max-width: 680px) {
+  .voice-topbar-center {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 10px 40px;
+  }
+  .voice-topbar-center .voice-status { grid-column: auto; grid-row: auto; margin: 0; }
+  .voice-clock { min-height: 31px; padding-inline: 8px; }
+  .voice-clock b { font-size: 12px; }
+}
