@@ -715,3 +715,48 @@
   .voice-clock { min-height: 31px; padding-inline: 8px; }
   .voice-clock b { font-size: 12px; }
 }
+
+/* Time cues: quiet at halfway, unmissable in the last thirty seconds. */
+.voice-time-cue,
+.voice-final-cue {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.voice-time-cue {
+  border: 1px solid #806d42;
+  color: #f0dcb8;
+  background: #28251d;
+  animation: voice-cue-in .28s ease-out;
+}
+.voice-time-cue b { color: var(--brass); font-weight: 650; }
+.voice-final-cue {
+  border: 1px solid #a34539;
+  border-left-width: 4px;
+  color: #ffe4dc;
+  background: #30201f;
+}
+.voice-final-cue p { margin: 0; }
+.voice-final-cue b { color: #ff9d8d; }
+.voice-final-cue-time {
+  margin-left: auto;
+  color: #ff9d8d;
+  font: 11px var(--mono);
+  letter-spacing: .06em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+@keyframes voice-cue-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 680px) {
+  .voice-time-cue,
+  .voice-final-cue { flex-wrap: wrap; padding: 9px 12px; gap: 6px 10px; font-size: 11.5px; }
+  .voice-final-cue-time { margin-left: 0; }
+}

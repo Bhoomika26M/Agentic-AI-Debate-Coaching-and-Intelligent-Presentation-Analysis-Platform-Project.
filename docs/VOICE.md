@@ -305,7 +305,9 @@ the verified reply, and an interrupt cancels the pending render.
 
 The room carries the arena's round clock in its top bar (`mm:ss`, with an urgent
 style and a one-minute screen-reader announcement in the last minute), so time
-never depends on seeing the arena behind the dialog. When the clock reaches zero
+never depends on seeing the arena behind the dialog. Halfway through, a quiet
+six-second strip says how much time is left; the final thirty seconds keep a
+visible red strip with the remaining time on screen until the round ends. When the clock reaches zero
 while the voice room is open, the room stays open.
 It releases the microphone, stops any reply still playing, and replaces the
 exchange with the closing-take sheet: record a take, or skip it and see what

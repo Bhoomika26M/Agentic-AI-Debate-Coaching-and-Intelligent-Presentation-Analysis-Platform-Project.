@@ -2162,6 +2162,7 @@ export default function App() {
                       setMessages((current) => [...current, { id: crypto.randomUUID(), speaker, content }])
                     }
                     secondsLeft={secondsLeft}
+                    roundSeconds={duration * 60}
                     roundOver={voiceRoundOver}
                     recordId={recordId}
                     deliveryResult={deliveryResult}

@@ -36,6 +36,8 @@ type Props = {
   onSignIn?: () => void;
   /** Seconds left in the round, from the arena's own clock. */
   secondsLeft?: number | null;
+  /** The round's full length, so the halfway cue knows where halfway is. */
+  roundSeconds?: number | null;
   /** The clock has reached zero: the room itself takes the closing take. */
   roundOver?: boolean;
   recordId?: string | null;
@@ -112,7 +114,7 @@ function sentencesOf(text: string) {
     .filter(Boolean);
 }
 
-export function VoiceRoom({ topic, position, persona, difficulty, preferences, model = DEFAULT_LOCAL_MODEL, streamReplies, streamRepliesDefault, onStreamRepliesChange, onRememberStreamReplies, onTypeInstead, accessToken, history = [], onTurn, onClose, onSignIn, secondsLeft = null, roundOver = false, recordId = null, deliveryResult = null, onDeliveryResult, onFinishRound }: Props) {
+export function VoiceRoom({ topic, position, persona, difficulty, preferences, model = DEFAULT_LOCAL_MODEL, streamReplies, streamRepliesDefault, onStreamRepliesChange, onRememberStreamReplies, onTypeInstead, accessToken, history = [], onTurn, onClose, onSignIn, secondsLeft = null, roundSeconds = null, roundOver = false, recordId = null, deliveryResult = null, onDeliveryResult, onFinishRound }: Props) {
   const titleId = useId();
   const [status, setStatus] = useState<Status>("connecting");
   const [lines, setLines] = useState<Line[]>(() => history.map((line) => ({
@@ -141,10 +143,16 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
   // A dropped recognition, shown where the learner expects their words.
   const [heardNote, setHeardNote] = useState("");
   const [listenSeconds, setListenSeconds] = useState(0);
+  // One quiet cue at halfway; the final half-minute stays on screen.
+  const [timeCue, setTimeCue] = useState("");
+  const halfwayCueRef = useRef(false);
+  const previousRemainingRef = useRef<number | null>(null);
+  const timeCueTimerRef = useRef(0);
 
   const clientRef = useRef<VoiceClient | null>(null);
   const remainingSeconds = secondsLeft === null ? null : Math.max(0, secondsLeft);
   const lastMinute = remainingSeconds !== null && remainingSeconds > 0 && remainingSeconds <= 60;
+  const finalSeconds = remainingSeconds !== null && remainingSeconds > 0 && remainingSeconds <= 30;
   // Read inside the audio callback, which outlives a single render.
   const roundOverRef = useRef(roundOver);
   roundOverRef.current = roundOver;
@@ -455,6 +463,31 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
     };
   }, []);
 
+  // Halfway and final-thirty cues read the same clock as the timer chip, so
+  // they can never disagree with it. The halfway cue fires once per visit.
+  useEffect(() => {
+    if (secondsLeft === null || roundSeconds === null) return;
+    const remaining = Math.max(0, secondsLeft);
+    const previous = previousRemainingRef.current;
+    previousRemainingRef.current = remaining;
+    const halfway = Math.floor(roundSeconds / 2);
+    if (
+      !halfwayCueRef.current &&
+      previous !== null &&
+      previous > halfway &&
+      remaining <= halfway &&
+      remaining > 0
+    ) {
+      halfwayCueRef.current = true;
+      setTimeCue(`${clockLabel(halfway)} left`);
+      window.clearTimeout(timeCueTimerRef.current);
+      timeCueTimerRef.current = window.setTimeout(() => setTimeCue(""), 6500);
+    }
+    if (remaining === 0) setTimeCue("");
+  }, [secondsLeft, roundSeconds]);
+
+  useEffect(() => () => window.clearTimeout(timeCueTimerRef.current), []);
+
   // The round is over: release the microphone so the closing take can record,
   // and stop any reply still playing over it.
   useEffect(() => {
@@ -649,6 +682,18 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
         {input.error && <span className="visually-hidden" role="alert">{input.error}</span>}
 
         <main className="voice-layout">
+          {timeCue && (
+            <div className="voice-time-cue" role="status">
+              <span><b>Halfway.</b> {timeCue} — start landing your case.</span>
+            </div>
+          )}
+          {finalSeconds && (
+            <div className="voice-final-cue">
+              <span className="visually-hidden" role="status">Final 30 seconds. Finish the point you are making.</span>
+              <p><b>Final 30 seconds.</b> Finish the point you&#39;re making — the closing take comes next.</p>
+              <span className="voice-final-cue-time" aria-hidden="true">{clockLabel(remainingSeconds)} LEFT</span>
+            </div>
+          )}
           <section className="voice-transcript-panel" aria-label="Debate exchange">
             <div className="voice-transcript-heading">
               <div>
