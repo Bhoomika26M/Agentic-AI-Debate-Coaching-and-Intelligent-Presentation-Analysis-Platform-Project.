@@ -286,6 +286,21 @@ written** is the permanent choice. Skip mode still consumes the whole stream, so
 the reply and its diagnostics are committed together when `[DONE]` / the final
 transcript arrives; it never changes what the model produced.
 
+### Playback pacing
+
+A binary frame is bound to the caption that immediately preceded it on the
+socket, so a clip is never relabelled by a sentence that arrived while it was
+still decoding. The page keeps a small decoded ready queue: a reply starts once
+two sentences are decoded **or** 180 ms have passed, whichever comes first, and
+every later clip is scheduled against the predicted end of the one before it.
+Openers never wait, and neither do moderator lines. The reply therefore plays
+as one stream instead of restarting per sentence; the cost is at most 180 ms
+before the first sentence when the second one is not ready yet.
+
+The server overlaps as well: while a sentence's audio is being sent, the next
+final sentence renders in the background. Synthesis stays ordered, runs only on
+the verified reply, and an interrupt cancels the pending render.
+
 ### Barge-in (P2)
 
 The learner can interrupt while the opponent speaks. Interrupting stops every
@@ -319,13 +334,14 @@ audio asset and no licence to track.
 
 ## Tests
 
-The current backend suite has 412 passing tests. Voice-path coverage includes:
+The current backend suite has 413 passing tests. Voice-path coverage includes:
 
 - `tests/test_voice_recognition.py` — every fixture hallucination, word counts,
   confidence gates, stutter collapsing, filler stripping for matching only.
 - `tests/test_voice_pipeline.py` — event ordering, sentence-by-sentence
   synthesis, prefetched first-sentence audio before the reply event without
-  duplication, cancel mid-reply, "only spoken words stored", opener rotation,
+  duplication, the next sentence rendering while the previous one is sent,
+  cancel mid-reply, "only spoken words stored", opener rotation,
   no TTS engine, guard redirects being spoken, per-persona voices.
 - `tests/test_voice_ws.py` — auth rejection (4401), foreign-origin rejection
   (4403), the recognition gate never calling the model, transcript/chip ordering,
@@ -370,7 +386,11 @@ intact.
 - **Audio is discarded.** It is transcribed in memory, never written to disk,
   and never stored in the session. There is no voice-retention setting.
 - **Sentence granularity for synthesis.** A very long sentence is split at a
-  comma, so captions can lag the audio by a clause.
+  comma, so captions can lag the audio by a clause. The caption is now bound to
+  its own frame, so the label is right; the lag is in when the sentence starts.
+- **The prebuffer is a fixed 180 ms / two-clip window.** It removes the seams
+  between sentences, not a slow first render. Openers and moderator lines never
+  wait for it, and an interrupt clears the queue along with the sources.
 - **The opener is one clip per turn.** If synthesis of the first sentence takes
   longer than the opener, there is a silent gap after it. Nothing loops the
   opener on purpose.

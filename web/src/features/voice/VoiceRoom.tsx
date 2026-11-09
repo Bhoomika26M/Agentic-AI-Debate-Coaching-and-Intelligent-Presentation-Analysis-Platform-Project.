@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BookOpenText, Headphones, Keyboard, Mic, MicOff, Pause, Send, Square, X } from "lucide-react";
-import { VoiceClient, type DeliverySignals, type VoiceCaption, type VoiceDiagnostics, type VoiceEvent } from "../../services/voice-api";
+import { VoiceClient, type DeliverySignals, type VoiceDiagnostics, type VoiceEvent } from "../../services/voice-api";
 import { DEFAULT_LOCAL_MODEL, type LocalModel } from "../../services/app-settings";
 import type { DebateOptions, PracticePreferences } from "../../services/debate-api";
 import { MarkdownText } from "../../components/Markdown";
@@ -128,7 +128,6 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
   const [listenSeconds, setListenSeconds] = useState(0);
 
   const clientRef = useRef<VoiceClient | null>(null);
-  const captionRef = useRef<VoiceCaption | null>(null);
   const pendingTimerRef = useRef(0);
   const connectionTimerRef = useRef(0);
   const connectionEpochRef = useRef(0);
@@ -281,7 +280,6 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
           }
           break;
         case "caption":
-          captionRef.current = event;
           if (!event.opener && !event.moderator) setCaption(event.text);
           if (event.moderator) setNotice(event.text);
           break;
@@ -361,10 +359,15 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
         });
       },
       onEvent: (event) => handleEventRef.current(event),
-      onAudio: async (blob) => {
-        const meta = captionRef.current;
+      onAudio: async (blob, caption) => {
+        // VoiceClient binds each blob to the caption that preceded it. Do not
+        // read a shared "current caption": a newer sentence can arrive while
+        // this clip is still decoding, which would relabel the audio.
+        const meta = caption ?? null;
         await player.enqueue(blob, {
-          index: meta && !meta.opener ? meta.index : null,
+          // A moderator line is not part of the reply: it must start at once
+          // and must never count as a caption the learner heard.
+          index: meta && !meta.opener && !meta.moderator ? meta.index : null,
           onStart: () => {
             if (meta && !meta.opener && !meta.moderator && meta.index >= 0) {
               setCaption(meta.text);
@@ -413,6 +416,10 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
   useEffect(() => {
     const dialog = roomRef.current;
     if (!dialog) return;
+    // The room opens from a click. Create/resume the audio context in that
+    // activation so the first prefetched sentence is not held by autoplay
+    // policy and then released in a burst.
+    player.unlock();
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -427,7 +434,17 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
   }, []);
 
   useEffect(() => {
-    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
+    const node = chatRef.current;
+    if (!node) return;
+    // Follow the growing reply only while the learner is already near the
+    // bottom. Forcing a smooth scroll on every sentence fights a reader who
+    // has scrolled back and makes the transcript look like it is jittering.
+    const distance = node.scrollHeight - node.scrollTop - node.clientHeight;
+    if (distance > 96) return;
+    const frame = window.requestAnimationFrame(() => {
+      node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [lines, streamed?.text]);
 
   // Keep hands-free capture out of both the opponent's thinking and speaking turns.

@@ -184,6 +184,44 @@ def test_each_sentence_is_synthesised_and_sent_separately():
     assert result.audio_sentences == 3
 
 
+def test_the_next_sentence_renders_while_the_previous_one_is_sent():
+    order: list[str] = []
+
+    class OrderedEngine(FakeEngine):
+        async def synthesise(self, text: str, persona: str) -> AudioClip | None:
+            order.append(f"synth:{text}")
+            return await super().synthesise(text, persona)
+
+    async def audio(clip: AudioClip, caption: dict) -> None:
+        order.append(f"send:{caption['text']}")
+        # Sending a frame suspends on the socket. The lookahead must render the
+        # next sentence in that gap, without reordering what is sent.
+        await asyncio.sleep(0.01)
+        order.append(f"sent:{caption['text']}")
+
+    recorder = Recorder()
+    hooks = TurnHooks(emit=recorder.emit, audio=audio)
+    result = asyncio.run(
+        run_turn(
+            _session(),
+            "Parking is a subsidy.",
+            hooks=hooks,
+            engine=OrderedEngine(),
+            openers=None,
+            respond=_responder(),
+        )
+    )
+
+    # The next sentence starts rendering after the previous frame's send begins
+    # and finishes before that send is done: the render hides behind transport.
+    assert order.index("send:Fine. You want the levy.") < order.index("synth:But who audits it?")
+    assert order.index("synth:But who audits it?") < order.index("sent:Fine. You want the levy.")
+    # Frames are still sent in sentence order, one at a time.
+    sends = [entry[5:] for entry in order if entry.startswith("send:")]
+    assert sends == result.sentences
+    assert order.index("sent:Fine. You want the levy.") < order.index("send:But who audits it?")
+
+
 def test_a_finished_turn_stores_the_whole_reply_exactly_once():
     recorder = Recorder()
     _run(recorder, openers=None, respond=_responder())

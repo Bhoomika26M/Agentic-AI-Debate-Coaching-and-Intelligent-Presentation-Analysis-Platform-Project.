@@ -114,13 +114,14 @@ function socketUrl() {
 export class VoiceClient {
   private socket: WebSocket | null = null;
   private audioQueue: Promise<void> = Promise.resolve();
+  private pendingCaption: VoiceCaption | null = null;
   private closeNotified = false;
 
   constructor(
     private readonly options: {
       token?: string;
       onEvent: (event: VoiceEvent) => void;
-      onAudio: (audio: Blob) => void | Promise<void>;
+      onAudio: (audio: Blob, caption?: VoiceCaption) => void | Promise<void>;
       onClose: (reason: string, code?: number) => void;
       onOpen: () => void;
     },
@@ -152,6 +153,10 @@ export class VoiceClient {
             this.options.onOpen();
             return;
           }
+          // The server sends a caption immediately before its binary frame.
+          // Bind that caption to the blob now, not when the decode queue reaches
+          // it, or a fast following caption can relabel the earlier audio.
+          if (event.type === "caption") this.pendingCaption = event as VoiceCaption;
           this.options.onEvent(event as VoiceEvent);
         } catch {
           /* A malformed frame must not kill the session. */
@@ -159,9 +164,11 @@ export class VoiceClient {
         return;
       }
       if (message.data instanceof Blob) {
+        const caption = this.pendingCaption ?? undefined;
+        this.pendingCaption = null;
         // Decode clips in server order before scheduling them for playback.
         this.audioQueue = this.audioQueue
-          .then(() => this.options.onAudio(message.data as Blob))
+          .then(() => this.options.onAudio(message.data as Blob, caption))
           .then(() => undefined)
           .catch(() => undefined);
       }

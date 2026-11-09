@@ -220,30 +220,51 @@ async def run_turn(
         await hooks.emit({"type": "state", "state": "speaking"})
 
     spoken: list[str] = [prefix_text] if prefix_sent else []
-    for index, sentence in enumerate(sentences):
-        if prefix_sent and index == 0:
-            # The first sentence was already synthesised and sent while the
-            # verifier and the rest of the draft were still running.
-            continue
-        if control.cancelled:
-            break
-        clip = await engine.synthesise(sentence, session.persona)
-        if clip is None:
-            # No speech engine this turn: the browser speaks, or the text stands alone.
-            timings.tts_engine = "none"
-            break
-        if control.cancelled:
-            break
-        await _send_caption(hooks, clip, {"index": index, "total": len(sentences)})
-        spoken.append(sentence)
-        audio_sentences += 1
-        timings.audio_ms += clip.duration_ms
-        if timings.first_audio_ms == 0:
-            timings.first_audio_ms = _elapsed(started)
-            timings.voice_to_voice_ms = _wall_elapsed(speech_end_ms, timings.first_audio_ms)
-            timings.tts_first_ms = timings.first_audio_ms - timings.draft_ms - timings.verify_ms
-        if timings.reply_first_audio_ms == 0:
-            timings.reply_first_audio_ms = _wall_elapsed(speech_end_ms, _elapsed(started))
+    pending_clip: asyncio.Task[AudioClip | None] | None = None
+    try:
+        for index, sentence in enumerate(sentences):
+            if prefix_sent and index == 0:
+                # The first sentence was already synthesised and sent while the
+                # verifier and the rest of the draft were still running.
+                continue
+            if control.cancelled:
+                break
+            if pending_clip is not None:
+                # The previous iteration started this render while it was
+                # sending the preceding clip. Await it in sentence order, which
+                # keeps audio ordered while hiding synthesis behind transport.
+                clip = await pending_clip
+                pending_clip = None
+            else:
+                clip = await engine.synthesise(sentence, session.persona)
+            if clip is None:
+                # No speech engine this turn: the browser speaks, or the text stands alone.
+                timings.tts_engine = "none"
+                break
+            if control.cancelled:
+                break
+            # Start the next final sentence while this one is sent. No
+            # unverified text reaches this loop; the reply is already accepted.
+            next_index = index + 1
+            if next_index < len(sentences):
+                pending_clip = asyncio.create_task(
+                    engine.synthesise(sentences[next_index], session.persona)
+                )
+            await _send_caption(hooks, clip, {"index": index, "total": len(sentences)})
+            spoken.append(sentence)
+            audio_sentences += 1
+            timings.audio_ms += clip.duration_ms
+            if timings.first_audio_ms == 0:
+                timings.first_audio_ms = _elapsed(started)
+                timings.voice_to_voice_ms = _wall_elapsed(speech_end_ms, timings.first_audio_ms)
+                timings.tts_first_ms = timings.first_audio_ms - timings.draft_ms - timings.verify_ms
+            if timings.reply_first_audio_ms == 0:
+                timings.reply_first_audio_ms = _wall_elapsed(speech_end_ms, _elapsed(started))
+    finally:
+        if pending_clip is not None:
+            pending_clip.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await pending_clip
 
     if prefix_sent and timings.reply_first_audio_ms and timings.tts_first_ms == 0:
         timings.tts_first_ms = max(
