@@ -174,6 +174,11 @@ test("ending a rehearsal clears its resumable snapshot", async ({ page }) => {
 
   await page.getByRole("button", { name: "Finish & review" }).click();
   await page.getByRole("button", { name: /Tap again to finish/ }).click();
+  await expect(page.getByRole("heading", { name: /closes the round/i })).toBeVisible();
+  await page.getByRole("button", { name: "Skip the take" }).click();
+  await expect(page.getByText(/Delivery stays unscored/i)).toBeVisible();
+  await expect(page.getByText(/15% of the weighted total/i)).toBeVisible();
+  await page.getByRole("button", { name: /Skip — see my scores/ }).click();
   await expect(page.getByText(/DEBATE REVIEW — COMPLETED/)).toBeVisible();
   await expect(page.getByRole("heading", { name: /is in the book/i })).toBeVisible();
   await expect(page.getByText("RECOMMENDED NEXT")).toBeVisible();
@@ -358,6 +363,37 @@ test("a complete spoken turn sends microphone audio and renders both transcript 
   await expect(dialog.locator(".voice-line.learner").getByText(SPOKEN_LEARNER)).toBeVisible();
   await expect(dialog.locator(".voice-line.opponent").getByText(SPOKEN_OPPONENT)).toBeVisible();
   expect(received).toContain("utterance_start");
+});
+
+test("the score run can be stopped and resumed from the verdict", async ({ page }) => {
+  await mockDebateApi(page);
+  let reviewCalls = 0;
+  await page.route("**/api/debate/analyze/stream", async (route) => {
+    reviewCalls += 1;
+    // Hold the review open so the stop control is reachable, then fail it.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await route
+      .fulfill({ status: 503, json: { detail: "Analysis is outside this rehearsal test." } })
+      .catch(() => {});
+  });
+
+  await startRehearsal(page);
+  await submitCase(page, "Schools should ban phones because attention improves in class.");
+  await page.getByRole("button", { name: "Finish & review" }).click();
+  await page.getByRole("button", { name: /Tap again to finish/ }).click();
+  await page.getByRole("button", { name: "Skip the take" }).click();
+  await page.getByRole("button", { name: /Skip — see my scores/ }).click();
+
+  await page.getByRole("button", { name: "Stop scoring" }).click();
+  await expect(page.getByText("SCORING STOPPED")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop scoring" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Resume scoring" }).click();
+  await expect(page.getByRole("button", { name: "Stop scoring" })).toBeVisible();
+  await expect.poll(() => reviewCalls).toBeGreaterThanOrEqual(2);
+  // Once the run ends the control goes away; only the failure stays on screen.
+  await expect(page.getByRole("alert")).toContainText(/outside this rehearsal test/i);
+  await expect(page.getByRole("button", { name: "Stop scoring" })).toHaveCount(0);
 });
 
 test("a brief tap on hold to speak shows an inline hint without a screen-shifting error banner", async ({

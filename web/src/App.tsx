@@ -57,6 +57,7 @@ const OnboardingFlow = lazy(() => import("./features/onboarding/OnboardingFlow")
 const DashboardView = lazy(() => import("./features/dashboard/DashboardView").then((m) => ({ default: m.DashboardView })));
 const PresentationRoom = lazy(() => import("./features/presentation/PresentationRoom").then((m) => ({ default: m.PresentationRoom })));
 const VoiceRoom = lazy(() => import("./features/voice/VoiceRoom").then((m) => ({ default: m.VoiceRoom })));
+const ClosingTake = lazy(() => import("./features/closing/ClosingTake").then((m) => ({ default: m.ClosingTake })));
 const SettingsView = lazy(() => import("./features/settings/SettingsView").then((m) => ({ default: m.SettingsView })));
 
 /**
@@ -334,6 +335,19 @@ function VerdictScoreSkeleton() {
   );
 }
 
+function VerdictScorePaused() {
+  return (
+    <div className="score-summary verdict-score-unavailable">
+      <div className="score-figure"><span>WEIGHTED SCORE</span><b>—<small> / 100</small></b><p>Scoring is paused. Resume it above to finish the weighted score.</p></div>
+      <div className="score-bars">
+        {["ARGUMENT QUALITY", "EVIDENCE & SUPPORT", "LOGIC", "REBUTTAL", "DELIVERY"].map((label) => (
+          <div className="score-bar is-unrated" key={label}><span>{label}</span><div className="score-track is-unrated" /><b>—</b></div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function VerdictScoreUnavailable() {
   return (
     <div className="score-summary verdict-score-unavailable">
@@ -436,6 +450,9 @@ export default function App() {
   const [challengeError, setChallengeError] = useState("");
   const [challengeDone, setChallengeDone] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  // The closing-take gate sits between the arena and the verdict page.
+  const [closingGate, setClosingGate] = useState(false);
+  const [scoringStopped, setScoringStopped] = useState(false);
   // The room's own toggle: a session choice seeded from the permanent setting.
   const [streamReplies, setStreamReplies] = useState(() => loadApplicationSettings("guest").streamReplies);
   const [modelStatus, setModelStatus] = useState<ModelStatus>({ status: "unknown" });
@@ -980,6 +997,8 @@ export default function App() {
     reviewAbortRef.current?.abort();
     clearSnapshot();
     setVoiceOpen(false);
+    setClosingGate(false);
+    setScoringStopped(false);
     lastTurnRef.current = null;
     pendingResumeRef.current = null;
     setStartingSession(true);
@@ -1196,6 +1215,7 @@ export default function App() {
   async function reviewDebate() {
     if (analysisLoading || reviewInFlightRef.current || learnerTurns.length === 0) return;
     reviewAbortRef.current?.abort();
+    setScoringStopped(false);
     const controller = new AbortController();
     reviewAbortRef.current = controller;
     reviewStartedRef.current = Date.now();
@@ -1256,13 +1276,26 @@ export default function App() {
     }
   }
 
-  function cancelReview() {
-    if (!reviewInFlightRef.current) return;
-    reviewAbortRef.current?.abort();
-    setAnalysis(null);
-    setAnalysisComplete(false);
-    setAnalysisError("The review was cancelled. Start it again when you’re ready.");
-    setAnalysisLoading(false);
+  /** Stop the score run. The transcript is saved; only the running pass ends. */
+  function stopScoring() {
+    setScoringStopped(true);
+    if (reviewInFlightRef.current) {
+      reviewAbortRef.current?.abort();
+      setAnalysisError("");
+      setAnalysisLoading(false);
+    }
+    if (judgeLoading) {
+      // The score request has no abort path, so ignore whatever it returns.
+      judgeSeqRef.current += 1;
+      setJudgeLoading(false);
+      setVerdictRankLoading(false);
+    }
+  }
+
+  function resumeScoring() {
+    setScoringStopped(false);
+    if (analysis?.ratings && analysisComplete) void runJudge(analysis, deliveryResult);
+    else void reviewDebate();
   }
 
   async function runJudge(report: AnalysisReport | null, delivery: PresentationResult | null, debateTurns = messages, targetRecordId = recordId) {
@@ -1270,6 +1303,7 @@ export default function App() {
     const sequence = ++judgeSeqRef.current;
     setJudgeLoading(true);
     setJudgeError("");
+    setScoringStopped(false);
     if (delivery?.transcript.trim()) {
       setJudge(null);
       setVerdictRank(null);
@@ -1288,6 +1322,8 @@ export default function App() {
           difficulty,
           model: loadApplicationSettings(user?.id ?? "guest").model,
         }, debateTurns, session?.access_token, delivery.transcript);
+        // A stopped run must not write its late result over the paused page.
+        if (sequence !== judgeSeqRef.current) return;
         setAnalysis(scoredReport);
         setAnalysisComplete(true);
         if (targetRecordId) {
@@ -1369,6 +1405,8 @@ export default function App() {
     setJudgeError("");
     setPlanUpdateStatus("idle");
     setPlanUpdateError("");
+    setClosingGate(false);
+    setScoringStopped(false);
     setDeliveryResult(delivery);
     setPendingArchiveVerdict({ record, turns: debateTurns, analysis: report, verdict: savedVerdict, delivery });
     setView("verdict");
@@ -1424,6 +1462,18 @@ export default function App() {
       });
     }
     setView("verdict");
+    // Ask for the closing take before the scorecard is written: it is the only
+    // input that scores Delivery, so both outcomes belong on one screen.
+    if (user && learnerTurns.length > 0) {
+      setScoringStopped(false);
+      setClosingGate(true);
+      return;
+    }
+    if (user && recordId && learnerTurns.length > 0) void reviewDebate();
+  }
+
+  function enterVerdictFromClosing() {
+    setClosingGate(false);
     if (user && recordId && learnerTurns.length > 0) void reviewDebate();
   }
 
@@ -2310,7 +2360,28 @@ export default function App() {
           </motion.main>
         )}
 
-        {view === "verdict" && (
+        {view === "verdict" && closingGate && (
+          <motion.main key="closing-take" className="verdict-page closing-page" {...pageMotion}>
+            <Suspense
+              fallback={
+                <div className="closing-loading" role="status">
+                  <LoaderCircle className="spin" size={16} /> Preparing the closing take…
+                </div>
+              }
+            >
+              <ClosingTake
+                topic={activeTopic}
+                recordId={recordId}
+                model={appSettings.model}
+                initialResult={deliveryResult}
+                onDelivery={setDeliveryResult}
+                onContinue={enterVerdictFromClosing}
+              />
+            </Suspense>
+          </motion.main>
+        )}
+
+        {view === "verdict" && !closingGate && (
           <motion.main key="verdict" className="verdict-page" {...pageMotion}>
             <header className={`verdict-header verdict-header-review${analysisLoading || judgeLoading ? " is-computing" : ""}`}>
               <button className="arena-brand" type="button" onClick={returnHome} aria-label="Verdict home"><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button>
@@ -2334,6 +2405,20 @@ export default function App() {
                 <div><span>WEIGHTED RANK</span>{verdictRank ? <b aria-label={`${formatOrdinal(verdictRank.rank)} out of ${verdictRank.total} among your saved verdicts`}>{formatOrdinal(verdictRank.rank)}<small> of {verdictRank.total}</small></b> : verdictRankLoading || verdictComputing ? <i className="verdict-stat-skeleton" aria-hidden="true" /> : <b>—</b>}</div>
                 <div><span>DEBATE TIME</span><b>{formatTime(Math.min(elapsed, duration * 60))}</b></div>
               </div>
+              {(analysisLoading || judgeLoading) && (
+                <div className="scoring-run" role="status" aria-live="polite">
+                  <span className="scoring-run-title">{analysisLoading ? "SCORING THE REVIEW" : "WEIGHING THE FINAL SCORE"}</span>
+                  <small>{analysisLoading ? `Reading your case · ${reviewElapsed}s` : "Delivery and the weighted total."}</small>
+                  <button type="button" onClick={stopScoring}>Stop scoring</button>
+                </div>
+              )}
+              {!verdictComputing && scoringStopped && learnerTurns.length > 0 && (
+                <div className="scoring-run is-stopped" role="status" aria-live="polite">
+                  <span className="scoring-run-title">SCORING STOPPED</span>
+                  <small>Your transcript is saved. Continue whenever you want the scorecard.</small>
+                  <button type="button" onClick={resumeScoring}>Resume scoring</button>
+                </div>
+              )}
               <section className="review-block verdict-review-block" aria-label="Argument review">
                 {!analysis && !analysisLoading && <div className="review-head">
                   <h2>Review your argument</h2>
@@ -2353,7 +2438,6 @@ export default function App() {
                 {analysisLoading && !analysis && (
                   <div className="review-intro verdict-computing-status verdict-review-progress" role="status">
                     <span><LoaderCircle className="spin" size={14} /> Building your review. Scores and observations will appear as they’re ready. {reviewElapsed}s</span>
-                    <button className="button button-light" type="button" onClick={cancelReview}>Cancel review</button>
                   </div>
                 )}
                 {analysisLoading && !analysis && <VerdictLoadingPreview />}
@@ -2390,7 +2474,6 @@ export default function App() {
                 {analysis && !analysisComplete && analysisLoading && (
                   <div className="review-intro verdict-computing-status verdict-review-progress" role="status">
                     <span><LoaderCircle className="spin" size={14} /> {analysis.ratings ? "Rubric scores are ready." : "Your review is still building."} Still checking fallacies and counterpoints. {reviewElapsed}s</span>
-                    <button className="button button-light" type="button" onClick={cancelReview}>Cancel review</button>
                   </div>
                 )}
 
@@ -2403,7 +2486,7 @@ export default function App() {
                     </div>
                   )}
                   <div className="verdict-review-columns">
-                  {!judge && (verdictComputing ? <VerdictScoreSkeleton /> : <VerdictScoreUnavailable />)}
+                  {!judge && (verdictComputing ? <VerdictScoreSkeleton /> : scoringStopped ? <VerdictScorePaused /> : <VerdictScoreUnavailable />)}
                   {judge && (
                     <div className="score-summary">
                       <div className="score-figure">

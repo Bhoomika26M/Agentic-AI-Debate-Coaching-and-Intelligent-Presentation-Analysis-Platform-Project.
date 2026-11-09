@@ -838,3 +838,39 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .arena-header-actions > button { padding-inline: 4px; font-size: 8px; }
   .arena-header-actions .end-button svg { width: 12px; }
 }
+
+/* The score run: one control that stops and resumes scoring, gone when done. */
+.scoring-run {
+  margin: 0 0 18px;
+  padding: 10px 12px 10px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  color: var(--paper-light);
+  background: var(--stage);
+  border-left: 3px solid var(--brass);
+}
+.scoring-run-title { color: var(--brass); font: 9px var(--mono); letter-spacing: .12em; }
+.scoring-run small { color: #cbc3b6; font-size: 11px; line-height: 1.5; }
+.scoring-run button {
+  min-height: 38px;
+  margin-left: auto;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 250, 240, .42);
+  color: var(--paper-light);
+  background: transparent;
+  font: 9px var(--mono);
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+.scoring-run button:hover { background: rgba(255, 250, 240, .14); }
+.scoring-run.is-stopped { color: var(--ink); background: #f3e7d0; border-left-color: var(--cue-deep); }
+.scoring-run.is-stopped .scoring-run-title { color: #8d4035; }
+.scoring-run.is-stopped small { color: #514a40; }
+.scoring-run.is-stopped button { border-color: #a99c85; color: #29251f; }
+.scoring-run.is-stopped button:hover { background: #e5d8c2; }
+
+@media (max-width: 480px) {
+  .scoring-run button { width: 100%; margin-left: 0; }
+}
