@@ -369,7 +369,7 @@ export function SettingsView({ settings, onChange, onSignIn, onSignOut }: Settin
                 );
               })}
             </div>
-            <p className="settings-model-note">Switching applies to the next turn or review; no restart is needed. Voice, delivery, and plan requests use the same choice. Pull both models once so either is ready: <code>ollama pull qwen3.5:4b</code> and <code>ollama pull gemma4:e4b</code>.</p>
+            <p className="settings-model-note">Switching applies to the next turn or review; no restart is needed. The selected model is warmed when the app opens and right after a switch, so the first turn is not cold. Voice, delivery, and plan requests use the same choice. Pull both models once so either is ready: <code>ollama pull qwen3.5:4b</code> and <code>ollama pull gemma4:e4b</code>.</p>
           </section>
 
           <section className="settings-section" id="settings-appearance" aria-labelledby="appearance-title">

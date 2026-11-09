@@ -176,6 +176,50 @@ def inspect_reply(
     return problems
 
 
+def inspect_prefix(
+    reply: str,
+    *,
+    latest: str | None = None,
+    topic: str | None = None,
+    private_context: str | None = None,
+    brief: str | None = None,
+    min_engagement: float = 0.08,
+) -> list[str]:
+    """Cheap safety checks for the first spoken sentence.
+
+    The first sentence goes to TTS before the rest of the draft exists, so it
+    cannot yet be judged for length or a closing question. It can still be
+    checked for the failures that would make speaking it unsafe or off-motion:
+    labels, headings, leaked wrappers or private context, assistant voice, and
+    failure to engage the learner's point at all. The full reply is still checked
+    by ``inspect_reply`` before it is accepted.
+    """
+    text = (reply or "").strip()
+    if not text:
+        return ["the draft was empty"]
+    problems: list[str] = []
+    if _ROLE_LABEL.match(text):
+        problems.append("the draft opens with a speaker label")
+    if "##" in text:
+        problems.append("the draft carries analysis headings")
+    if leaks_marker(text):
+        problems.append("the draft repeats the learner-turn wrapper")
+    if any(pattern.search(text) for pattern in _OFF_CHARACTER):
+        problems.append("the draft breaks character as an assistant")
+    context = private_context if private_context is not None else brief
+    if _leaks_private_context(text, context):
+        problems.append("the draft repeats private prompt context")
+    if (
+        latest
+        and latest.strip()
+        and engagement_ratio(latest, text) < min_engagement
+        and not _ADDRESSES_ARGUMENT.search(text)
+        and not _shares_topic(topic, text)
+    ):
+        problems.append("the draft does not engage the learner's latest point")
+    return problems
+
+
 def _repair_messages(
     draft: str,
     problems: list[str],

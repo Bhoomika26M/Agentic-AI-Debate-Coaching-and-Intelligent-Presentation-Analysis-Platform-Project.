@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 from collections.abc import AsyncIterator
 from time import perf_counter
 from typing import Literal
@@ -20,11 +21,47 @@ from .memory import summarize_history
 from .planner import plan_brief, pressure_hint
 from .response_limits import MAX_REPLY_WORDS, REPLY_LENGTH_LIMITS
 from .state import DebateState
-from .verifier import MAX_REVISE_ATTEMPTS, inspect_reply, repair_reply
+from .verifier import MAX_REVISE_ATTEMPTS, inspect_prefix, inspect_reply, repair_reply
 
 logger = logging.getLogger(__name__)
 
-ReplyEvent = tuple[Literal["final_delta", "diagnostics"], str]
+ReplyEvent = tuple[Literal["final_delta", "diagnostics", "draft_sentence"], str]
+
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
+_PREFIX_MIN_WORDS = 3
+
+
+def _first_stable_sentence(text: str) -> str | None:
+    """Return the first sentence that can safely be synthesised on its own.
+
+    A one- or two-word opener ("Fine.") is joined to the next sentence, matching
+    ``voice.tts.split_sentences``, so the prefetched caption is not a fragment.
+    """
+    parts = [part.strip() for part in _SENTENCE_BOUNDARY.split(text) if part.strip()]
+    if len(parts) < 2:
+        return None
+    first = parts[0]
+    if len(first.split()) >= _PREFIX_MIN_WORDS:
+        return first
+    merged = f"{first} {parts[1]}".strip()
+    return merged if len(merged.split()) >= _PREFIX_MIN_WORDS else None
+
+
+def _with_prefetched_sentence(prefix: str, reply: str) -> str:
+    """Keep an already-spoken opening even when repair changes the draft.
+
+    The prefix passed the sentence-level safety check, so it is valid debate
+    content even if the full draft later needs a repair or fallback. If the
+    repair preserved it, use the repaired reply unchanged; otherwise prepend the
+    spoken sentence so the transcript matches what the learner heard.
+    """
+    normalized_prefix = " ".join(prefix.split())
+    normalized_reply = " ".join(reply.split())
+    if not normalized_reply:
+        return normalized_prefix
+    if normalized_reply.lower().startswith(normalized_prefix.lower()):
+        return normalized_reply
+    return f"{normalized_prefix} {normalized_reply}".strip()
 
 
 def guard_node(state: DebateState) -> DebateState:
@@ -357,8 +394,17 @@ async def respond_verified(state: DebateState) -> dict:
     }
 
 
-async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
-    """Verify a complete candidate before streaming its final text."""
+async def respond_stream(
+    state: DebateState, *, voice_prefetch: bool = False
+) -> AsyncIterator[ReplyEvent]:
+    """Verify a complete candidate before streaming its final text.
+
+    Voice turns opt into ``voice_prefetch``: once the first complete sentence is
+    available, it is emitted for immediate synthesis while the rest of the draft
+    and the verifier continue. The prefix is screened by ``inspect_prefix`` and
+    retained through a repair or fallback, so the transcript still matches what
+    the learner heard.
+    """
     started = perf_counter()
     history = [{"speaker": t["speaker"], "content": t["content"]} for t in state.get("history", [])]
     history_turns = len(history)
@@ -402,11 +448,23 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
     messages = _briefed_messages(state, request)
     scrubber = MarkerStream()
     token_limit = {"concise": 160, "voice": 130}.get(request.reply_length, 240)
+    private_context = _private_context(state, history)
+    prefetched_sentence: str | None = None
     draft_started = perf_counter()
     async for delta in stream(messages, temperature=0.75, num_predict=token_limit):
         clean = scrubber.feed(delta)
         if clean:
             assembled.append(clean)
+            if voice_prefetch and prefetched_sentence is None:
+                candidate = _first_stable_sentence("".join(assembled))
+                if candidate and not inspect_prefix(
+                    candidate,
+                    latest=state.get("latest"),
+                    topic=state.get("topic"),
+                    private_context=private_context,
+                ):
+                    prefetched_sentence = candidate
+                    yield ("draft_sentence", candidate)
     tail = scrubber.flush()
     if tail:
         assembled.append(tail)
@@ -414,7 +472,6 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
 
     draft = "".join(assembled)
     word_limit = REPLY_LENGTH_LIMITS[request.reply_length]
-    private_context = _private_context(state, history)
     review_started = perf_counter()
     problems = inspect_reply(
         draft,
@@ -475,6 +532,8 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
                 "using a point-aware recovery reply.",
                 revision_attempts,
             )
+    if prefetched_sentence is not None:
+        final_reply = _with_prefetched_sentence(prefetched_sentence, final_reply)
     review_ms = round((perf_counter() - review_started) * 1000)
     model_ms = round((perf_counter() - started) * 1000)
 
@@ -498,6 +557,7 @@ async def respond_stream(state: DebateState) -> AsyncIterator[ReplyEvent]:
                 "memory_used": bool(state.get("memory_brief")),
                 "reply_words": len(final_reply.split()),
                 "problems": problems[:4],
+                "prefetched": prefetched_sentence is not None,
                 "plan_ms": plan_ms,
                 "draft_ms": draft_ms,
                 "review_ms": review_ms,

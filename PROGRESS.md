@@ -18,7 +18,7 @@ Five-criteria argument analysis, eight fallacy types grounded in exact transcrip
 Streaming debate with game-plan briefing, a memory agent that briefs the opponent from stored digests, a verifier plus reviser on every opponent turn, Socratic follow-ups capped at 2 deep, adaptive pressure, performance dashboard with streaks and trends, and a coaching plan agent that diagnoses weak spots from the learner's own scores, drills them, and persists the plan in the learner space.
 
 **Milestone 4, presentation analytics, testing, deployment: partial — the deployment half is not done.**
-Recording and upload, timestamped transcription, pace/filler/pause signals with drills, reports and visualizations, an automated suite (404 backend tests and 16 Playwright tests, all passing in a clean run) covering the deterministic gates, agent graphs, and browser flows, a GitHub Actions workflow for ruff, pytest, the fallacy-set check, typecheck, build, and Playwright (not yet run on a GitHub runner), Dockerfiles for the API and web app, and a Compose stack for Ollama, the API, and the frontend. Hosted provider routing works. Still missing: an actual public deployment, monitoring, and native PDF/Excel exports.
+Recording and upload, timestamped transcription, pace/filler/pause signals with drills, reports and visualizations, an automated suite (412 backend tests and 16 Playwright tests, all passing in a clean run) covering the deterministic gates, agent graphs, and browser flows, a GitHub Actions workflow for ruff, pytest, the fallacy-set check, typecheck, build, and Playwright (not yet run on a GitHub runner), Dockerfiles for the API and web app, and a Compose stack for Ollama, the API, and the frontend. Hosted provider routing works. Still missing: an actual public deployment, monitoring, and native PDF/Excel exports.
 
 ## Standing decisions
 
@@ -54,7 +54,7 @@ Recording and upload, timestamped transcription, pace/filler/pause signals with 
 
 ## Verification
 
-- `cd ai-backend` then `uv run pytest` passes 404 tests with no model or network.
+- `cd ai-backend` then `uv run pytest` passes 412 tests with no model or network.
 - `cd web` then `npx playwright test` passes 16 tests in a clean run (mocked API and Supabase, no Ollama needed).
 - `cd ai-backend` then `uv run python evals/measure_context.py --ollama --runs 3 --fresh` measures the 40-turn fixture on `qwen3.5:4b`. The older repeated-prompt sample reported legacy 1,913 estimated prompt tokens / 222 ms first token and token-budgeted 3,651 / 239 ms, but that was a cached-prompt run and is not a clean fresh-turn number. The new prompt kept the opening case and the claim at turn 2; the legacy prompt kept neither. Details and the outlier caveat are in `evals/context_window_measurement.md`.
 - `cd ai-backend` then `uv run python evals/measure_scorecard.py --runs 3` measured the full-review path: 80.2 s before (review + plan refresh + judge) and 31.1 s after (review + judge, plan in the background), a 49.0 s reduction. The rubric streams early, but the weighted verdict waits for the complete review so fallacy flags cannot change a score already shown. Details and caveats are in `evals/scorecard_measurement.md`.

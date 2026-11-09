@@ -306,3 +306,62 @@ def test_a_blank_argument_is_treated_as_the_opening_turn(monkeypatch):
 def test_graph_declares_every_agent_role():
     nodes = set(debate.debate_graph.get_graph().nodes)
     assert {"guard", "memory", "planner", "draft", "verifier", "reviser", "fallback"} <= nodes
+
+
+def test_voice_prefetch_releases_the_first_sentence_before_verification(monkeypatch):
+    chunks = [
+        "You lean on attention gains, ",
+        "but a phone ban moves the same distraction into the corridor. ",
+        "Which evidence shows focus improving without a phone-free school?",
+    ]
+    monkeypatch.setattr(debate, "stream", make_stream(chunks))
+
+    async def collect():
+        return [event async for event in debate.respond_stream(_state(), voice_prefetch=True)]
+
+    events = asyncio.run(collect())
+    assert events[0][0] == "draft_sentence"
+    assert events[0][1] == (
+        "You lean on attention gains, but a phone ban moves the same distraction "
+        "into the corridor."
+    )
+    assert "".join(text for kind, text in events if kind == "final_delta") == "".join(chunks)
+    assert next(kind for kind, _ in events) == "draft_sentence"
+
+
+def test_a_spoken_prefix_survives_a_full_reply_repair(monkeypatch):
+    chunks = [
+        "You lean on attention gains. ",
+        "That is all I have.",
+    ]
+    monkeypatch.setattr(debate, "stream", make_stream(chunks))
+    monkeypatch.setattr(debate, "chat", make_chat(["A repaired point. Which evidence?"]))
+    monkeypatch.setattr(
+        verifier,
+        "chat",
+        make_chat(["A repaired point. Which evidence?"]),
+    )
+
+    async def collect():
+        return [event async for event in debate.respond_stream(_state(), voice_prefetch=True)]
+
+    events = asyncio.run(collect())
+    assert events[0] == ("draft_sentence", "You lean on attention gains.")
+    reply = "".join(text for kind, text in events if kind == "final_delta")
+    diagnostics = json.loads(next(text for kind, text in events if kind == "diagnostics"))
+    assert reply.startswith("You lean on attention gains.")
+    assert diagnostics["prefetched"] is True
+
+
+def test_a_flagged_opening_is_not_prefetched(monkeypatch):
+    chunks = [
+        "Skeptic: You lean on attention gains. ",
+        "Which evidence shows focus improving?",
+    ]
+    monkeypatch.setattr(debate, "stream", make_stream(chunks))
+
+    async def collect():
+        return [event async for event in debate.respond_stream(_state(), voice_prefetch=True)]
+
+    events = asyncio.run(collect())
+    assert all(kind != "draft_sentence" for kind, _ in events)

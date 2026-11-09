@@ -108,10 +108,50 @@ async def run_turn(
         # Recognition happens after this, and is reported as its own number.
         timings.endpoint_wait_ms = max(0, int(received_at_ms) - int(speech_end_ms))
 
+    prefix_gate = asyncio.Event()
+    prefix_text = ""
+    prefix_sent = False
+    prefix_task: asyncio.Task | None = None
+    audio_sentences = 0
+
+    async def speak_prefetched(sentence: str) -> None:
+        """Render and send the first sentence while the rest of the turn runs."""
+        nonlocal prefix_sent, audio_sentences
+        await prefix_gate.wait()
+        if control.cancelled:
+            return
+        clip = await engine.synthesise(sentence, session.persona)
+        if clip is None or control.cancelled:
+            return
+        await hooks.emit({"type": "state", "state": "speaking"})
+        await _send_caption(hooks, clip, {"index": 0})
+        prefix_sent = True
+        audio_sentences += 1
+        timings.audio_ms += clip.duration_ms
+        if timings.first_audio_ms == 0:
+            timings.first_audio_ms = _elapsed(started)
+            timings.voice_to_voice_ms = _wall_elapsed(speech_end_ms, timings.first_audio_ms)
+        if timings.reply_first_audio_ms == 0:
+            timings.reply_first_audio_ms = _wall_elapsed(speech_end_ms, _elapsed(started))
+        timings.extra["prefetched"] = True
+
+    def offer_prefetch(sentence: str) -> None:
+        nonlocal prefix_task, prefix_text
+        if prefix_task is not None or control.cancelled:
+            return
+        prefix_text = sentence
+        prefix_task = asyncio.create_task(speak_prefetched(sentence))
+
     await hooks.emit({"type": "state", "state": "thinking"})
 
     state = session.debate_state(latest, delivery_cue=delivery_cue)
-    graph = asyncio.create_task(_collect(responder(state)))
+    if respond is None:
+        events = respond_stream(state, voice_prefetch=engine.available)
+    else:
+        events = responder(state)
+    graph = asyncio.create_task(
+        _collect(events, offer_prefetch if engine.available else None)
+    )
 
     # The opener plays while the graph works; it carries no argument content.
     if openers is not None and engine.available and not control.cancelled:
@@ -123,18 +163,32 @@ async def run_turn(
             if timings.first_audio_ms == 0:
                 timings.first_audio_ms = _elapsed(started)
                 timings.voice_to_voice_ms = _wall_elapsed(speech_end_ms, timings.first_audio_ms)
+    prefix_gate.set()
 
     try:
         reply, raw_diagnostics = await _await_graph(graph, control)
+        if prefix_task is not None:
+            await prefix_task
     except _Cancelled:
+        if prefix_task is not None:
+            prefix_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await prefix_task
         timings.total_ms = _elapsed(started)
         timings.interrupted = True
+        spoken = [prefix_text] if prefix_sent else []
+        content = f"{' '.join(spoken)} {INTERRUPTED_MARK}".strip() if prefix_sent else ""
+        if prefix_sent:
+            session.record_opponent(content)
+            session.interrupted_turns += 1
         await hooks.emit(
-            {"type": "transcript", "speaker": "opponent", "content": "", "interrupted": True}
+            {"type": "transcript", "speaker": "opponent", "content": content, "interrupted": True}
         )
         await hooks.emit({"type": "state", "state": "interrupted"})
         await hooks.emit({"type": "diagnostics", "turn": {"voice": timings.as_dict()}})
-        return TurnResult("", "", True, [], {}, timings.as_dict())
+        return TurnResult(
+            "", content, True, spoken, {}, timings.as_dict(), audio_sentences
+        )
 
     diagnostics = _public_diagnostics(raw_diagnostics)
     timings.plan_ms = int(diagnostics.get("plan_ms") or 0)
@@ -142,6 +196,16 @@ async def run_turn(
     timings.verify_ms = int(diagnostics.get("review_ms") or 0)
 
     sentences = split_sentences(reply)
+    if prefix_sent:
+        normalized_prefix = " ".join(prefix_text.split())
+        normalized_reply = " ".join(reply.split())
+        if normalized_reply.lower().startswith(normalized_prefix.lower()):
+            remainder = normalized_reply[len(normalized_prefix):].lstrip()
+            reply = normalized_reply
+        else:
+            remainder = normalized_reply
+            reply = f"{normalized_prefix} {normalized_reply}".strip()
+        sentences = [normalized_prefix, *split_sentences(remainder)]
     timings.sentences = len(sentences)
     await hooks.emit(
         {
@@ -155,9 +219,12 @@ async def run_turn(
     if sentences:
         await hooks.emit({"type": "state", "state": "speaking"})
 
-    spoken: list[str] = []
-    audio_sentences = 0
+    spoken: list[str] = [prefix_text] if prefix_sent else []
     for index, sentence in enumerate(sentences):
+        if prefix_sent and index == 0:
+            # The first sentence was already synthesised and sent while the
+            # verifier and the rest of the draft were still running.
+            continue
         if control.cancelled:
             break
         clip = await engine.synthesise(sentence, session.persona)
@@ -178,6 +245,15 @@ async def run_turn(
         if timings.reply_first_audio_ms == 0:
             timings.reply_first_audio_ms = _wall_elapsed(speech_end_ms, _elapsed(started))
 
+    if prefix_sent and timings.reply_first_audio_ms and timings.tts_first_ms == 0:
+        timings.tts_first_ms = max(
+            0,
+            timings.reply_first_audio_ms
+            - timings.plan_ms
+            - timings.draft_ms
+            - timings.verify_ms,
+        )
+    timings.extra["prefetched"] = prefix_sent
     timings.total_ms = _elapsed(started)
 
     if control.cancelled:
@@ -265,12 +341,17 @@ def _wall_elapsed(speech_end_ms: int | None, fallback_ms: int) -> int:
     return max(0, int(time.time() * 1000) - int(speech_end_ms))
 
 
-async def _collect(responder: AsyncIterator[tuple[str, str]]) -> tuple[str, str | None]:
+async def _collect(
+    responder: AsyncIterator[tuple[str, str]],
+    on_draft: Callable[[str], None] | None = None,
+) -> tuple[str, str | None]:
     parts: list[str] = []
     diagnostics: str | None = None
     async for kind, text in responder:
         if kind == "final_delta":
             parts.append(text)
+        elif kind == "draft_sentence" and on_draft is not None:
+            on_draft(text)
         elif kind == "diagnostics":
             diagnostics = text
     return "".join(parts).strip(), diagnostics

@@ -22,6 +22,7 @@ import {
   streamAnalysis,
   analyzeDebate,
   loadModelStatus,
+  warmModel,
   requestChallenge,
   requestJudge,
   type AnalysisReport,
@@ -456,6 +457,8 @@ export default function App() {
   const savedTurnIds = useRef(new Set<string>());
   const routedForRef = useRef<string | null>(null);
   const pendingVoiceStartRef = useRef<"resume" | null>(null);
+  const warmedModelRef = useRef("");
+  const warmEpochRef = useRef(0);
   const [prefsReady, setPrefsReady] = useState(false);
   // Digests the memory agent turns into the opponent's private brief.
   const memoryRef = useRef<SessionDigest[]>([]);
@@ -647,6 +650,27 @@ export default function App() {
   useEffect(() => {
     if (view === "setup" || view === "arena") void checkModel();
   }, [view, appSettings.model]);
+
+  // Put the selected model in memory at app load and immediately after a
+  // switch. Warm-up is best-effort and must never block navigation or a turn:
+  // a cold model still answers, just more slowly.
+  useEffect(() => {
+    // Practice is signed-in, so do not send an unauthenticated warm request on
+    // the public landing page. Wait for the saved model choice to hydrate too.
+    if (authLoading || !user || !prefsReady) return;
+    const key = `${appSettings.model}:${session?.access_token ?? "guest"}`;
+    if (warmedModelRef.current === key) return;
+    warmedModelRef.current = key;
+    const epoch = ++warmEpochRef.current;
+    void warmModel(appSettings.model, session?.access_token).then((status) => {
+      if (epoch !== warmEpochRef.current) return;
+      if (status.status === "unknown") {
+        warmedModelRef.current = "";
+        return;
+      }
+      setModelStatus(status);
+    });
+  }, [appSettings.model, authLoading, prefsReady, session?.access_token, user]);
 
   // The clock measures the learner's speaking time, so drafting time is not charged.
   useEffect(() => {

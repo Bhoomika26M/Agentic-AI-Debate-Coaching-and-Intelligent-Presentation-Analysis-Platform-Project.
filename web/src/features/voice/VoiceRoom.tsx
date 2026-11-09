@@ -161,9 +161,10 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
   const appendStreamed = useCallback((text: string) => {
     const clean = text.trim();
     if (!clean) return;
-    setStreamed((current) =>
-      current ? { ...current, text: `${current.text} ${clean}`.trim() } : current,
-    );
+    setStreamed((current) => ({
+      id: current?.id ?? crypto.randomUUID(),
+      text: current ? `${current.text} ${clean}`.trim() : clean,
+    }));
   }, []);
 
   const input = useSpeechInput({
@@ -287,7 +288,11 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
         case "reply":
           setReply(event.text);
           recoveryNoticeRef.current = event.redirect_reason === "review";
-          if (streamRepliesRef.current) setStreamed({ id: crypto.randomUUID(), text: "" });
+          // Audio for the first sentence can arrive before this event. Keep that
+          // line rather than replacing words the learner has already heard.
+          if (streamRepliesRef.current) {
+            setStreamed((current) => current ?? { id: crypto.randomUUID(), text: "" });
+          }
           if (ttsRef.current === "none") {
             // No server voice: the browser speaks, one sentence at a time.
             const parts = sentencesOf(event.text);

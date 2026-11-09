@@ -130,21 +130,47 @@ export type ModelStatus = {
   hint?: string;
 };
 
+function parseModelStatus(payload: Partial<ModelStatus>): ModelStatus {
+  if (payload.status !== "ready" && payload.status !== "warming" && payload.status !== "model_unavailable") {
+    return { status: "unknown" };
+  }
+  return {
+    status: payload.status,
+    provider: typeof payload.provider === "string" ? payload.provider : undefined,
+    model: typeof payload.model === "string" ? payload.model : undefined,
+    hint: typeof payload.hint === "string" && payload.hint ? payload.hint : undefined,
+  };
+}
+
 export async function loadModelStatus(model?: LocalModel): Promise<ModelStatus> {
   try {
     const query = model ? `?model=${encodeURIComponent(model)}` : "";
     const response = await fetch(apiUrl(`/api/health${query}`), { credentials: "omit" });
     if (!response.ok) return { status: "unknown" };
-    const payload = (await response.json()) as Partial<ModelStatus>;
-    if (payload.status !== "ready" && payload.status !== "warming" && payload.status !== "model_unavailable") {
-      return { status: "unknown" };
-    }
-    return {
-      status: payload.status,
-      provider: typeof payload.provider === "string" ? payload.provider : undefined,
-      model: typeof payload.model === "string" ? payload.model : undefined,
-      hint: typeof payload.hint === "string" && payload.hint ? payload.hint : undefined,
-    };
+    return parseModelStatus((await response.json()) as Partial<ModelStatus>);
+  } catch {
+    return { status: "unknown" };
+  }
+}
+
+/**
+ * Load the selected model before the first turn.
+ *
+ * This is fire-and-forget from the learner's point of view: the room stays
+ * usable while the backend streams one token to put the model in memory. The
+ * endpoint is idempotent, so a load and a model switch can call it safely.
+ */
+export async function warmModel(model: LocalModel, accessToken?: string): Promise<ModelStatus> {
+  try {
+    const headers: Record<string, string> = {};
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    const response = await fetch(apiUrl(`/api/model/warm?model=${encodeURIComponent(model)}`), {
+      method: "POST",
+      headers,
+      credentials: "omit",
+    });
+    if (!response.ok) return { status: "unknown" };
+    return parseModelStatus((await response.json()) as Partial<ModelStatus>);
   } catch {
     return { status: "unknown" };
   }

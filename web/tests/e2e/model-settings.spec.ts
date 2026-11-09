@@ -42,8 +42,13 @@ async function mockSupabase(page: Page) {
 test("switching the local model reaches the next health check and debate turn", async ({ page }) => {
   const healthModels: string[] = [];
   const turnModels: Array<string | undefined> = [];
+  const warmModels: string[] = [];
 
   await seedSignedIn(page);
+  await page.route("**/api/model/warm*", (route) => {
+    warmModels.push(new URL(route.request().url()).searchParams.get("model") ?? "");
+    return route.fulfill({ json: { status: "ready", model_available: true, model_loaded: true } });
+  });
   await mockSupabase(page);
   await page.route("**/api/health*", (route) => {
     healthModels.push(new URL(route.request().url()).searchParams.get("model") ?? "");
@@ -84,6 +89,8 @@ test("switching the local model reaches the next health check and debate turn", 
     `verdict-app-settings-v1-${USER_ID}`,
   );
   expect(stored).toBe(GEMMA);
+  await expect.poll(() => warmModels).toContain("qwen3.5:4b");
+  await expect.poll(() => warmModels).toContain(GEMMA);
 
   await page.evaluate(() => {
     window.location.hash = "#/home";

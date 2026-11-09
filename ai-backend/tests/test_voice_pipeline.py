@@ -142,6 +142,39 @@ def test_the_reply_event_arrives_before_any_sentence_audio():
     assert frames.index("audio") > reply_index
 
 
+def _prefetch_responder():
+    async def respond(_state):
+        yield ("draft_sentence", "Fine. You want the levy.")
+        await asyncio.sleep(0.01)
+        yield ("final_delta", REPLY)
+        yield ("diagnostics", _diagnostics())
+
+    return respond
+
+
+def test_prefetched_audio_arrives_before_the_reply_event_without_duplication():
+    recorder = Recorder()
+    result = _run(recorder, openers=None, respond=_prefetch_responder())
+
+    reply_index = next(
+        index
+        for index, (kind, frame) in enumerate(recorder.frames)
+        if kind == "json" and frame["type"] == "reply"
+    )
+    first_audio_index = next(
+        index for index, (kind, _frame) in enumerate(recorder.frames) if kind == "audio"
+    )
+    assert first_audio_index < reply_index
+    assert recorder.captions() == [
+        "Fine. You want the levy.",
+        "But who audits it?",
+        "And what happens in year three?",
+    ]
+    assert result.audio_sentences == 3
+    assert result.reply == REPLY
+    assert result.timings["extra"]["prefetched"] is True
+
+
 def test_each_sentence_is_synthesised_and_sent_separately():
     recorder = Recorder()
     result = _run(recorder, openers=None, respond=_responder())

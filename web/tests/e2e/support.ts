@@ -25,6 +25,16 @@ export async function seedSignedIn(page: Page, theme: Theme = "new") {
       created_at: "2026-10-01T10:00:00.000Z",
     },
   };
+  // App-load warm-up is fire-and-forget and must not hit a real API in tests.
+  await page.route("**/api/model/warm*", (route) =>
+    route.fulfill({
+      json: {
+        status: "ready",
+        model_available: true,
+        model_loaded: true,
+      },
+    }),
+  );
   await page.addInitScript(
     ([key, value, doneKey, prefsKey, prefs, settingsKey, settings]) => {
       window.localStorage.setItem(key, value);

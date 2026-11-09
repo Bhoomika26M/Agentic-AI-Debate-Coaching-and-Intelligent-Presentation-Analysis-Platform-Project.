@@ -72,6 +72,9 @@ WARMUP_ENABLED = os.getenv("MODEL_WARMUP", "on").strip().lower() not in (
 )
 MAX_ACTIVE_STREAMS = max(1, int(os.getenv("MAX_ACTIVE_STREAMS", "2")))
 stream_slots = asyncio.Semaphore(MAX_ACTIVE_STREAMS)
+# Serialise warm-ups. Two selected models loading at once can make Ollama evict
+# the model that the first request is already using.
+warmup_lock = asyncio.Lock()
 STREAM_DONE = "data: [DONE]\n\n"
 BUSY_MESSAGE = "The opponent could not finish this turn. Please try again."
 
@@ -116,7 +119,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         for _ in range(20):
             if await is_loaded():
                 return
-            await warm_model()
+            async with warmup_lock:
+                if await is_loaded():
+                    return
+                await warm_model()
             if await is_loaded():
                 return
             await asyncio.sleep(5)
@@ -196,6 +202,47 @@ async def health(model: LocalModel | None = None) -> dict[str, str | bool]:
             "transcription": "ready" if transcription_available() else "unavailable",
             "adaptive_tactics_available": True,
             "laya_available": laya_available(),
+        }
+
+
+@app.post(
+    "/api/model/warm",
+    dependencies=[Depends(authenticate_request)],
+)
+async def model_warm(model: LocalModel | None = None) -> dict[str, str | bool]:
+    """Load the selected local model before the first turn or review.
+
+    The browser calls this when the app opens and immediately after a model
+    switch. It is deliberately idempotent: an already resident model returns
+    without a second generation. A single lock prevents two warm-ups from
+    evicting each other on a small GPU.
+    """
+    with use_model(model):
+        available = await is_available()
+        if not available:
+            return {
+                "status": "model_unavailable",
+                "provider": llm_provider(),
+                "model": model_name(),
+                "hint": unavailable_hint(),
+                "model_available": False,
+                "model_loaded": False,
+            }
+        loaded = await is_loaded()
+        if not loaded and WARMUP_ENABLED:
+            async with warmup_lock:
+                if await is_loaded():
+                    loaded = True
+                else:
+                    await warm_model()
+                    loaded = await is_loaded()
+        return {
+            "status": "ready" if loaded else "warming",
+            "provider": llm_provider(),
+            "model": model_name(),
+            "hint": "",
+            "model_available": True,
+            "model_loaded": loaded,
         }
 
 

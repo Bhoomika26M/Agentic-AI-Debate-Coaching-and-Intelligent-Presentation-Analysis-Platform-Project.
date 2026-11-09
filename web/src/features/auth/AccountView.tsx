@@ -1170,7 +1170,7 @@ export function AccountView({ onStart, onDelivery, onContinue, onViewVerdict, on
                 <div>
                   <h3>Local model</h3>
                   <p>Choose which Ollama model answers debate turns, reviews, plans, and delivery coaching on this machine.</p>
-                  <p className="app-setting-status">Pull both models once with <code>ollama pull</code>; switching takes effect on the next request.</p>
+                  <p className="app-setting-status">Pull both models once with <code>ollama pull</code>; switching takes effect on the next request and warms the new model immediately.</p>
                 </div>
               </div>
               <div className="app-length-options app-model-options" role="radiogroup" aria-label="Local model">

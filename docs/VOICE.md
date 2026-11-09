@@ -4,10 +4,12 @@ Speak a turn, hear the opponent answer. This document records what is built,
 which models run, what licence each one carries, and the latency actually
 measured on the laptop this was developed on.
 
-Short version: **the opener arrives at 0.81 s p50, but the opponent's first real
-sentence arrives at 4.56 s p50.** No optimization in this round changed that; it is still above the ~2 s target in the brief.
-The section [Measured latency](#measured-latency) says so plainly and lists what
-would have to change.
+Short version: **as measured before draft prefetch, the opener arrived at 0.81 s
+p50 and the opponent's first real sentence at 4.56 s p50.** First-sentence
+prefetch is now implemented, but it has not been re-benchmarked; no post-prefetch
+latency number is claimed. The old 4.56 s figure is still above the ~2 s target
+in the brief. The section [Measured latency](#measured-latency) records the
+baseline and the limits of the change.
 
 ## What it is
 
@@ -20,8 +22,9 @@ differ.
 
 ```
 mic -> Silero VAD in the page -> 16 kHz mono WAV -> /ws/voice
-    -> faster-whisper (CPU int8) -> recognition gate -> guard -> planner -> draft -> verifier
-    -> Kokoro-82M sentence by sentence (CPU) -> caption + WAV frames -> WebAudio playback
+    -> faster-whisper (CPU int8) -> recognition gate -> guard -> planner -> draft
+    -> first safe sentence to Kokoro-82M while the verifier runs
+    -> Kokoro-82M for the remaining sentences (CPU) -> caption + WAV frames -> WebAudio playback
 ```
 
 ## Models and licences
@@ -141,7 +144,7 @@ API lives on another origin.
 | `VOICE_MAX_SEC` | `120` | longest accepted utterance |
 | `VOICE_EDIT_WINDOW_MS` | `1500` | how long the recognised turn can be corrected |
 | `VOICE_TURN_END_MS` | `1100` | VAD silence before a turn ends (client) |
-| `MODEL_WARMUP` | `on` | `off` skips the startup model load (tests, tiny machines) |
+| `MODEL_WARMUP` | `on` | `off` skips startup and explicit warm-ups (tests, tiny machines) |
 | `WEB_ORIGIN` | `http://127.0.0.1:5173,http://localhost:5173` | comma-separated origins allowed to open the socket |
 
 ## Measured latency
@@ -171,17 +174,22 @@ the CPU.
 
 ### What that means, without spin
 
-- **Voice-to-voice to the opponent's first real sentence is 4.6 s p50.** The
-  brief's target was ≤ ~2 s. This does not meet it, and the opener does not fix
-  that: it only makes the wait feel shorter, because something in the persona's
-  voice answers within 0.81 s.
-- The reply cannot be spoken before it is verified, because the voice path uses
-  the same guard and verifier as typed turns. That is the design constraint, not
-  a bug: drafting and verification are ~1.5-2.5 s of the 4.5 s.
+- **The measured voice-to-voice time to the opponent's first real sentence was
+  4.6 s p50 before prefetch.** The brief's target was ≤ ~2 s. This baseline does
+  not meet it, and the opener does not fix that: it only makes the wait feel
+  shorter, because something in the persona's voice answers within 0.81 s.
+- The reply now starts before the **full** verifier finishes: the first stable
+  sentence is screened for labels, leaks, assistant voice and off-motion text,
+  then synthesised while drafting and verification continue. The full verifier
+  is still authoritative for the transcript and diagnostics, and a spoken
+  prefix is preserved if a repair replaces the rest. No fresh latency run has
+  been taken, so the table above remains the pre-prefetch baseline.
 - Speech recognition is the second-largest cost (0.8 s typical, 1.36 s at p95)
   on a 5-8 s utterance with `base.en` on the CPU.
 - The first synthesis adds ~0.8 s before the first reply sentence can play,
-  because Kokoro renders the first sentence before any of it is sent.
+  because Kokoro renders the first sentence before any of it is sent. Prefetch
+  overlaps that synthesis with the rest of the draft and the verifier, rather
+  than making TTS itself faster.
 
 What was tried / what remains:
 
@@ -191,11 +199,16 @@ What was tried / what remains:
 2. Moving the STT model load out of the event loop removed a 20 s stall on the
    first turn (it had been dropping the socket's keepalive). Turns are now
    stable from the first utterance.
-3. The next real gain is **streaming the draft**: send the first sentence for
-   synthesis as soon as it exists, run the cheap verifier checks (leak,
-   off-motion) on that sentence, and keep the full check for the remainder. The
-   brief allows this only after measurement; it is not implemented, and the
-   numbers above are what the current all-before-speaking design costs.
+3. **Implemented: first-sentence prefetch.** `respond_stream` emits the first
+   stable sentence when voice prefetch is enabled. The cheap `inspect_prefix`
+   check rejects empty text, labels, headings, wrapper leaks, assistant voice,
+   private-context leaks and off-motion openings before anything is spoken. The
+   voice pipeline synthesises and sends that sentence while the rest of the
+   draft and the full `inspect_reply` verifier continue. The full reply remains
+   authoritative; if a repair or fallback changes it, the spoken prefix is kept
+   at the front so transcript and audio cannot disagree. The old table is still
+   labelled as the pre-prefetch baseline because no fresh benchmark was run
+   after this change.
 4. A GPU TTS attempt was **not** made: the GPU was already at 5.1 GB of 6.1 GB
    with the 4B model resident, so the 6 GB budget has no room for a second
    resident. TTS on the CPU adds **0 MiB** of VRAM (measured below).
@@ -263,9 +276,11 @@ already sent.
 The opponent's exchange line grows one sentence at a time. It is driven by
 playback, not synthesis: each sentence is appended when its audio actually
 starts (or when the browser's own voice starts it, when Kokoro is unavailable),
-so the text keeps pace with what is being heard. The final `transcript` event
-replaces the streamed line with the canonical reply — or, after an interrupt,
-with only the sentences that played. The **Streaming / Full reply** control in
+so the text keeps pace with what is being heard. The first prefetched sentence
+can create the line before the `reply` event arrives; `reply` preserves that
+line instead of clearing words the learner has already heard. The final
+`transcript` event replaces the streamed line with the canonical reply — or,
+after an interrupt, with only the sentences that played. The **Streaming / Full reply** control in
 the room turns this off for the session; **Settings → Stream replies as they are
 written** is the permanent choice. Skip mode still consumes the whole stream, so
 the reply and its diagnostics are committed together when `[DONE]` / the final
@@ -304,13 +319,14 @@ audio asset and no licence to track.
 
 ## Tests
 
-The current backend suite has 404 passing tests. Voice-path coverage includes:
+The current backend suite has 412 passing tests. Voice-path coverage includes:
 
 - `tests/test_voice_recognition.py` — every fixture hallucination, word counts,
   confidence gates, stutter collapsing, filler stripping for matching only.
 - `tests/test_voice_pipeline.py` — event ordering, sentence-by-sentence
-  synthesis, cancel mid-reply, "only spoken words stored", opener rotation, no
-  TTS engine, guard redirects being spoken, per-persona voices.
+  synthesis, prefetched first-sentence audio before the reply event without
+  duplication, cancel mid-reply, "only spoken words stored", opener rotation,
+  no TTS engine, guard redirects being spoken, per-persona voices.
 - `tests/test_voice_ws.py` — auth rejection (4401), foreign-origin rejection
   (4403), the recognition gate never calling the model, transcript/chip ordering,
   typed fallback, per-turn rate limits, interrupt payload, malformed frames,
