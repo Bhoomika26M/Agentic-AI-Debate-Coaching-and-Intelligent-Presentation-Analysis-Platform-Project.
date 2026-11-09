@@ -418,6 +418,7 @@ export default function App() {
   const [authPurpose, setAuthPurpose] = useState<"voice" | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisReport | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [reviewElapsed, setReviewElapsed] = useState(0);
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
   const [analysisSaved, setAnalysisSaved] = useState(false);
@@ -444,6 +445,8 @@ export default function App() {
   const transcriptRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const reviewAbortRef = useRef<AbortController | null>(null);
+  const reviewStartedRef = useRef(0);
   const stickToBottomRef = useRef(true);
   const lastTurnRef = useRef<{ history: DebateMessage[]; latest: string | null } | null>(null);
   const pendingResumeRef = useRef<string | null>(null);
@@ -500,6 +503,19 @@ export default function App() {
     ? SCORE_DIMENSION_ORDER.filter((key) => !judge.dimensions.some((dimension) => dimension.key === key)).map((key) => SCORE_DIMENSION_LABELS[key].toLowerCase())
     : [];
   const verdictComputing = analysisLoading || judgeLoading;
+  useEffect(() => {
+    if (!analysisLoading) {
+      setReviewElapsed(0);
+      return;
+    }
+    const started = reviewStartedRef.current || Date.now();
+    const timer = window.setInterval(
+      () => setReviewElapsed(Math.floor((Date.now() - started) / 1000)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [analysisLoading]);
+  useEffect(() => () => reviewAbortRef.current?.abort(), []);
   useEffect(() => {
     const initial = viewFromHash();
     if (initial !== view) setView(initial);
@@ -937,6 +953,7 @@ export default function App() {
     const chosenDuration = prefill?.duration ?? duration;
     if (!chosenTopic) return;
     abortRef.current?.abort();
+    reviewAbortRef.current?.abort();
     clearSnapshot();
     setVoiceOpen(false);
     lastTurnRef.current = null;
@@ -1154,11 +1171,17 @@ export default function App() {
 
   async function reviewDebate() {
     if (analysisLoading || reviewInFlightRef.current || learnerTurns.length === 0) return;
+    reviewAbortRef.current?.abort();
+    const controller = new AbortController();
+    reviewAbortRef.current = controller;
+    reviewStartedRef.current = Date.now();
+    setReviewElapsed(0);
     reviewInFlightRef.current = true;
     setAnalysisLoading(true);
     setAnalysisComplete(false);
     setAnalysisError("");
     setAnalysisSaved(false);
+    setAnalysis(null);
     setJudge(null);
     setVerdictRank(null);
     setVerdictRankLoading(false);
@@ -1171,21 +1194,25 @@ export default function App() {
         difficulty,
         model: loadApplicationSettings(user?.id ?? "guest").model,
       }, messages, session?.access_token, (partial) => {
+        // Show the rubric as soon as it lands, but do not score it yet: the
+        // final verdict uses fallacy flags that have not arrived at this point.
         setAnalysis(partial);
-        if (partial.ratings) void runJudge(partial, null, messages, null);
-      });
+      }, controller.signal);
+      if (controller.signal.aborted) return;
       setAnalysis(report);
       setAnalysisComplete(true);
       let reviewSaved = false;
       if (recordId) {
         try {
           await saveDebateAnalysis(recordId, report);
+          if (controller.signal.aborted) return;
           reviewSaved = true;
           setAnalysisSaved(true);
         } catch {
           setAnalysisError("The review is ready, but could not be saved to your learner archive.");
         }
       }
+      if (controller.signal.aborted) return;
       // The weighted verdict is deterministic and does not depend on the plan refresh.
       // Start it first; the slower plan call then runs in the background.
       if (report.ratings) void runJudge(report, deliveryResult);
@@ -1196,11 +1223,22 @@ export default function App() {
         setPlanUpdateError("The review could not be saved, so the practice plan was not updated.");
       }
     } catch (error) {
+      if (controller.signal.aborted) return;
       setAnalysisError(error instanceof Error ? error.message : "The coach could not review this transcript.");
     } finally {
+      if (reviewAbortRef.current === controller) reviewAbortRef.current = null;
       reviewInFlightRef.current = false;
       setAnalysisLoading(false);
     }
+  }
+
+  function cancelReview() {
+    if (!reviewInFlightRef.current) return;
+    reviewAbortRef.current?.abort();
+    setAnalysis(null);
+    setAnalysisComplete(false);
+    setAnalysisError("The review was cancelled. Start it again when you’re ready.");
+    setAnalysisLoading(false);
   }
 
   async function runJudge(report: AnalysisReport | null, delivery: PresentationResult | null, debateTurns = messages, targetRecordId = recordId) {
@@ -1346,6 +1384,7 @@ export default function App() {
   function finishSession() {
     setEndedAt(Date.now());
     abortRef.current?.abort();
+    reviewAbortRef.current?.abort();
     setStreaming(false);
     setConfirmEnd(false);
     setGraceTurn(false);
@@ -1492,6 +1531,7 @@ export default function App() {
     setAuthPurpose(null);
     const snapshot = persistArenaSnapshot();
     abortRef.current?.abort();
+    reviewAbortRef.current?.abort();
     setStreaming(false);
     setConfirmEnd(false);
     setGraceTurn(false);
@@ -2286,7 +2326,12 @@ export default function App() {
                       : "Five scores for your argument, the counterpoints you missed, and one thing to fix next. It reads your words only — your voice is reviewed separately under Delivery."}
                   </p>
                 )}
-                {analysisLoading && !analysis && <p className="review-intro verdict-computing-status" role="status"><LoaderCircle className="spin" size={14} /> Building your review. Scores and observations will appear as they’re ready.</p>}
+                {analysisLoading && !analysis && (
+                  <div className="review-intro verdict-computing-status verdict-review-progress" role="status">
+                    <span><LoaderCircle className="spin" size={14} /> Building your review. Scores and observations will appear as they’re ready. {reviewElapsed}s</span>
+                    <button className="button button-light" type="button" onClick={cancelReview}>Cancel review</button>
+                  </div>
+                )}
                 {analysisLoading && !analysis && <VerdictLoadingPreview />}
                 {analysisError && (
                   <div className="analysis-error" role="alert">
@@ -2319,9 +2364,10 @@ export default function App() {
                 )}
 
                 {analysis && !analysisComplete && analysisLoading && (
-                  <p className="review-intro verdict-computing-status" role="status">
-                    <LoaderCircle className="spin" size={14} /> {analysis.ratings ? "Rubric scores are ready." : "Your review is still building."} Still checking fallacies and counterpoints.
-                  </p>
+                  <div className="review-intro verdict-computing-status verdict-review-progress" role="status">
+                    <span><LoaderCircle className="spin" size={14} /> {analysis.ratings ? "Rubric scores are ready." : "Your review is still building."} Still checking fallacies and counterpoints. {reviewElapsed}s</span>
+                    <button className="button button-light" type="button" onClick={cancelReview}>Cancel review</button>
+                  </div>
                 )}
 
                   {analysis && <>
@@ -2385,7 +2431,7 @@ export default function App() {
                       <Suspense fallback={<div className="inline-notice" role="status">Loading delivery review…</div>}>
                         <PresentationRoom key={`${recordId ?? "new"}-${deliveryResult ? "saved" : "empty"}`} topic={activeTopic} sessionId={recordId} compact model={appSettings.model} initialResult={deliveryResult} onResult={(next) => { setDeliveryResult(next); void runJudge(analysis, next); }} />
                       </Suspense>
-                      <button className="text-link step-aside" type="button" onClick={openDeliveryPractice}>Or practise a take on its own <ArrowUpRight size={15} /></button>
+                      <button className="text-link step-aside" type="button" onClick={openDeliveryPractice}>Or practice a take on its own <ArrowUpRight size={15} /></button>
                     </div>
                   </details>
 
@@ -2478,7 +2524,7 @@ export default function App() {
                   )}
                   <button className="button button-light" onClick={openRematch}>Rematch this round</button>
                   <button className="text-link" type="button" onClick={openPlan}>Revise my plan <ArrowRight size={15} /></button>
-                  {!deliveryResult && <button className="text-link" type="button" onClick={openDeliveryPractice}>Practise delivery instead <ArrowUpRight size={15} /></button>}
+                  {!deliveryResult && <button className="text-link" type="button" onClick={openDeliveryPractice}>Practice delivery instead <ArrowUpRight size={15} /></button>}
                 </div>
               </div>
             </section>

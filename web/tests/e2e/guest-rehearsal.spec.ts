@@ -325,6 +325,10 @@ test("a complete spoken turn sends microphone audio and renders both transcript 
       }
       const payload = JSON.parse(message) as { type?: string };
       received.push(payload.type ?? "unknown");
+      if (payload.type === "auth") {
+        socket.send(JSON.stringify({ type: "authenticated" }));
+        return;
+      }
       if (payload.type === "start") {
         socket.send(
           JSON.stringify({
@@ -354,4 +358,52 @@ test("a complete spoken turn sends microphone audio and renders both transcript 
   await expect(dialog.locator(".voice-line.learner").getByText(SPOKEN_LEARNER)).toBeVisible();
   await expect(dialog.locator(".voice-line.opponent").getByText(SPOKEN_OPPONENT)).toBeVisible();
   expect(received).toContain("utterance_start");
+});
+
+test("a brief tap on hold to speak shows an inline hint without a screen-shifting error banner", async ({
+  page,
+}) => {
+  await mockDebateApi(page);
+  await startRehearsal(page);
+
+  await page.routeWebSocket(/\/ws\/voice/, (socket) => {
+    socket.onMessage((message) => {
+      if (typeof message !== "string") return;
+      const payload = JSON.parse(message) as { type?: string };
+      if (payload.type === "auth") {
+        socket.send(JSON.stringify({ type: "authenticated" }));
+        return;
+      }
+      if (payload.type === "start") {
+        socket.send(
+          JSON.stringify({
+            type: "ready",
+            tts: "kokoro",
+            persona_voices: {},
+            recognition: "local",
+            turn_end_ms: 1100,
+          }),
+        );
+        socket.send(JSON.stringify({ type: "started", topic: "Test motion", persona: "skeptic", reply_length: "standard" }));
+      }
+    });
+  });
+
+  await page.getByRole("button", { name: "Open voice debate" }).click();
+  const dialog = page.getByRole("dialog");
+  const microphone = dialog.getByRole("button", { name: "Hold to speak your turn" });
+  await expect(microphone).toBeEnabled();
+
+  // Quick tap: mouse down and immediate mouse up (< 500ms)
+  await microphone.hover();
+  await page.mouse.down();
+  await page.waitForTimeout(50);
+  await page.mouse.up();
+
+  // Ensure no error banner popup was triggered
+  await expect(dialog.locator(".voice-alerts .voice-error")).toHaveCount(0);
+  // Ensure the exchange empty state didn't switch to a microphone access error
+  await expect(dialog.getByText(/Microphone access needs attention|Voice input needs attention/i)).toHaveCount(0);
+  // Ensure the inline quiet hint is shown in the heard note
+  await expect(dialog.locator(".voice-heard-note")).toContainText("Hold the key a little longer so the turn registers.");
 });

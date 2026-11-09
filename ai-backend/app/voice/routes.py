@@ -135,6 +135,10 @@ class VoiceConnection:
         kind = payload.get("type")
 
         if kind == "start":
+            # A reconnect can carry a confirmed-looking turn from the previous
+            # room. It must not survive the new start event.
+            self._pending = None
+            self._utterance_meta = {}
             self.session.configure(payload)
             await self.send(
                 {
@@ -451,13 +455,33 @@ async def voice_socket(websocket: WebSocket) -> None:
     if origin and origin not in allowed_origins():
         await websocket.close(code=4403, reason="Origin not allowed.")
         return
+    # The browser can send a token in the first frame, but not in a header.
+    # Keeping it out of the URL means it cannot appear in access logs, proxy
+    # logs, browser history, or a copied WebSocket address.
+    token: str | None = None
     try:
-        subject = await require_token(websocket.query_params.get("token"))
+        raw_auth = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+        auth = json.loads(raw_auth)
+        if not isinstance(auth, dict) or auth.get("type") != "auth":
+            raise ValueError("Authenticate before starting the room.")
+        token = auth.get("token")
+        if token is not None and not isinstance(token, str):
+            raise ValueError("The auth token must be a string.")
+    except (TimeoutError, WebSocketDisconnect, ValueError, json.JSONDecodeError):
+        await websocket.close(code=4401, reason="Sign in to use the debate service.")
+        return
+    try:
+        subject = await require_token(token)
     except HTTPException as error:
         # Keep invalid credentials distinct from a temporary verification
         # outage so the browser can offer the right recovery action.
         close_code = 4401 if error.status_code == 401 else 4503
         await websocket.close(code=close_code, reason=str(error.detail))
+        return
+    try:
+        # The client waits for this acknowledgement before sending `start`.
+        await websocket.send_json({"type": "authenticated"})
+    except (RuntimeError, WebSocketDisconnect):
         return
     connection: VoiceConnection | None = None
     try:

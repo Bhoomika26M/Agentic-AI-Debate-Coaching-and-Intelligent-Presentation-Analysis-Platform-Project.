@@ -557,7 +557,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
           </div>
         </div>
 
-        {(error || input.error || notice) && (
+        {(error || notice) && (
           <div className="voice-alerts">
             {error && (
               <div className="voice-error" role="alert">
@@ -570,10 +570,10 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
                 )}
               </div>
             )}
-            {input.error && <div className="voice-error" role="alert"><p>{input.error}</p></div>}
             {notice && <div className="voice-notice" role="status">{notice}</div>}
           </div>
         )}
+        {input.error && <span className="visually-hidden" role="alert">{input.error}</span>}
 
         <main className="voice-layout">
           <section className="voice-transcript-panel" aria-label="Debate exchange">
@@ -590,8 +590,8 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
                   <Mic size={18} aria-hidden="true" />
                   {input.error ? (
                     <>
-                      <p>Microphone access needs attention.</p>
-                      <span>Allow microphone access and try again, or close voice mode to keep debating by text.</span>
+                      <p>Voice input needs attention.</p>
+                      <span>Check microphone access or local voice assets and try again, or close voice mode to keep debating by text.</span>
                     </>
                   ) : status === "connecting" ? (
                     <>
@@ -695,8 +695,11 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
                 </div>
               ) : (
                 <div className="voice-heard-note">
-                  <span>
-                    {heardNote || input.error || (heard
+                  <span
+                    role={heardNote || input.notice ? "status" : undefined}
+                    aria-live={heardNote || input.notice ? "polite" : undefined}
+                  >
+                    {heardNote || input.notice || input.error || (heard
                       ? "Sent to the debate."
                       : "Recognised by the local voice API; your audio is not stored.")}
                   </span>
@@ -755,7 +758,8 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
                   type="button"
                   className={`voice-primary voice-hold${input.listening ? " holding" : ""}`}
                   disabled={!canPushToTalk}
-                  onPointerDown={() => {
+                  onPointerDown={(event) => {
+                    if (event.button !== 0) return;
                     player.unlock();
                     void input.startPushToTalk();
                   }}

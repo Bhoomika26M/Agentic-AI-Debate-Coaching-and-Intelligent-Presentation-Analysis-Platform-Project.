@@ -35,9 +35,9 @@ async def authenticate_request(
 async def require_token(token: str | None) -> str | None:
     """Verify a bearer token supplied outside the Authorization header.
 
-    A WebSocket handshake cannot set headers from the browser, so the token
-    arrives as a query parameter. The checks are the same ones an HTTP request
-    gets; only the transport of the token differs.
+    A browser WebSocket handshake cannot set an Authorization header, so the
+    token arrives in the first JSON frame of the voice socket. The checks are
+    the same ones an HTTP request gets; only the transport of the token differs.
     """
     if not token:
         if REQUIRE_AUTH:

@@ -96,13 +96,12 @@ export type VoiceConfig = {
 
 export type UtteranceMode = "push_to_talk" | "hands_free";
 
-function socketUrl(token?: string) {
+function socketUrl() {
   // A blank VITE_API_BASE_URL leaves apiUrl() relative, and `new URL` throws on a
   // relative URL without a base. Resolve against the page, so dev goes through
   // the Vite proxy and a configured origin stays absolute.
   const url = new URL(apiUrl("/ws/voice"), window.location.href);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  if (token) url.searchParams.set("token", token);
   return url.toString();
 }
 
@@ -128,11 +127,18 @@ export class VoiceClient {
   ) {}
 
   connect() {
-    const socket = new WebSocket(socketUrl(this.options.token));
+    const socket = new WebSocket(socketUrl());
     socket.binaryType = "blob";
     this.socket = socket;
     this.closeNotified = false;
-    socket.onopen = () => this.options.onOpen();
+    // The token arrives in a frame after the handshake, never in the URL.
+    // The server sends `authenticated` before it sends `ready`.
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        type: "auth",
+        ...(this.options.token ? { token: this.options.token } : {}),
+      }));
+    };
     socket.onclose = (event) => {
       const reason = event.reason || (event.code === 1000 ? "Voice session closed." : `Voice session closed (${event.code}).`);
       this.notifyClose(reason, event.code);
@@ -141,7 +147,12 @@ export class VoiceClient {
     socket.onmessage = (message) => {
       if (typeof message.data === "string") {
         try {
-          this.options.onEvent(JSON.parse(message.data) as VoiceEvent);
+          const event = JSON.parse(message.data) as VoiceEvent | { type: "authenticated" };
+          if (event.type === "authenticated") {
+            this.options.onOpen();
+            return;
+          }
+          this.options.onEvent(event as VoiceEvent);
         } catch {
           /* A malformed frame must not kill the session. */
         }

@@ -43,7 +43,7 @@ STOPWORDS = frozenset(
     yourself yourselves
     """.split()
 )
-WORD_RE = re.compile(r"[A-Za-z']+")
+WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
 
 
 @dataclass(frozen=True)
@@ -59,7 +59,12 @@ class ContextWindow:
 
 
 def estimate_tokens(text: str) -> int:
-    """Cheap English estimate: roughly four characters per token."""
+    """Conservative budget estimate: roughly four characters per token.
+
+    This is not the model tokenizer, and the measurement docs label it as an
+    estimate. It is used only to size the prompt window, never as a billing or
+    performance number.
+    """
     clean = " ".join(str(text).split())
     return max(1, math.ceil(len(clean) / 4))
 
@@ -72,19 +77,24 @@ def _clip(text: str, limit: int) -> str:
 
 
 def _clean(turns: list[dict]) -> list[dict[str, str]]:
-    return [
-        {
-            "speaker": "learner" if turn.get("speaker") == "learner" else "opponent",
-            "content": " ".join(str(turn.get("content", "")).split()),
-        }
-        for turn in turns
-        if str(turn.get("content", "")).strip()
-    ]
+    cleaned: list[dict[str, str]] = []
+    for turn in turns:
+        speaker = "learner" if turn.get("speaker") == "learner" else "opponent"
+        content = " ".join(str(turn.get("content", "")).split())
+        if not content:
+            continue
+        if speaker == "learner":
+            # Current learner text is defanged at the prompt boundary. Older
+            # turns recalled into a system message need the same treatment
+            # here, or a forged wrapper can outlive the recent-window limit.
+            content = content.replace("<<", "").replace(">>", "")
+        cleaned.append({"speaker": speaker, "content": content})
+    return cleaned
 
 
 def _content_words(text: str) -> set[str]:
     return {
-        word.lower().strip("'")
+        word.lower().strip("'’")
         for word in WORD_RE.findall(text)
         if len(word) > 2 and word.lower() not in STOPWORDS
     }

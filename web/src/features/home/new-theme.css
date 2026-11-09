@@ -625,6 +625,8 @@ html[data-theme="new"] .verdict-skeleton-disclosure > i {
   background: linear-gradient(100deg, rgb(14 37 54 / 8%) 20%, rgb(14 37 54 / 20%) 45%, rgb(14 37 54 / 8%) 70%);
 }
 html[data-theme="new"] .verdict-computing-status { display: flex; align-items: center; gap: 8px; margin: 0; }
+html[data-theme="new"] .verdict-review-progress { justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+html[data-theme="new"] .verdict-review-progress .button { border-color: #71838d; color: var(--verdict-navy); background: transparent; }
 @keyframes verdict-computing { 0% { background-position: 100% 0; } 100% { background-position: -120% 0; } }
 @media (prefers-reduced-motion: reduce) {
   html[data-theme="new"] .verdict-skeleton-value,
@@ -759,13 +761,66 @@ html[data-theme="new"] .verdict-note { margin-top: 10px; padding: 9px 2px; borde
 html[data-theme="new"] .verdict-note > span,
 html[data-theme="new"] .verdict-note p { color: var(--verdict-navy); }
 html[data-theme="new"] .verdict-note p { margin: 0; display: inline; padding-left: 16px; font: 12px/1.5 var(--serif); }
+html[data-theme="new"] .verdict-next {
+  margin-top: 18px;
+  padding: 20px 22px;
+  border: 1px solid #b5904d;
+  background: #f7edd9;
+}
+html[data-theme="new"] .verdict-next > span {
+  color: #6b4d1c;
+  font: 9px/1.4 var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+html[data-theme="new"] .verdict-next h2 {
+  margin: 7px 0 0;
+  color: var(--verdict-navy);
+  font: 500 25px/1.2 var(--serif);
+}
+html[data-theme="new"] .verdict-next > p {
+  max-width: 68ch;
+  margin: 8px 0 0;
+  color: #4a443b;
+  font: 13px/1.65 var(--serif);
+}
+html[data-theme="new"] .verdict-next .verdict-actions {
+  margin-top: 16px;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 14px 20px;
+}
 html[data-theme="new"] .verdict-actions { justify-content: center; gap: 14px; }
 html[data-theme="new"] .verdict-actions .button-dark { color: var(--verdict-paper-light); background: var(--verdict-red); }
 html[data-theme="new"] .verdict-actions .button-dark:hover:not(:disabled) { background: var(--cue-deep); }
 html[data-theme="new"] .verdict-actions .button-light { border-color: var(--verdict-navy); color: var(--verdict-navy); }
 html[data-theme="new"] .verdict-actions .button-light:hover { color: var(--verdict-paper-light); background: var(--verdict-navy); }
-html[data-theme="new"] .verdict-page .text-link { min-height: 44px; color: var(--verdict-navy); text-underline-offset: 4px; }
-html[data-theme="new"] .verdict-page .text-link:hover { color: var(--cue-deep); }
+html[data-theme="new"] .verdict-page .text-link {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--verdict-navy);
+  font: 600 13px/1.4 var(--sans);
+  text-underline-offset: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color .18s;
+}
+html[data-theme="new"] .verdict-page .text-link svg {
+  color: var(--verdict-red);
+  transition: transform .18s, color .18s;
+}
+html[data-theme="new"] .verdict-page .text-link:hover {
+  color: var(--cue-deep);
+  text-decoration: underline;
+}
+html[data-theme="new"] .verdict-page .text-link:hover svg {
+  color: var(--cue-deep);
+  transform: translateX(2px);
+}
 html[data-theme="new"] .verdict-page :focus-visible { outline: 3px solid var(--verdict-red); outline-offset: 3px; }
 
 /* Delivery review is a nested task, so its recording controls and report share the review palette. */

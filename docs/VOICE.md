@@ -5,7 +5,7 @@ which models run, what licence each one carries, and the latency actually
 measured on the laptop this was developed on.
 
 Short version: **the opener arrives at 0.81 s p50, but the opponent's first real
-sentence arrives at 4.56 s p50.** That is above the ~2 s target in the brief.
+sentence arrives at 4.56 s p50.** No optimization in this round changed that; it is still above the ~2 s target in the brief.
 The section [Measured latency](#measured-latency) says so plainly and lists what
 would have to change.
 
@@ -119,7 +119,7 @@ Two things the socket checks before it will talk:
   name (`localhost` vs `127.0.0.1`) closes the socket with 4403. If you serve
   the app from another port or host — or from a device on the LAN — add that
   exact origin.
-- **Auth.** The socket authenticates with the session token in the query string,
+- **Auth.** The socket authenticates with the session token in its first JSON frame,
   because a WebSocket cannot send an `Authorization` header. With
   `REQUIRE_AUTH=true` (the default in a local `.env`) a request without a valid
   token gets close code 4401, and the room reports the sign-in requirement.
@@ -304,7 +304,7 @@ audio asset and no licence to track.
 
 ## Tests
 
-The current backend suite has 395 passing tests. Voice-path coverage includes:
+The current backend suite has 404 passing tests. Voice-path coverage includes:
 
 - `tests/test_voice_recognition.py` — every fixture hallucination, word counts,
   confidence gates, stutter collapsing, filler stripping for matching only.

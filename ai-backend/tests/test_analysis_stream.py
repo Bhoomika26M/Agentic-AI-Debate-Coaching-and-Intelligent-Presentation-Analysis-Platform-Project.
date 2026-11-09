@@ -1,5 +1,6 @@
 import asyncio
 
+from app import main
 from app.agents import analysis_graph as graph_module
 from app.schemas import (
     AnalysisRequest,
@@ -79,3 +80,25 @@ def test_the_rubric_is_streamed_before_the_slower_review_branches(monkeypatch):
     assert "counterarguments" not in events[0]["report"]
     assert len(events[1]["report"]["counterarguments"]) == 5
     assert events[1]["gaps"] == []
+
+
+def test_an_unconsumed_analysis_response_does_not_reserve_a_model_slot(monkeypatch):
+    """The slot belongs to the generator, so a response that never starts owns nothing."""
+
+    async def ready() -> bool:
+        return True
+
+    monkeypatch.setattr(main, "is_available", ready)
+    slots = asyncio.Semaphore(1)
+    monkeypatch.setattr(main, "stream_slots", slots)
+    request = AnalysisRequest(
+        topic="Should schools ban phones?",
+        learner_position="for",
+        turns=[{"speaker": "learner", "content": "Phones distract students."}],
+    )
+
+    async def start_response():
+        return await main.debate_analysis_stream(request)
+
+    asyncio.run(start_response())
+    assert not slots.locked()

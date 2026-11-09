@@ -228,12 +228,14 @@ export async function streamAnalysis(
   turns: DebateMessage[],
   accessToken?: string,
   onRubric?: (report: AnalysisReport) => void,
+  signal?: AbortSignal,
 ): Promise<AnalysisReport> {
   const response = await fetch(apiUrl("/api/debate/analyze/stream"), {
     method: "POST",
     headers: { ...analysisHeaders(accessToken), Accept: "text/event-stream" },
     credentials: "omit",
     body: JSON.stringify(analysisBody(options, turns)),
+    signal,
   });
   if (!response.ok) {
     const error = await response.json().catch(() => null);

@@ -42,3 +42,9 @@ def test_a_failed_clip_does_not_disable_later_synthesis(tmp_path):
     assert second is not None
     assert second.text == "A sentence that works."
     assert engine.available is True
+
+
+def test_british_profiles_use_british_english():
+    assert tts.VOICES["diplomat"].lang == "en-gb"
+    assert tts.VOICES["strategist"].lang == "en-us"
+    assert tts.VOICES["skeptic"].lang == "en-us"

@@ -116,17 +116,26 @@ export async function loadDebateRecord(sessionId: string) {
 }
 
 export async function saveDebateAnalysis(sessionId: string, report: AnalysisReport) {
+  // Do not write `verdict: null` here. Re-reviewing an existing round must not
+  // erase a saved score; on insert the column still takes its database default.
   const { error } = await requireClient().from("debate_analyses").upsert({
     session_id: sessionId,
     report,
-    verdict: null,
   }, { onConflict: "session_id" });
   if (error) throw error;
 }
 
 export async function saveDebateVerdict(sessionId: string, verdict: JudgeVerdict) {
-  const { error } = await requireClient().from("debate_analyses").update({ verdict }).eq("session_id", sessionId);
+  const { data, error } = await requireClient()
+    .from("debate_analyses")
+    .update({ verdict })
+    .eq("session_id", sessionId)
+    .select("session_id")
+    .maybeSingle();
   if (error) throw error;
+  // An update with no matching row succeeds in PostgREST while changing
+  // nothing. Report that as an error instead of claiming the score was stored.
+  if (!data) throw new Error("The review was not found, so the score could not be saved.");
 }
 
 export async function deleteDebateAnalysis(sessionId: string) {

@@ -144,6 +144,11 @@ def _median(values: list[float]) -> float:
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ollama", action="store_true", help="time a live local model")
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="add a nonce to the system prompt so Ollama cannot reuse a warm prompt cache",
+    )
     parser.add_argument("--model", default="qwen3.5:4b")
     parser.add_argument("--base-url", default="http://127.0.0.1:11434")
     parser.add_argument("--runs", type=int, default=3)
@@ -178,11 +183,20 @@ async def main() -> None:
         return
 
     timings: dict[str, list[dict[str, float]]] = {str(row["name"]): [] for row in rows}
-    for _ in range(max(1, args.runs)):
+    for run_index in range(max(1, args.runs)):
         for row, messages in zip(rows, (legacy, current), strict=True):
+            measured = messages
+            if args.fresh:
+                # Ollama may reuse the unchanged prompt prefix. A real turn
+                # changes the prompt, so this option makes that cost visible
+                # instead of reporting a warm-cache best case.
+                measured = [dict(message) for message in messages]
+                measured[0]["content"] += (
+                    f"\nMeasurement nonce {run_index}-{row['name']}; ignore this line."
+                )
             try:
                 timings[str(row["name"])].append(
-                    await first_token_ms(messages, args.model, args.base_url)
+                    await first_token_ms(measured, args.model, args.base_url)
                 )
             except (httpx.HTTPError, ValueError) as error:
                 print(f"{row['name']}: run failed ({type(error).__name__})")

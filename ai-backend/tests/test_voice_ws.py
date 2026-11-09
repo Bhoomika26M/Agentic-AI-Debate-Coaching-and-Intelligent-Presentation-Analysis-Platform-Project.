@@ -6,6 +6,7 @@ event shape. Nothing here needs Ollama, faster-whisper, or Kokoro.
 """
 
 import json
+from contextlib import contextmanager
 
 import pytest
 from fastapi import HTTPException
@@ -121,12 +122,24 @@ def _prepare(
 WAV = b"RIFF\x00\x00\x00\x00WAVEfmt " + b"\x00" * 64
 
 
-def _connect(client, path: str = "/ws/voice", origin: str | None = None):
-    """Connect with a trusted host; the app rejects anything else by design."""
+@contextmanager
+def _connect(
+    client,
+    path: str = "/ws/voice",
+    origin: str | None = None,
+    token: str | None = None,
+):
+    """Connect, authenticate in the first frame, and wait for the ack."""
     headers = {"host": "127.0.0.1"}
     if origin:
         headers["origin"] = origin
-    return client.websocket_connect(path, headers=headers)
+    with client.websocket_connect(path, headers=headers) as socket:
+        payload = {"type": "auth"}
+        if token is not None:
+            payload["token"] = token
+        socket.send_json(payload)
+        assert socket.receive_json()["type"] == "authenticated"
+        yield socket
 
 
 def _drain(socket) -> list[dict]:
@@ -210,9 +223,43 @@ def test_a_signed_in_token_is_verified_with_the_same_checker(client, monkeypatch
 
     monkeypatch.setattr(routes, "require_token", token)
     _prepare(monkeypatch)
-    with _connect(client, "/ws/voice?token=abc") as socket:
+    with _connect(client, token="abc") as socket:
         socket.receive_json()
     assert seen == ["abc"]
+
+
+def test_a_new_start_clears_an_unconfirmed_hands_free_turn(client, monkeypatch):
+    _prepare(monkeypatch)
+    with _connect(client) as socket:
+        _start(socket)
+        socket.send_json(
+            {
+                "type": "utterance_start",
+                "speech_end_ms": 1_700_000_000_000,
+                "mode": "hands_free",
+            }
+        )
+        socket.send_bytes(WAV)
+        while True:
+            event = socket.receive_json()
+            if event["type"] == "transcript" and event.get("pending"):
+                break
+        # A reconnect starts a new room; the old editable turn must not survive it.
+        socket.send_json(
+            {
+                "type": "start",
+                "topic": "This house would fund night buses",
+                "learner_position": "for",
+                "persona": "skeptic",
+                "difficulty": "challenge",
+                "reset": True,
+            }
+        )
+        assert socket.receive_json()["type"] == "started"
+        socket.send_json({"type": "confirm"})
+        event = socket.receive_json()
+    assert event["type"] == "error"
+    assert "no turn to confirm" in event["message"].lower()
 
 
 def test_the_socket_refuses_a_turn_before_the_debate_starts(client, monkeypatch):

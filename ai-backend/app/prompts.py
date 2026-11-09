@@ -177,11 +177,14 @@ def build_messages(request: DebateRequest) -> list[dict[str, str]]:
     messages = [{"role": "system", "content": system_prompt}]
     if context.summary:
         # Older turns are condensed so a long or continued debate still fits the model context.
-        messages.append({"role": "system", "content": context.summary})
+        # Defang again at the prompt boundary: a context producer must not be the
+        # only thing standing between an old transcript and this system block.
+        messages.append({"role": "system", "content": _defang(context.summary)})
     if context.relevant:
         # Keyword overlap with the latest argument, not a model call: cheap and bounded.
         lines = [
-            f"{'Learner' if turn['speaker'] == 'learner' else 'Opponent'}: {turn['content']}"
+            f"{'Learner' if turn['speaker'] == 'learner' else 'Opponent'}: "
+            f"{_defang(turn['content'])}"
             for turn in context.relevant
         ]
         messages.append(

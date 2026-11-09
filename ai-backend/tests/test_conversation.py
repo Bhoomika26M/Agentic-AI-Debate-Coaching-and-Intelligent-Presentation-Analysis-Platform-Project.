@@ -4,6 +4,7 @@ from app.agents.conversation import (
     MAX_SUMMARY_WORDS,
     MAX_WINDOW_TURN_WORDS,
     MAX_WINDOW_TURNS,
+    build_context,
     window_turns,
 )
 
@@ -48,3 +49,18 @@ def test_blank_turns_are_dropped_before_the_window():
     )
     assert summary is None
     assert window == [_turn("opponent", "A real reply.")]
+
+
+def test_accented_words_can_recall_an_older_turn():
+    turns = [
+        _turn("learner" if index % 2 == 0 else "opponent", f"topic {index}")
+        for index in range(12)
+    ]
+    turns[2] = _turn("learner", "L’égalité de traitement est essentielle.")
+    context = build_context(
+        turns,
+        latest="Pourquoi l’égalité de traitement compte-t-elle ?",
+        recent_turns=2,
+        relevant_turns=2,
+    )
+    assert any("égalité" in turn["content"] for turn in context.relevant)

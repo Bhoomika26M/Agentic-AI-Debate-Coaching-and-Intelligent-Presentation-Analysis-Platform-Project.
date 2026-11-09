@@ -49,6 +49,7 @@ export function useSpeechInput(options: Options) {
   const startedAtRef = useRef(0);
   const vadRef = useRef<MicVAD | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [listening, setListening] = useState(false);
   const [level, setLevel] = useState(0);
   const levelAtRef = useRef(0);
@@ -58,6 +59,7 @@ export function useSpeechInput(options: Options) {
   const release = useCallback(() => {
     recordingRef.current = false;
     setLevel(0);
+    setNotice("");
     pushToTalkPressedRef.current = false;
     sourceRef.current?.disconnect();
     sourceRef.current = null;
@@ -100,6 +102,7 @@ export function useSpeechInput(options: Options) {
     if (pushToTalkPressedRef.current || recordingRef.current) return;
     pushToTalkPressedRef.current = true;
     setError("");
+    setNotice("");
     try {
       const stream = await ensureStream();
       // getUserMedia can resolve after the learner has already released the
@@ -158,9 +161,10 @@ export function useSpeechInput(options: Options) {
     processorRef.current = null;
     if (blob.size < 2 * 44 + TARGET_SAMPLE_RATE) {
       // Under ~0.5 s of audio: a click, not a turn.
-      setError("Hold the key a little longer so the turn registers.");
+      setNotice("Hold the key a little longer so the turn registers.");
       return;
     }
+    setNotice("");
     optionsRef.current.onSpeechEnd();
     optionsRef.current.onUtterance({ blob, durationMs, mode: "push_to_talk" });
   }, []);
@@ -170,6 +174,7 @@ export function useSpeechInput(options: Options) {
     startingVadRef.current = true;
     setStartingHandsFree(true);
     setError("");
+    setNotice("");
     try {
       let vad = vadRef.current;
       if (!vad) {
@@ -195,9 +200,11 @@ export function useSpeechInput(options: Options) {
           },
           onSpeechEnd: (audio: Float32Array) => {
             setListening(false);
-            optionsRef.current.onSpeechEnd();
             const pcm = trimSilence(audio);
+            // A cough or a lip smack is not a turn. Leave the room in its
+            // listening state instead of setting "thinking" and abandoning it.
             if (pcm.length < TARGET_SAMPLE_RATE * 0.4) return;
+            optionsRef.current.onSpeechEnd();
             const blob = new Blob(
               [new Blob([new Uint8Array(encodeWav(pcm, TARGET_SAMPLE_RATE))], { type: "audio/wav" })],
               { type: "audio/wav" },
@@ -237,6 +244,7 @@ export function useSpeechInput(options: Options) {
     setHandsFree(false);
     setListening(false);
     setLevel(0);
+    setNotice("");
   }, []);
 
   const pause = useCallback(() => {
@@ -255,6 +263,7 @@ export function useSpeechInput(options: Options) {
 
   return {
     error,
+    notice,
     listening,
     level,
     handsFree,

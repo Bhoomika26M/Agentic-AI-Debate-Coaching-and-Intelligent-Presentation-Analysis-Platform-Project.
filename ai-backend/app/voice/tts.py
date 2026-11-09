@@ -37,6 +37,7 @@ class VoiceProfile:
     names: tuple[str, ...]
     weights: tuple[float, ...]
     speed: float
+    lang: str
     description: str
 
     def __post_init__(self) -> None:
@@ -54,21 +55,24 @@ VOICES: dict[str, VoiceProfile] = {
         ("am_michael", "am_onyx"),
         (0.7, 0.3),
         0.94,
+        "en-us",
         "lower, even, deliberate",
     ),
     "skeptic": VoiceProfile(
         ("af_heart", "af_nicole"),
         (0.65, 0.35),
         1.08,
+        "en-us",
         "brighter and quicker",
     ),
     "diplomat": VoiceProfile(
         ("bf_emma", "bf_isabella"),
         (0.7, 0.3),
         0.9,
+        "en-gb",
         "unhurried and warm",
     ),
-    "moderator": VoiceProfile(("am_puck",), (1.0,), 1.0, "neutral announcer"),
+    "moderator": VoiceProfile(("am_puck",), (1.0,), 1.0, "en-us", "neutral announcer"),
 }
 
 _MARKUP = re.compile(r"[*_`#>]+")
@@ -244,7 +248,7 @@ class KokoroEngine:
                 spoken,
                 voice=voice,
                 speed=profile.speed,
-                lang="en-us",
+                lang=profile.lang,
             )
             data = wav_bytes(samples, rate)
             duration_ms = int(round(len(samples) / rate * 1000)) if rate else 0

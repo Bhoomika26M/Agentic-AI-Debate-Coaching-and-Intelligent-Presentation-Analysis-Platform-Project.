@@ -242,9 +242,10 @@ async def debate_stream(request: DebateRequest) -> StreamingResponse:
             headers={"Retry-After": "5"},
         )
 
-    await stream_slots.acquire()
-
     async def events() -> AsyncIterator[str]:
+        # Acquire inside the generator: if the client disconnects before the
+        # response body is first pulled, no slot is ever owned to leak.
+        await stream_slots.acquire()
         try:
             with use_model(request.model):
                 assembled: list[str] = []
@@ -365,9 +366,10 @@ async def debate_analysis_stream(request: AnalysisRequest) -> StreamingResponse:
             status_code=429,
             detail="The model is busy. Please retry in a moment.",
         )
-    await stream_slots.acquire()
-
     async def events() -> AsyncIterator[str]:
+        # Same ownership rule as the debate stream: a response that is never
+        # iterated must not reserve a model slot.
+        await stream_slots.acquire()
         try:
             with use_model(request.model):
                 from .agents.analysis_graph import stream_analysis_with_graph
