@@ -175,6 +175,8 @@ export async function loadDebateVerdict(sessionId: string) {
 }
 
 export async function loadDebateVerdictRank(sessionId: string): Promise<{ rank: number; total: number } | null> {
+  // Row-level security on debate_analyses limits this to sessions owned by the
+  // signed-in learner, so it is a personal archive rank, not a global one.
   const { data, error } = await requireClient()
     .from("debate_analyses")
     .select("session_id, verdict")

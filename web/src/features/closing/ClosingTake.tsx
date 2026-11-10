@@ -2,8 +2,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, BookOpenText, Check, Mic } from "lucide-react";
 import { PresentationRoom } from "../presentation/PresentationRoom";
-import type { LocalModel } from "../../services/app-settings";
-import type { PresentationResult } from "../../services/presentation-api";
+import type { DeliveryTake } from "../../services/presentation-records";
 import "./closing.css";
 
 type Stage = "offer" | "record" | "decline";
@@ -18,11 +17,7 @@ const LEDGER = [
 
 export type ClosingTakeProps = {
   topic: string;
-  recordId: string | null;
-  model: LocalModel;
-  initialResult: PresentationResult | null;
-  onDelivery: (result: PresentationResult | null) => void;
-  onContinue: () => void;
+  onContinue: (take: DeliveryTake | null) => void;
 };
 
 /**
@@ -37,20 +32,28 @@ export type ClosingTakeProps = {
  */
 export function ClosingTakePanel({
   topic,
-  recordId,
-  model,
-  initialResult,
-  onDelivery,
   onContinue,
   embedded = false,
 }: ClosingTakeProps & { embedded?: boolean }) {
   const [stage, setStage] = useState<Stage>("offer");
+  const [take, setTake] = useState<DeliveryTake | null>(null);
+  const [recording, setRecording] = useState(false);
   const declineRef = useRef<HTMLElement | null>(null);
-  const takeReviewed = Boolean(initialResult?.transcript.trim());
 
   useEffect(() => {
     if (stage === "decline") declineRef.current?.focus();
   }, [stage]);
+
+  useEffect(() => {
+    if (stage === "record") return;
+    setTake(null);
+    setRecording(false);
+  }, [stage]);
+
+  function continueToVerdict() {
+    if (!take || recording) return;
+    onContinue(take);
+  }
 
   return (
     <div className={`closing-take${embedded ? " is-embedded" : ""}`}>
@@ -160,7 +163,7 @@ export function ClosingTakePanel({
                 debate transcript only.
               </p>
               <div className="closing-take-actions">
-                <button className="button closing-skip" type="button" onClick={onContinue}>
+                <button className="button closing-skip" type="button" onClick={() => onContinue(null)}>
                   Skip — see my scores
                 </button>
                 <button className="button button-light" type="button" onClick={() => setStage("offer")}>
@@ -181,12 +184,13 @@ export function ClosingTakePanel({
                   <span className="closing-booth-label">TAKE 01 / UP TO 3:00</span>
                   <h2 id="closing-booth-title">Deliver the closing statement.</h2>
                   <p>
-                    Wrap the round: the clash, your strongest ground, and what should decide it. Record, then
-                    choose <b>Review delivery</b> so the take is scored before you continue.
+                    Wrap the round: the clash, your strongest ground, and what should decide it. Record your
+                    take, then continue — delivery is reviewed with your verdict and folded into the final
+                    weighted score.
                   </p>
                 </div>
-                <span className={`closing-booth-state${takeReviewed ? " is-ready" : ""}`}>
-                  {takeReviewed ? "TAKE REVIEWED" : "NOT REVIEWED"}
+                <span className={`closing-booth-state${take ? " is-ready" : ""}`}>
+                  {recording ? "RECORDING" : take ? "TAKE READY" : "NOT RECORDED"}
                 </span>
               </div>
 
@@ -194,11 +198,10 @@ export function ClosingTakePanel({
                 <Suspense fallback={<p className="closing-booth-loading" role="status">Loading the delivery coach…</p>}>
                   <PresentationRoom
                     compact
+                    recordOnly
                     topic={topic}
-                    sessionId={recordId}
-                    model={model}
-                    initialResult={initialResult}
-                    onResult={onDelivery}
+                    onTake={setTake}
+                    onRecordingChange={setRecording}
                   />
                 </Suspense>
                 <aside className="closing-booth-aside">
@@ -213,12 +216,17 @@ export function ClosingTakePanel({
               </div>
 
               <div className="closing-booth-foot">
-                <button className="button button-dark" type="button" onClick={onContinue}>
-                  {takeReviewed ? "Read my verdict" : "Continue to the verdict"} <ArrowRight size={16} />
+                <button className="button button-dark" type="button" onClick={continueToVerdict} disabled={!take || recording}>
+                  Continue to the verdict <ArrowRight size={16} />
                 </button>
                 <button className="text-link" type="button" onClick={() => setStage("offer")}>
                   Back to the choice
                 </button>
+                {(!take || recording) && (
+                  <p className="closing-booth-note" role="status">
+                    {recording ? "Stop the recording before you continue." : "Record or upload a take to continue, or go back to skip it."}
+                  </p>
+                )}
               </div>
             </section>
           )}

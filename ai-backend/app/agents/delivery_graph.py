@@ -65,6 +65,46 @@ def _has_segments(state: DeliveryState) -> str:
     return "signals" if state.get("segments") else "done"
 
 
+async def transcribe_delivery(
+    audio: bytes, filename: str, content_type: str
+) -> tuple[dict | None, list[str], str]:
+    """Transcribe a take and measure it without spending a model call.
+
+    The verdict flow uses this early result to include the closing words in the
+    one argument pass, while delivery coaching runs separately.
+    """
+    state = await transcribe_node(
+        {"audio": audio, "filename": filename, "content_type": content_type}
+    )
+    segments = state.get("segments", [])
+    if not segments:
+        return None, list(state.get("gaps", [])), str(
+            state.get("error_kind", "failed")
+        )
+    signals = DeliverySignals.model_validate(analyze_delivery(segments))
+    return {
+        "transcript": " ".join(s.get("text", "") for s in segments),
+        "segments": segments,
+        "signals": signals.model_dump(),
+        "retained": False,
+    }, [], ""
+
+
+async def coach_transcript(
+    topic: str | None, segments: list[dict], signals: dict
+) -> tuple[dict | None, list[str], str]:
+    """Coach an already-transcribed take, so transcription is not repeated."""
+    state = await coach_node(
+        {"topic": topic, "segments": segments, "signals": signals}
+    )
+    report = state.get("report")
+    if not isinstance(report, dict):
+        return None, list(state.get("gaps", [])), str(
+            state.get("error_kind", "failed")
+        )
+    return report, [], ""
+
+
 def build_delivery_graph():
     graph = StateGraph(DeliveryState)
     graph.add_node("transcribe", transcribe_node)

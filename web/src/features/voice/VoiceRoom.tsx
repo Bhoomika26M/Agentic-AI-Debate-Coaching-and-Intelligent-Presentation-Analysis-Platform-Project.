@@ -10,7 +10,7 @@ import { OpponentEmblem } from "../../components/OpponentEmblem";
 import { useSpeechInput } from "./useSpeechInput";
 import { useSpeechPlayer } from "./useSpeechPlayer";
 import { ClosingTakePanel } from "../closing/ClosingTake";
-import type { PresentationResult } from "../../services/presentation-api";
+import type { DeliveryTake } from "../../services/presentation-records";
 import "./voice.css";
 
 type Props = {
@@ -40,10 +40,8 @@ type Props = {
   roundSeconds?: number | null;
   /** The clock has reached zero: the room itself takes the closing take. */
   roundOver?: boolean;
-  recordId?: string | null;
-  deliveryResult?: PresentationResult | null;
-  onDeliveryResult?: (result: PresentationResult | null) => void;
-  onFinishRound?: () => void;
+  /** Leave the room with the take, or null when the learner skips it. */
+  onFinishRound?: (take: DeliveryTake | null) => void;
 };
 
 type Status = "connecting" | "idle" | "listening" | "thinking" | "speaking" | "interrupted" | "closed";
@@ -114,7 +112,7 @@ function sentencesOf(text: string) {
     .filter(Boolean);
 }
 
-export function VoiceRoom({ topic, position, persona, difficulty, preferences, model = DEFAULT_LOCAL_MODEL, streamReplies, streamRepliesDefault, onStreamRepliesChange, onRememberStreamReplies, onTypeInstead, accessToken, history = [], onTurn, onClose, onSignIn, secondsLeft = null, roundSeconds = null, roundOver = false, recordId = null, deliveryResult = null, onDeliveryResult, onFinishRound }: Props) {
+export function VoiceRoom({ topic, position, persona, difficulty, preferences, model = DEFAULT_LOCAL_MODEL, streamReplies, streamRepliesDefault, onStreamRepliesChange, onRememberStreamReplies, onTypeInstead, accessToken, history = [], onTurn, onClose, onSignIn, secondsLeft = null, roundSeconds = null, roundOver = false, onFinishRound }: Props) {
   const titleId = useId();
   const [status, setStatus] = useState<Status>("connecting");
   const [lines, setLines] = useState<Line[]>(() => history.map((line) => ({
@@ -194,6 +192,49 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
     }));
   }, []);
 
+  // The canonical transcript arrives once every clip has been *sent*, which is
+  // before the playback queue has drained. Count sentences so the streamed line
+  // survives until each one has actually begun; otherwise the final text would
+  // appear first and late playback would start a second copy underneath it.
+  const turnAudioRef = useRef({ captions: 0, started: 0, audioMs: 0, closed: false });
+  const pendingFinalRef = useRef<{ content: string; interrupted: boolean } | null>(null);
+  const finalizeTimerRef = useRef(0);
+  const onTurnRef = useRef(onTurn);
+  onTurnRef.current = onTurn;
+
+  const clearFinalizeTimer = useCallback(() => {
+    window.clearTimeout(finalizeTimerRef.current);
+    finalizeTimerRef.current = 0;
+  }, []);
+
+  // Swap the growing line for the canonical transcript only once playback has
+  // caught up. One line, one onTurn: the exchange never commits it twice.
+  const finalizePending = useCallback(() => {
+    const pending = pendingFinalRef.current;
+    if (!pending) return;
+    pendingFinalRef.current = null;
+    clearFinalizeTimer();
+    turnAudioRef.current.closed = true;
+    appendLine("opponent", pending.content, pending.interrupted);
+    setStreamed(null);
+    if (pending.interrupted) {
+      setStatus("interrupted");
+      player.stop();
+    }
+  }, [appendLine, clearFinalizeTimer, player]);
+
+  const markSentenceStarted = useCallback(
+    (text: string) => {
+      const turn = turnAudioRef.current;
+      turn.started += 1;
+      if (streamRepliesRef.current && !turn.closed) appendStreamed(text);
+      if (pendingFinalRef.current && turn.started >= turn.captions) finalizePending();
+    },
+    [appendStreamed, finalizePending],
+  );
+  const markSentenceStartedRef = useRef(markSentenceStarted);
+  markSentenceStartedRef.current = markSentenceStarted;
+
   const input = useSpeechInput({
     turnEndMs,
     onUtterance: ({ blob, mode }) => {
@@ -207,6 +248,8 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
       clientRef.current?.speak(blob, mode, mode === "hands_free");
     },
     onSpeechStart: () => {
+      // A new utterance settles whatever the last reply still owed the ear.
+      finalizePending();
       setHeard("");
       setHeardNote("");
       if (status === "speaking") {
@@ -268,10 +311,19 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
           break;
         case "state":
           setStatus(event.state);
+          if (event.state === "thinking") {
+            // A new turn begins: settle anything the last one still owed and
+            // start counting this turn's sentences from zero.
+            finalizePending();
+            clearFinalizeTimer();
+            turnAudioRef.current = { captions: 0, started: 0, audioMs: 0, closed: false };
+          }
           if (event.state === "listening") {
             setCaption("");
             setReply("");
-            setStreamed(null);
+            // A delivered transcript may still be waiting for its last
+            // sentence to be heard; do not drop the growing line early.
+            if (!pendingFinalRef.current) setStreamed(null);
           }
           if (event.state === "speaking") {
             setNotice("");
@@ -279,6 +331,9 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
           break;
         case "transcript":
           if (event.speaker === "learner") {
+            // The learner cannot start a new turn over a reply whose transcript
+            // is still waiting for playback; settle it before their line.
+            finalizePending();
             setHeard(event.content);
             if (event.pending) {
               setPending({ text: event.content, deadline: Date.now() + (event.edit_window_ms ?? 1500) });
@@ -293,10 +348,30 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
               setStatus("thinking");
             }
           } else {
-            // The final transcript replaces the streamed line with what the
-            // exchange should keep: the whole reply, or only what was heard.
-            appendLine("opponent", event.content, event.interrupted);
-            setStreamed(null);
+            // The final transcript is canonical, but its audio may still be
+            // queued. Hold it until every sentence has started, so replacing
+            // the streamed line cannot race the playback queue.
+            const turn = turnAudioRef.current;
+            const waitingForPlayback =
+              streamRepliesRef.current &&
+              !event.interrupted &&
+              turn.captions > 0 &&
+              turn.started < turn.captions;
+            if (waitingForPlayback) {
+              pendingFinalRef.current = { content: event.content, interrupted: false };
+              clearFinalizeTimer();
+              // If decoding stalls and no clip ever starts, the line must
+              // still become canonical rather than blink forever.
+              finalizeTimerRef.current = window.setTimeout(
+                () => finalizePending(),
+                Math.max(4000, turn.audioMs + 4000),
+              );
+            } else {
+              pendingFinalRef.current = null;
+              clearFinalizeTimer();
+              appendLine("opponent", event.content, event.interrupted);
+              setStreamed(null);
+            }
             if (recoveryNoticeRef.current) {
               setNotice("Your point was received. The opponent needed to reset its reply; your turn was not rejected.");
               recoveryNoticeRef.current = false;
@@ -308,7 +383,11 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
           }
           break;
         case "caption":
-          if (!event.opener && !event.moderator) setCaption(event.text);
+          if (!event.opener && !event.moderator) {
+            setCaption(event.text);
+            turnAudioRef.current.captions += 1;
+            turnAudioRef.current.audioMs += event.duration_ms || 0;
+          }
           if (event.moderator) setNotice(event.text);
           break;
         case "reply":
@@ -327,11 +406,22 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
               PERSONA_RATE[persona],
               (index) => {
                 setCaption(parts[index] ?? "");
-                if (streamRepliesRef.current) appendStreamed(parts[index] ?? "");
+                markSentenceStarted(parts[index] ?? "");
               },
               () => setCaption(""),
             );
-            if (!started) setNotice("This browser cannot play speech. Read the opponent's reply in the exchange.");
+            if (!started) {
+              turnAudioRef.current.captions = 0;
+              setNotice("This browser cannot play speech. Read the opponent's reply in the exchange.");
+            } else {
+              // The browser voice is this turn's audio: the transcript must
+              // not run ahead of it either.
+              turnAudioRef.current.captions = Math.max(turnAudioRef.current.captions, parts.length);
+              turnAudioRef.current.audioMs = Math.max(
+                turnAudioRef.current.audioMs,
+                parts.reduce((total, part) => total + part.length * 65, 0),
+              );
+            }
           }
           break;
         case "delivery":
@@ -352,6 +442,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
           }
           break;
         case "error":
+          finalizePending();
           setError(event.message);
           if (event.recoverable) setHeardNote(event.message);
           setStatus("idle");
@@ -361,7 +452,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
           break;
       }
     },
-    [appendLine, appendStreamed, confirmPending, history, persona, player, position],
+    [appendLine, clearFinalizeTimer, confirmPending, finalizePending, history, markSentenceStarted, persona, player, position],
   );
   const handleEventRef = useRef(handleEvent);
   handleEventRef.current = handleEvent;
@@ -401,7 +492,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
           onStart: () => {
             if (meta && !meta.opener && !meta.moderator && meta.index >= 0) {
               setCaption(meta.text);
-              if (streamRepliesRef.current) appendStreamed(meta.text);
+              markSentenceStartedRef.current(meta.text);
             }
           },
         });
@@ -488,6 +579,21 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
 
   useEffect(() => () => window.clearTimeout(timeCueTimerRef.current), []);
 
+  // Closing the room must not drop a reply whose last sentence never got the
+  // chance to start: the arena still needs the canonical turn.
+  useEffect(() => () => {
+    window.clearTimeout(finalizeTimerRef.current);
+    const pending = pendingFinalRef.current;
+    pendingFinalRef.current = null;
+    if (pending && pending.content.trim()) onTurnRef.current?.("opponent", pending.content);
+  }, []);
+
+  // Switching to Full reply mid-turn should reveal the canonical text now,
+  // rather than wait for the sentence-by-sentence line to catch up.
+  useEffect(() => {
+    if (!streamReplies && pendingFinalRef.current) finalizePending();
+  }, [streamReplies, finalizePending]);
+
   // The round is over: release the microphone so the closing take can record,
   // and stop any reply still playing over it.
   useEffect(() => {
@@ -495,6 +601,8 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
     void inputRef.current.stopHandsFree();
     inputRef.current.release();
     player.stop();
+    // The transcript is final even though the room is cutting playback short.
+    finalizePending();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundOver]);
 
@@ -965,11 +1073,7 @@ export function VoiceRoom({ topic, position, persona, difficulty, preferences, m
               <ClosingTakePanel
                 embedded
                 topic={topic}
-                recordId={recordId}
-                model={model}
-                initialResult={deliveryResult}
-                onDelivery={onDeliveryResult ?? (() => {})}
-                onContinue={() => onFinishRound?.()}
+                onContinue={(take) => onFinishRound?.(take)}
               />
             </div>
           </div>

@@ -7,7 +7,8 @@ from fastapi import HTTPException
 
 from app import main
 from app.agents import delivery_graph
-from app.schemas import PresentationReport
+from app.delivery import analyze_delivery
+from app.schemas import DeliverySignals, PresentationReport, PresentationRequest
 from app.speech import AudioValidationError, TranscriptionUnavailableError
 
 REPORT = {
@@ -95,6 +96,93 @@ def test_a_complete_review_returns_the_transcript_and_report(monkeypatch):
     assert result["segments"] == SEGMENTS
     assert result["signals"]["words"] == 3
     assert result["report"]["communication_score"] == 4
+
+
+def _signals() -> dict:
+    return DeliverySignals.model_validate(analyze_delivery(SEGMENTS)).model_dump()
+
+
+def test_transcription_returns_signals_without_calling_the_model(monkeypatch):
+    _patch_transcription(monkeypatch, result=SEGMENTS)
+
+    async def fake_coach(_request):
+        raise AssertionError("transcription must not coach")
+
+    monkeypatch.setattr(delivery_graph, "coach_delivery", fake_coach)
+
+    result, gaps, kind = asyncio.run(
+        delivery_graph.transcribe_delivery(b"audio", "talk.webm", "audio/webm")
+    )
+
+    assert kind == ""
+    assert gaps == []
+    assert result is not None
+    assert result["transcript"] == "Good morning everyone"
+    assert result["signals"]["words"] == 3
+
+
+def test_coaching_reuses_existing_transcript_and_signals(monkeypatch):
+    transcribed = False
+
+    async def fake_transcribe(*_args, **_kwargs):
+        nonlocal transcribed
+        transcribed = True
+        return SEGMENTS
+
+    async def fake_coach(_request):
+        return PresentationReport.model_validate(REPORT)
+
+    monkeypatch.setattr(delivery_graph, "transcribe_audio", fake_transcribe)
+    monkeypatch.setattr(delivery_graph, "coach_delivery", fake_coach)
+
+    report, gaps, kind = asyncio.run(
+        delivery_graph.coach_transcript("A topic", SEGMENTS, _signals())
+    )
+
+    assert kind == ""
+    assert gaps == []
+    assert report is not None
+    assert report["communication_score"] == 4
+    assert transcribed is False
+
+
+def test_the_transcribe_endpoint_returns_before_coaching(monkeypatch):
+    monkeypatch.setattr(main, "validate_audio", lambda *_args: None)
+    monkeypatch.setattr(main, "probe_duration", lambda *_args: None)
+
+    async def fake_transcribe(*_args, **_kwargs):
+        return {
+            "transcript": "Good morning everyone",
+            "segments": SEGMENTS,
+            "signals": _signals(),
+            "retained": False,
+        }, [], ""
+
+    monkeypatch.setattr(delivery_graph, "transcribe_delivery", fake_transcribe)
+
+    response = asyncio.run(main.presentation_transcribe(audio=_Upload()))
+
+    assert response.transcript == "Good morning everyone"
+    assert response.signals.words == 3
+
+
+def test_the_coach_endpoint_accepts_existing_segments(monkeypatch):
+    async def fake_coach(topic, segments, signals):
+        assert topic == "A topic"
+        assert segments == SEGMENTS
+        assert signals["words"] == 3
+        return REPORT, [], ""
+
+    monkeypatch.setattr(delivery_graph, "coach_transcript", fake_coach)
+    request = PresentationRequest(
+        topic="A topic",
+        segments=SEGMENTS,
+        signals=_signals(),
+    )
+
+    report = asyncio.run(main.presentation_coach(request=request))
+
+    assert report.communication_score == 4
 
 
 class _Upload:

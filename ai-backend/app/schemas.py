@@ -230,6 +230,7 @@ class PresentationRequest(BaseModel):
     topic: str | None = Field(default=None, max_length=240)
     segments: list[PresentationSegment] = Field(min_length=1, max_length=60)
     signals: DeliverySignals
+    model: LocalModel | None = None
 
 
 class DrillCard(BaseModel):
@@ -280,6 +281,15 @@ class PresentationResponse(BaseModel):
     report: PresentationReport
     retained: bool = False
     ser_reflection: list[dict] = Field(default_factory=list, max_length=8)
+
+
+class PresentationTranscriptResponse(BaseModel):
+    """The transcript and measured signals, before any model coaching starts."""
+
+    transcript: str = Field(min_length=1, max_length=8000)
+    segments: list[PresentationSegment] = Field(min_length=1, max_length=60)
+    signals: DeliverySignals
+    retained: bool = False
 
 
 class JudgeReport(BaseModel):

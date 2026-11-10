@@ -1,5 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { mockHealth, seedSignedIn } from "./support";
+
+// Two seconds of 16 kHz speech-shaped audio, also used as the fake microphone.
+const SPOKEN_CLIP = readFileSync(
+  fileURLToPath(new URL("./fixtures/spoken.wav", import.meta.url)),
+);
 
 const OPPONENT_REPLY =
   "You lean on attention gains, but a ban moves the same distraction into the corridor. " +
@@ -400,6 +407,73 @@ test("a complete spoken turn sends microphone audio and renders both transcript 
   expect(received).toContain("utterance_start");
 });
 
+test("a lagging playback queue never duplicates the opponent's reply", async ({ page }) => {
+  const first = "First, the ban changes the corridor.";
+  const second = "Second, attention has to be measured.";
+  const reply = `${first} ${second}`;
+  await mockDebateApi(page);
+  await startRehearsal(page);
+
+  await page.routeWebSocket(/\/ws\/voice/, (socket) => {
+    socket.onMessage((message) => {
+      if (typeof message !== "string") {
+        socket.send(JSON.stringify({ type: "state", state: "thinking" }));
+        socket.send(JSON.stringify({ type: "transcript", speaker: "learner", content: SPOKEN_LEARNER }));
+        socket.send(JSON.stringify({ type: "reply", text: reply, verified: true }));
+        // The pipeline sends every clip and then the canonical transcript,
+        // while the browser is still playing the first sentence.
+        for (const [index, text] of [first, second].entries()) {
+          socket.send(JSON.stringify({
+            type: "caption",
+            text,
+            index,
+            total: 2,
+            duration_ms: 2000,
+            sample_rate: 16000,
+          }));
+          socket.send(SPOKEN_CLIP);
+        }
+        socket.send(JSON.stringify({ type: "transcript", speaker: "opponent", content: reply }));
+        socket.send(JSON.stringify({ type: "state", state: "listening" }));
+        return;
+      }
+      const payload = JSON.parse(message) as { type?: string };
+      if (payload.type === "auth") {
+        socket.send(JSON.stringify({ type: "authenticated" }));
+        return;
+      }
+      if (payload.type === "start") {
+        socket.send(JSON.stringify({
+          type: "ready",
+          tts: "kokoro",
+          persona_voices: {},
+          recognition: "local",
+          turn_end_ms: 1100,
+        }));
+        socket.send(JSON.stringify({ type: "started", topic: "Test motion", persona: "skeptic", reply_length: "standard" }));
+      }
+    });
+  });
+
+  await page.getByRole("button", { name: "Open voice debate" }).click();
+  const dialog = page.getByRole("dialog");
+  const microphone = dialog.getByRole("button", { name: "Hold to speak your turn" });
+  await expect(microphone).toBeEnabled();
+  await microphone.hover();
+  await page.mouse.down();
+  await page.waitForTimeout(1200);
+  await page.mouse.up();
+
+  const replyLines = dialog.locator(".voice-line.opponent").filter({ hasText: first });
+  await expect(replyLines).toHaveCount(1);
+  // Sentence two starts after the transcript has already arrived. If the
+  // archive line were committed at transcript time, that start would open a
+  // second chatbox underneath it.
+  await page.waitForTimeout(2600);
+  await expect(replyLines).toHaveCount(1);
+  await expect(dialog.locator(".voice-line.opponent.is-streaming")).toHaveCount(0);
+});
+
 test("a spoken round ends in the voice room with the closing-take choice", async ({ page }) => {
   await mockDebateApi(page);
   await mockVoiceRoom(page);
@@ -446,6 +520,223 @@ test("a spoken round ends in the voice room with the closing-take choice", async
   await expect(page.getByRole("heading", { name: /is in the book/i })).toBeVisible();
   // The room already asked for the take, so the page gate is not shown again.
   await expect(page.getByRole("heading", { name: /closes the round/i })).toHaveCount(0);
+});
+
+test("Act V records a closing take and reviews it with the verdict automatically", async ({ page }) => {
+  // Whisper segments often arrive with a leading space; the closing transcript
+  // must still match the analyzed text so the verdict does not re-run analysis.
+  const closingTranscript = " Phones away help students focus on the lesson.";
+  const deliveryReview = {
+    transcript: closingTranscript,
+    segments: [{ text: closingTranscript, start: 0, end: 2 }],
+    signals: {
+      wpm: 120,
+      words: 8,
+      duration_sec: 2,
+      filler_count: 0,
+      filler_rate_per_100w: 0,
+      pause_count: 0,
+      longest_pause_sec: 0,
+      repetition_count: 0,
+      revision_count: 0,
+      prolongation_count: 0,
+      events: [],
+    },
+    retained: false,
+  };
+  const deliveryReport = {
+    transcript: closingTranscript,
+    communication_score: 4,
+    strengths: ["Steady pace."],
+    drills: [{
+      start: 0,
+      end: 2,
+      pattern: "steady",
+      what_happened: "The close stayed at one pace.",
+      try_this: "Land the final claim a little slower.",
+      example: "That is why the ban should stand.",
+    }],
+    next_line: "Keep the closing claim in one sentence.",
+  };
+  const report = {
+    ratings: {
+      clarity: { score: 4, note: "Clear claim." },
+      relevance: { score: 4, note: "On the motion." },
+      evidence_strength: { score: 3, note: "One example." },
+      logical_consistency: { score: 4, note: "Consistent case." },
+      persuasiveness: { score: 4, note: "Direct appeal." },
+    },
+    fallacies: [],
+    strengths: ["Clear structure."],
+    next_steps: ["Add one more source."],
+    counterarguments: [],
+    gaps: [],
+  };
+  const verdict = {
+    overall: 4.2,
+    dimensions: [
+      { key: "argument", weight_pct: 30, score: 4, note: "Clear case.", citations: [] },
+      { key: "evidence", weight_pct: 20, score: 3, note: "One example.", citations: [] },
+      { key: "logical", weight_pct: 20, score: 4, note: "Consistent.", citations: [] },
+      { key: "rebuttal", weight_pct: 15, score: 4, note: "Answers the reply.", citations: [] },
+      { key: "communication", weight_pct: 15, score: 4.5, note: "Steady close.", citations: [] },
+    ],
+    gaps: [],
+  };
+  let transcribeCalls = 0;
+  let secondAnalysisCalls = 0;
+  let closingStatement = "";
+  let judgedDelivery = "";
+
+  await mockDebateApi(page);
+  await page.route(/\/api\/presentation\/transcribe$/, (route) => {
+    transcribeCalls += 1;
+    return route.fulfill({ json: deliveryReview });
+  });
+  await page.route(/\/api\/presentation\/coach$/, (route) =>
+    route.fulfill({ json: deliveryReport }),
+  );
+  await page.route(/\/api\/debate\/analyze\/stream$/, (route) => {
+    const payload = route.request().postDataJSON() as { closing_statement?: string };
+    closingStatement = payload.closing_statement ?? "";
+    return route.fulfill({
+      status: 200,
+      headers: { "content-type": "text/event-stream; charset=utf-8" },
+      body: `event: review\ndata: ${JSON.stringify(report)}\n\ndata: [DONE]\n\n`,
+    });
+  });
+  // The closing words now ride the single transcript pass. A second full
+  // analysis here would mean the duplicate work is back.
+  await page.route(/\/api\/debate\/analyze$/, (route) => {
+    secondAnalysisCalls += 1;
+    return route.fulfill({ json: report });
+  });
+  await page.route(/\/api\/debate\/judge$/, (route) => {
+    const payload = route.request().postDataJSON() as { delivery?: { transcript?: string } | null };
+    judgedDelivery = payload.delivery?.transcript ?? "";
+    return route.fulfill({ json: verdict });
+  });
+
+  await startRehearsal(page);
+  // Keep the archive writes successful so the verdict shows the final score
+  // instead of a save-retry banner.
+  await page.route("**/rest/v1/debate_analyses*", (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: null });
+    return route.fulfill({ status: 201, json: { session_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } });
+  });
+  await page.route("**/rest/v1/presentation_feedbacks*", (route) =>
+    route.fulfill({ status: 201, json: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" } }),
+  );
+  await submitCase(page, "Schools should ban phones because attention improves in class.");
+  await page.getByRole("button", { name: "Finish & review" }).click();
+  await page.getByRole("button", { name: /Tap again to finish/ }).click();
+
+  await expect(page.getByRole("heading", { name: /closes the round/i })).toBeVisible();
+  await page.getByRole("button", { name: "Record a closing take" }).click();
+  // Act V is only the recording booth: delivery is reviewed after the verdict
+  // handoff, never from a second button inside the booth.
+  await expect(page.getByRole("button", { name: "Review delivery" })).toHaveCount(0);
+  await page.getByLabel("Upload audio file").setInputFiles({
+    name: "closing.wav",
+    mimeType: "audio/wav",
+    buffer: SPOKEN_CLIP,
+  });
+  await expect(page.getByText("TAKE READY")).toBeVisible();
+
+  await page.getByRole("button", { name: "Continue to the verdict" }).click();
+
+  await expect(page.getByRole("heading", { name: /is in the book/i })).toBeVisible();
+  await expect(page.getByText(/Closing take reviewed\. Your weighted score now includes delivery\./)).toBeVisible();
+  await expect(page.locator(".score-figure")).toContainText("84");
+  await expect(page.getByRole("img", { name: "communication scores 90 of 100" })).toBeVisible();
+  await expect.poll(() => transcribeCalls).toBe(1);
+  expect(secondAnalysisCalls).toBe(0);
+  expect(closingStatement).toContain("Phones away");
+  expect(judgedDelivery).toContain("Phones away");
+});
+
+test("a voice closing take is handed from the room to the verdict review", async ({ page }) => {
+  const transcript = "Phones away help students focus on the lesson.";
+  let transcribeCalls = 0;
+  await mockDebateApi(page);
+  await mockVoiceRoom(page);
+  await page.route(/\/api\/presentation\/transcribe$/, (route) => {
+    transcribeCalls += 1;
+    return route.fulfill({
+      json: {
+        transcript,
+        segments: [{ text: transcript, start: 0, end: 2 }],
+        signals: {
+          wpm: 120,
+          words: 8,
+          duration_sec: 2,
+          filler_count: 0,
+          filler_rate_per_100w: 0,
+          pause_count: 0,
+          longest_pause_sec: 0,
+          repetition_count: 0,
+          revision_count: 0,
+          prolongation_count: 0,
+          events: [],
+        },
+        retained: false,
+      },
+    });
+  });
+  await page.route(/\/api\/presentation\/coach$/, (route) =>
+    route.fulfill({
+      json: {
+        transcript,
+        communication_score: 4,
+        strengths: ["Steady pace."],
+        drills: [{
+          start: 0,
+          end: 2,
+          pattern: "steady",
+          what_happened: "The close stayed at one pace.",
+          try_this: "Land the final claim a little slower.",
+          example: "That is why the ban should stand.",
+        }],
+        next_line: "Keep the closing claim in one sentence.",
+      },
+    }),
+  );
+  await page.route("**/api/debate/analyze/stream", (route) =>
+    route.fulfill({ status: 503, json: { detail: "Analysis is outside this rehearsal test." } }),
+  );
+  await startRehearsal(page);
+
+  await page.getByRole("button", { name: "Open voice debate" }).click();
+  const dialog = page.getByRole("dialog");
+  const microphone = dialog.getByRole("button", { name: "Hold to speak your turn" });
+  await expect(microphone).toBeEnabled();
+  await microphone.hover();
+  await page.mouse.down();
+  await expect(dialog.getByRole("button", { name: "Release to send your spoken turn" })).toBeVisible();
+  await page.waitForTimeout(1200);
+  await page.mouse.up();
+  await expect(dialog.locator(".voice-line.learner")).toBeVisible();
+
+  await page.evaluate(() => document.querySelector<HTMLButtonElement>(".end-button")?.click());
+  await expect(page.getByRole("button", { name: /Tap again to finish/ })).toBeVisible();
+  await page.evaluate(() => document.querySelector<HTMLButtonElement>(".end-button")?.click());
+  await expect(dialog.getByRole("region", { name: "Closing take" })).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Record a closing take" }).click();
+  await expect(dialog.getByRole("button", { name: "Review delivery" })).toHaveCount(0);
+  await dialog.getByLabel("Upload audio file").setInputFiles({
+    name: "closing.wav",
+    mimeType: "audio/wav",
+    buffer: SPOKEN_CLIP,
+  });
+  await dialog.getByRole("button", { name: "Continue to the verdict" }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /is in the book/i })).toBeVisible();
+  // The take left the room and was analyzed automatically; the transcript
+  // review in this test is intentionally outside the mocked surface.
+  await expect.poll(() => transcribeCalls).toBe(1);
+  await expect(page.getByRole("alert")).toContainText(/outside this rehearsal test/i);
 });
 
 test("the score run can be stopped and resumed from the verdict", async ({ page }) => {

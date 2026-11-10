@@ -279,12 +279,17 @@ starts (or when the browser's own voice starts it, when Kokoro is unavailable),
 so the text keeps pace with what is being heard. The first prefetched sentence
 can create the line before the `reply` event arrives; `reply` preserves that
 line instead of clearing words the learner has already heard. The final
-`transcript` event replaces the streamed line with the canonical reply — or,
-after an interrupt, with only the sentences that played. The **Streaming / Full reply** control in
-the room turns this off for the session; **Settings → Stream replies as they are
-written** is the permanent choice. Skip mode still consumes the whole stream, so
-the reply and its diagnostics are committed together when `[DONE]` / the final
-transcript arrives; it never changes what the model produced.
+`transcript` event carries the canonical reply — or, after an interrupt, only
+the sentences that played — but it is emitted when the last clip has been
+*sent*, not when it has been heard. The room therefore holds that transcript
+until every sentence has started playing, then swaps it in for the growing line
+in one step. This is what keeps the reply from appearing in full first and then
+streaming a second copy underneath it when playback lags behind the socket.
+**Streaming / Full reply** switches the reveal off for the session; **Settings
+→ Stream replies as they are written** is the permanent choice. Skip mode still
+consumes the whole stream, so the reply and its diagnostics are committed
+together when `[DONE]` / the final transcript arrives; it never changes what
+the model produced.
 
 ### Playback pacing
 
@@ -314,9 +319,14 @@ exchange with the closing-take sheet: record a take, or skip it and see what
 that costs. Both choices state that Delivery is 15% of the weighted score and
 that the remaining dimensions are rescaled when it is missing, so the learner
 decides with the consequence in view. Continuing closes the room and opens the
-verdict, which starts the review; closing the room without deciding falls back
-to the same choice on the verdict page. A typed round shows the choice as its
-own page before the scorecard.
+verdict; the take and the transcript are reviewed together there, and the
+combined weighted score is written once both are ready. The take is transcribed
+first, then that transcript joins the one argument analysis pass while delivery
+coaching runs alongside it, so the closing words are not analyzed a second time.
+Skipping reviews the transcript only. Closing the room without deciding falls
+back to the same choice on the verdict page. A typed round shows the choice as
+its own page before the scorecard, and that page only records the take — delivery
+is never reviewed before the verdict.
 
 ### Barge-in (P2)
 
@@ -373,9 +383,10 @@ The current backend suite has 413 passing tests. Voice-path coverage includes:
 The Playwright suite includes a full spoken turn using Chromium's fake audio
 device against the mocked API. This checks microphone capture, the voice socket
 turn, and both transcript lines in the room. It also ends a spoken round and
-checks that the closing-take choice appears inside the room, and that the score
-run can be stopped and resumed. It does not measure real-device
-barge-in latency; that still needs a human/device measurement.
+checks that the closing-take choice appears inside the room, that a recorded
+take is handed from the room to the verdict and reviewed there automatically,
+and that the score run can be stopped and resumed. It does not measure
+real-device barge-in latency; that still needs a human/device measurement.
 
 ## When the room will not open
 

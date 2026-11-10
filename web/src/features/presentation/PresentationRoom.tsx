@@ -3,8 +3,8 @@ import { LoaderCircle, Mic, RotateCcw, Sparkles, Square, Upload } from "lucide-r
 import { useAuth } from "../auth/AuthProvider";
 import { MicCueArt } from "../../components/CueArt";
 import { DEFAULT_LOCAL_MODEL, type LocalModel } from "../../services/app-settings";
-import { analyzePresentation, type PresentationResult } from "../../services/presentation-api";
-import { savePresentationFeedback, uploadPresentationAudio } from "../../services/presentation-records";
+import type { PresentationResult } from "../../services/presentation-api";
+import { reviewDeliveryTake, type DeliveryTake } from "../../services/presentation-records";
 import { loadProfile } from "../../services/profiles";
 import "./presentation.css";
 
@@ -24,7 +24,21 @@ function formatStamp(seconds: number) {
   return `${m}:${s}`;
 }
 
-export function PresentationRoom({ topic, sessionId, compact, initialResult = null, model = DEFAULT_LOCAL_MODEL, onResult }: { topic?: string; sessionId?: string | null; compact?: boolean; initialResult?: PresentationResult | null; model?: LocalModel; onResult?: (result: PresentationResult | null) => void }) {
+type PresentationRoomProps = {
+  topic?: string;
+  sessionId?: string | null;
+  compact?: boolean;
+  initialResult?: PresentationResult | null;
+  model?: LocalModel;
+  onResult?: (result: PresentationResult | null) => void;
+  /** Act V only records a take; the verdict flow reviews it automatically. */
+  recordOnly?: boolean;
+  /** Reports the current take so a parent can continue with the recording. */
+  onTake?: (take: DeliveryTake | null) => void;
+  onRecordingChange?: (recording: boolean) => void;
+};
+
+export function PresentationRoom({ topic, sessionId, compact, initialResult = null, model = DEFAULT_LOCAL_MODEL, onResult, recordOnly = false, onTake, onRecordingChange }: PresentationRoomProps) {
   const { session, user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -39,6 +53,24 @@ export function PresentationRoom({ topic, sessionId, compact, initialResult = nu
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef(0);
+  const onTakeRef = useRef(onTake);
+  const onRecordingChangeRef = useRef(onRecordingChange);
+
+  useEffect(() => {
+    onTakeRef.current = onTake;
+    onRecordingChangeRef.current = onRecordingChange;
+  });
+
+  useEffect(() => {
+    if (!recordOnly) return;
+    onRecordingChangeRef.current?.(recording);
+    if (recording) onTakeRef.current?.(null);
+  }, [recording, recordOnly]);
+
+  useEffect(() => {
+    if (!recordOnly) return;
+    onTakeRef.current?.(file ? { file, retain } : null);
+  }, [file, retain, recordOnly]);
 
   useEffect(() => () => {
     window.clearInterval(timerRef.current);
@@ -119,6 +151,8 @@ export function PresentationRoom({ topic, sessionId, compact, initialResult = nu
       };
       recorderRef.current = recorder;
       recorder.start();
+      // A fresh take replaces the previous recording or upload.
+      pick(null);
       setRecording(true);
       setRecSecs(0);
       timerRef.current = window.setInterval(() => setRecSecs((s) => {
@@ -144,29 +178,34 @@ export function PresentationRoom({ topic, sessionId, compact, initialResult = nu
   }
 
   async function analyze() {
-    if (!file || loading) return;
+    if (!file || loading || recordOnly) return;
     setLoading(true); setError(""); setNotice("");
     try {
-      const out = await analyzePresentation(file, file.name, topic, session?.access_token, model);
+      const review = reviewDeliveryTake({
+        file,
+        topic,
+        sessionId,
+        accessToken: session?.access_token,
+        model,
+        retain,
+        userId: user?.id ?? null,
+        save: Boolean(session && user),
+      });
+      const out = await review.result;
       setResult(out);
       onResult?.(out);
-      if (session && user) {
-        try {
-          const feedbackId = await savePresentationFeedback({ sessionId, topic, transcript: out.transcript, signals: out.signals, report: out.report });
-          if (retain) {
-            try {
-              await uploadPresentationAudio(user.id, feedbackId, file);
-              setNotice("Saved to your learner archive with its recording.");
-            } catch {
-              setNotice("Saved to your learner archive, but the recording could not be kept. Audio is discarded by default.");
-            }
-          } else {
-            setNotice("Saved to your learner archive. Audio discarded.");
-          }
-        } catch {
-          setNotice("Review is ready, but saving failed. It stays in this browser session.");
+      // Archiving (including the optional audio upload) finishes in the
+      // background, so the score appears before storage does.
+      void review.saved.then(({ retained, notice: saveNotice }) => {
+        setNotice(saveNotice);
+        if (retained) {
+          setResult((current) =>
+            current && current.transcript === out.transcript
+              ? { ...current, retained: true }
+              : current,
+          );
         }
-      }
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "The delivery coach could not review this audio.");
     } finally {
@@ -175,7 +214,7 @@ export function PresentationRoom({ topic, sessionId, compact, initialResult = nu
   }
 
   return (
-    <section className={`present-room ${compact ? "present-compact" : ""}`} role="region" aria-label="Delivery review">
+    <section className={`present-room ${compact ? "present-compact" : ""}`} role="region" aria-label={recordOnly ? "Closing take recorder" : "Delivery review"}>
       <div className="present-controls">
         <div className="present-buttons">
           {recording
@@ -185,11 +224,15 @@ export function PresentationRoom({ topic, sessionId, compact, initialResult = nu
             <Upload size={15} /> Upload
             <input type="file" accept="audio/webm,audio/wav,audio/mp3,audio/mpeg,audio/mp4,audio/m4a" className="visually-hidden" aria-label="Upload audio file" onChange={(e) => { pick(e.target.files?.[0] ?? null); e.target.value = ""; }} />
           </label>
-          <button className="button button-dark" onClick={() => void analyze()} disabled={!file || loading || recording}>
-            {loading ? <><LoaderCircle className="spin" size={15} /> Reviewing delivery</> : <><Sparkles size={15} /> Review delivery</>}
-          </button>
+          {!recordOnly && (
+            <button className="button button-dark" onClick={() => void analyze()} disabled={!file || loading || recording}>
+              {loading ? <><LoaderCircle className="spin" size={15} /> Reviewing delivery</> : <><Sparkles size={15} /> Review delivery</>}
+            </button>
+          )}
         </div>
-        <p className="present-hint">Record up to 3:00 or upload webm/wav/mp3/m4a under 10MB. Audio is discarded by default.</p>
+        <p className="present-hint">{recordOnly
+          ? "Record up to 3:00 or upload webm/wav/mp3/m4a under 10MB. Delivery is reviewed with your verdict."
+          : "Record up to 3:00 or upload webm/wav/mp3/m4a under 10MB. Audio is discarded by default."}</p>
         {user && (
           <label className="present-check" htmlFor={`retain-${compact ? "compact" : "full"}`}>
             <input
@@ -206,7 +249,7 @@ export function PresentationRoom({ topic, sessionId, compact, initialResult = nu
         {error && <div className="analysis-error" role="alert">{error}</div>}
         {notice && <div className="inline-notice" role="status">{notice}</div>}
       </div>
-      {result && <>
+      {!recordOnly && result && <>
         <div className="present-signals">
           <div><span>PACE</span><b>{result.signals.wpm} wpm</b></div>
           <div><span>FILLERS</span><b>{result.signals.filler_count}</b></div>

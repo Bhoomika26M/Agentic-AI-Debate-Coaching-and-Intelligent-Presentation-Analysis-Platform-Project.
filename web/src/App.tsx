@@ -47,6 +47,7 @@ import { OpponentEmblem } from "./components/OpponentEmblem";
 import { EmptyCueArt } from "./components/CueArt";
 import { MarkdownText } from "./components/Markdown";
 import type { PresentationResult } from "./services/presentation-api";
+import { reviewDeliveryTake, type DeliveryTake } from "./services/presentation-records";
 import { stripControlMarkers } from "./utils/text";
 import { PracticeHeader, PracticeHome, PublicWelcome } from "./features/home/PracticeHome";
 import "./features/voice/voice.css";
@@ -440,6 +441,8 @@ export default function App() {
   const [planUpdateStatus, setPlanUpdateStatus] = useState<"idle" | "updating" | "updated" | "failed">("idle");
   const [planUpdateError, setPlanUpdateError] = useState("");
   const [deliveryResult, setDeliveryResult] = useState<PresentationResult | null>(null);
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [deliveryError, setDeliveryError] = useState("");
   const [judge, setJudge] = useState<JudgeVerdict | null>(null);
   const [judgeLoading, setJudgeLoading] = useState(false);
   const [judgeError, setJudgeError] = useState("");
@@ -466,11 +469,18 @@ export default function App() {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const reviewAbortRef = useRef<AbortController | null>(null);
+  const deliveryAbortRef = useRef<AbortController | null>(null);
   const reviewStartedRef = useRef(0);
   const stickToBottomRef = useRef(true);
   const lastTurnRef = useRef<{ history: DebateMessage[]; latest: string | null } | null>(null);
   const pendingResumeRef = useRef<string | null>(null);
   const reviewInFlightRef = useRef(false);
+  const deliveryInFlightRef = useRef(false);
+  const closingTakeRef = useRef<DeliveryTake | null>(null);
+  // The closing transcript already included in the current analysis report.
+  // An empty string means the report was scored without closing words; null
+  // means we cannot know (for example, an archived report).
+  const analysisClosingRef = useRef<string | null>(null);
   const judgeSeqRef = useRef(0);
   const planUpdateInFlightRef = useRef(false);
   const savedTurnIds = useRef(new Set<string>());
@@ -524,7 +534,7 @@ export default function App() {
   const unavailableJudgeDimensions = judge
     ? SCORE_DIMENSION_ORDER.filter((key) => !judge.dimensions.some((dimension) => dimension.key === key)).map((key) => SCORE_DIMENSION_LABELS[key].toLowerCase())
     : [];
-  const verdictComputing = analysisLoading || judgeLoading;
+  const verdictComputing = analysisLoading || deliveryLoading || judgeLoading;
   useEffect(() => {
     if (!analysisLoading) {
       setReviewElapsed(0);
@@ -537,7 +547,10 @@ export default function App() {
     );
     return () => window.clearInterval(timer);
   }, [analysisLoading]);
-  useEffect(() => () => reviewAbortRef.current?.abort(), []);
+  useEffect(() => () => {
+    reviewAbortRef.current?.abort();
+    deliveryAbortRef.current?.abort();
+  }, []);
   useEffect(() => {
     const initial = viewFromHash();
     if (initial !== view) setView(initial);
@@ -997,6 +1010,7 @@ export default function App() {
     if (!chosenTopic) return;
     abortRef.current?.abort();
     reviewAbortRef.current?.abort();
+    deliveryAbortRef.current?.abort();
     clearSnapshot();
     setVoiceOpen(false);
     setVoiceRoundOver(false);
@@ -1012,12 +1026,16 @@ export default function App() {
     setCueVisible(false);
     setRecordNotice("");
     setAnalysis(null);
+    analysisClosingRef.current = null;
     setAnalysisComplete(false);
     setAnalysisError("");
     setAnalysisSaved(false);
     setPlanUpdateStatus("idle");
     setPlanUpdateError("");
     setDeliveryResult(null);
+    setDeliveryLoading(false);
+    setDeliveryError("");
+    closingTakeRef.current = null;
     setJudge(null);
     setVerdictRank(null);
     setVerdictRankLoading(false);
@@ -1215,7 +1233,89 @@ export default function App() {
     }
   }
 
-  async function reviewDebate() {
+  /**
+   * Review the closing take without blocking the argument review on coaching.
+   *
+   * Transcription resolves first and is handed to the transcript review, which
+   * includes the closing words in its one analysis pass. Delivery coaching and
+   * archiving continue separately; a failed take still leaves the argument
+   * verdict usable because the judge simply runs without Delivery.
+   */
+  function startDeliveryReview(take: DeliveryTake) {
+    closingTakeRef.current = take;
+    deliveryAbortRef.current?.abort();
+    const controller = new AbortController();
+    deliveryAbortRef.current = controller;
+    deliveryInFlightRef.current = true;
+    setDeliveryLoading(true);
+    setDeliveryError("");
+    setDeliveryResult(null);
+    const review = reviewDeliveryTake({
+      file: take.file,
+      retain: take.retain,
+      topic: activeTopic,
+      sessionId: recordId,
+      accessToken: session?.access_token,
+      model: loadApplicationSettings(user?.id ?? "guest").model,
+      userId: user?.id ?? null,
+      save: Boolean(session && user),
+      signal: controller.signal,
+    });
+    const result = review.result
+      .then((next) => {
+        if (controller.signal.aborted) return null;
+        setDeliveryResult(next);
+        return next;
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setDeliveryError(error instanceof Error ? error.message : "The closing take could not be reviewed.");
+        }
+        return null;
+      })
+      .finally(() => {
+        if (deliveryAbortRef.current === controller) {
+          deliveryAbortRef.current = null;
+          deliveryInFlightRef.current = false;
+          setDeliveryLoading(false);
+        }
+      });
+    return { transcript: review.transcript, result };
+  }
+
+  /** Leave Act V: score the take and the transcript as one verdict pass. */
+  function startVerdictReview(take: DeliveryTake | null) {
+    if (take) {
+      const review = startDeliveryReview(take);
+      if (user && learnerTurns.length > 0) {
+        void reviewDebate(null, review.result, review.transcript);
+      }
+      return;
+    }
+    closingTakeRef.current = null;
+    setDeliveryResult(null);
+    setDeliveryLoading(false);
+    setDeliveryError("");
+    if (user && learnerTurns.length > 0) void reviewDebate(null);
+  }
+
+  function retryDeliveryReview() {
+    const take = closingTakeRef.current;
+    if (!take || deliveryInFlightRef.current) return;
+    const review = startDeliveryReview(take);
+    if (analysis?.ratings && analysisComplete) {
+      // A failed retry still leaves a usable argument-only score.
+      void review.result.then((delivery) => void runJudge(analysis, delivery));
+    } else if (user && learnerTurns.length > 0) {
+      void reviewDebate(null, review.result, review.transcript);
+    }
+  }
+
+  async function reviewDebate(
+    delivery: PresentationResult | null = deliveryResult,
+    pendingDelivery?: Promise<PresentationResult | null>,
+    closingTranscript?: Promise<string | null>,
+  ) {
     if (analysisLoading || reviewInFlightRef.current || learnerTurns.length === 0) return;
     reviewAbortRef.current?.abort();
     setScoringStopped(false);
@@ -1234,6 +1334,14 @@ export default function App() {
     setVerdictRankLoading(false);
     setJudgeError("");
     try {
+      // The closing words only need speech recognition, not delivery coaching.
+      // Waiting for them here means the transcript is analyzed once, with the
+      // closing included, instead of running a second full analysis later.
+      let closing = delivery?.transcript.trim() ?? "";
+      if (closingTranscript) {
+        closing = ((await closingTranscript) ?? closing).trim();
+        if (controller.signal.aborted) return;
+      }
       const report = await streamAnalysis({
         topic: activeTopic,
         learner_position: position,
@@ -1244,8 +1352,9 @@ export default function App() {
         // Show the rubric as soon as it lands, but do not score it yet: the
         // final verdict uses fallacy flags that have not arrived at this point.
         setAnalysis(partial);
-      }, controller.signal);
+      }, controller.signal, closing || undefined);
       if (controller.signal.aborted) return;
+      analysisClosingRef.current = closing;
       setAnalysis(report);
       setAnalysisComplete(true);
       let reviewSaved = false;
@@ -1262,7 +1371,12 @@ export default function App() {
       if (controller.signal.aborted) return;
       // The weighted verdict is deterministic and does not depend on the plan refresh.
       // Start it first; the slower plan call then runs in the background.
-      if (report.ratings) void runJudge(report, deliveryResult);
+      let finalDelivery = delivery;
+      if (pendingDelivery) {
+        finalDelivery = await pendingDelivery;
+        if (controller.signal.aborted) return;
+      }
+      if (report.ratings) void runJudge(report, finalDelivery);
       if (user && recordId && reviewSaved) {
         void updatePlanFromSavedWork();
       } else if (user && recordId) {
@@ -1287,6 +1401,11 @@ export default function App() {
       setAnalysisError("");
       setAnalysisLoading(false);
     }
+    if (deliveryInFlightRef.current) {
+      deliveryAbortRef.current?.abort();
+      setDeliveryError("");
+      setDeliveryLoading(false);
+    }
     if (judgeLoading) {
       // The score request has no abort path, so ignore whatever it returns.
       judgeSeqRef.current += 1;
@@ -1297,6 +1416,15 @@ export default function App() {
 
   function resumeScoring() {
     setScoringStopped(false);
+    if (closingTakeRef.current && !deliveryResult) {
+      const review = startDeliveryReview(closingTakeRef.current);
+      if (analysis?.ratings && analysisComplete) {
+        void review.result.then((delivery) => void runJudge(analysis, delivery));
+      } else {
+        void reviewDebate(null, review.result, review.transcript);
+      }
+      return;
+    }
     if (analysis?.ratings && analysisComplete) void runJudge(analysis, deliveryResult);
     else void reviewDebate();
   }
@@ -1317,16 +1445,21 @@ export default function App() {
     }
     try {
       let scoredReport = report;
-      if (delivery?.transcript.trim()) {
+      const closing = delivery?.transcript.trim() ?? "";
+      // The auto-review already analyzed the closing words in its one pass.
+      // Re-analyze only when this delivery's transcript was not part of the
+      // report already, such as a take added later or a retake.
+      if (closing && closing !== analysisClosingRef.current) {
         scoredReport = await analyzeDebate({
           topic: activeTopic,
           learner_position: position,
           persona,
           difficulty,
           model: loadApplicationSettings(user?.id ?? "guest").model,
-        }, debateTurns, session?.access_token, delivery.transcript);
+        }, debateTurns, session?.access_token, closing);
         // A stopped run must not write its late result over the paused page.
         if (sequence !== judgeSeqRef.current) return;
+        analysisClosingRef.current = closing;
         setAnalysis(scoredReport);
         setAnalysisComplete(true);
         if (targetRecordId) {
@@ -1372,6 +1505,7 @@ export default function App() {
   }
 
   function openArchivedVerdict(record: DebateRecord, turns: DebateRecordTurn[], report: AnalysisReport | null, savedVerdict: JudgeVerdict | null, delivery: PresentationResult | null) {
+    deliveryAbortRef.current?.abort();
     const debateTurns: DebateMessage[] = turns.map((turn) => ({
       id: turn.id,
       speaker: turn.speaker,
@@ -1412,6 +1546,15 @@ export default function App() {
     setClosingGate(false);
     setScoringStopped(false);
     setDeliveryResult(delivery);
+    setDeliveryLoading(false);
+    setDeliveryError("");
+    closingTakeRef.current = null;
+    // A saved verdict was already scored from this archived report and its
+    // delivery, so re-scoring does not need another argument pass. Without a
+    // saved verdict the report's closing coverage is unknown.
+    analysisClosingRef.current = savedVerdict
+      ? (delivery?.transcript.trim() ?? "")
+      : null;
     setPendingArchiveVerdict({ record, turns: debateTurns, analysis: report, verdict: savedVerdict, delivery });
     setView("verdict");
   }
@@ -1425,7 +1568,11 @@ export default function App() {
         void runJudge(pending.analysis, pending.delivery, pending.turns, pending.record.id);
       }
     } else if (pending.turns.some((turn) => turn.speaker === "learner")) {
-      void reviewDebate();
+      void reviewDebate(
+        pending.delivery,
+        undefined,
+        pending.delivery ? Promise.resolve(pending.delivery.transcript) : undefined,
+      );
     }
   }, [pendingArchiveVerdict, view]);
 
@@ -1447,13 +1594,14 @@ export default function App() {
     setConfirmEnd(true);
   }
 
-  function finishSession(options?: { closingHandled?: boolean }) {
+  function finishSession(options?: { closingHandled?: boolean; take?: DeliveryTake | null }) {
     // A spoken round ends inside the voice room, not by dropping the learner
     // back into the typed arena: the room offers the closing take itself.
     const askInRoom = Boolean(voiceOpen) && !options?.closingHandled && learnerTurns.length > 0;
     setEndedAt(Date.now());
     abortRef.current?.abort();
     reviewAbortRef.current?.abort();
+    deliveryAbortRef.current?.abort();
     setStreaming(false);
     setConfirmEnd(false);
     setGraceTurn(false);
@@ -1476,9 +1624,10 @@ export default function App() {
     setVoiceOpen(false);
     setView("verdict");
     if (options?.closingHandled) {
-      // The room already asked for the take; go straight to the scorecard.
+      // The room already asked for the take; go straight to the scorecard and
+      // review the take with the transcript.
       setClosingGate(false);
-      if (user && recordId && learnerTurns.length > 0) void reviewDebate();
+      startVerdictReview(options.take ?? null);
       return;
     }
     // Ask for the closing take before the scorecard is written: it is the only
@@ -1491,14 +1640,14 @@ export default function App() {
     if (user && recordId && learnerTurns.length > 0) void reviewDebate();
   }
 
-  function finishVoiceRound() {
+  function finishVoiceRound(take: DeliveryTake | null) {
     setVoiceOpen(false);
-    finishSession({ closingHandled: true });
+    finishSession({ closingHandled: true, take });
   }
 
-  function enterVerdictFromClosing() {
+  function enterVerdictFromClosing(take: DeliveryTake | null) {
     setClosingGate(false);
-    if (user && recordId && learnerTurns.length > 0) void reviewDebate();
+    startVerdictReview(take);
   }
 
   async function submitArgument(event: FormEvent<HTMLFormElement>) {
@@ -1723,6 +1872,9 @@ export default function App() {
     setPlanUpdateStatus("idle");
     setPlanUpdateError("");
     setDeliveryResult(null);
+    setDeliveryLoading(false);
+    setDeliveryError("");
+    closingTakeRef.current = null;
     setJudge(null);
     setVerdictRank(null);
     setVerdictRankLoading(false);
@@ -2164,9 +2316,6 @@ export default function App() {
                     secondsLeft={secondsLeft}
                     roundSeconds={duration * 60}
                     roundOver={voiceRoundOver}
-                    recordId={recordId}
-                    deliveryResult={deliveryResult}
-                    onDeliveryResult={setDeliveryResult}
                     onFinishRound={finishVoiceRound}
                     onClose={() => {
                       setVoiceOpen(false);
@@ -2405,10 +2554,6 @@ export default function App() {
             >
               <ClosingTake
                 topic={activeTopic}
-                recordId={recordId}
-                model={appSettings.model}
-                initialResult={deliveryResult}
-                onDelivery={setDeliveryResult}
                 onContinue={enterVerdictFromClosing}
               />
             </Suspense>
@@ -2417,14 +2562,14 @@ export default function App() {
 
         {view === "verdict" && !closingGate && (
           <motion.main key="verdict" className="verdict-page" {...pageMotion}>
-            <header className={`verdict-header verdict-header-review${analysisLoading || judgeLoading ? " is-computing" : ""}`}>
+            <header className={`verdict-header verdict-header-review${verdictComputing ? " is-computing" : ""}`}>
               <button className="arena-brand" type="button" onClick={returnHome} aria-label="Verdict home"><span className="brand-mark"><BookOpenText size={16} /></span><span>VERDICT<span className="brand-period">.</span></span></button>
-              <span className="verdict-header-title">DEBATE REVIEW <i aria-hidden="true">—</i> {analysisLoading || judgeLoading ? "IN PROGRESS" : "COMPLETED"}</span>
+              <span className="verdict-header-title">DEBATE REVIEW <i aria-hidden="true">—</i> {verdictComputing ? "IN PROGRESS" : "COMPLETED"}</span>
             </header>
             <section className="verdict-content verdict-content-review">
               <div className="verdict-heading-row">
                 <h1>YOUR REHEARSAL<br /><span>IS IN THE BOOK</span><i className="verdict-heading-period">.</i></h1>
-                <span className="verdict-heading-note">{analysisLoading || judgeLoading ? <>REVIEW<br />IN PROGRESS</> : <>COMPLETED DEBATE<br />REVIEW</>}</span>
+                <span className="verdict-heading-note">{verdictComputing ? <>REVIEW<br />IN PROGRESS</> : <>COMPLETED DEBATE<br />REVIEW</>}</span>
               </div>
               <p className="verdict-summary"><b>Motion:</b> {activeTopic}<span className="verdict-summary-divider" aria-hidden="true" /> <b>Your side:</b> {position === "for" ? "For" : "Against"}<span className="verdict-summary-divider" aria-hidden="true" /> <b>Opponent:</b> {activePersona.name}</p>
               {verdictComputing && (
@@ -2436,13 +2581,13 @@ export default function App() {
               )}
               <div className="verdict-stats">
                 <div><span>OVERALL SCORE</span>{judge ? <b>{Math.round(judge.overall * 20)}<small> / 100</small></b> : verdictComputing ? <i className="verdict-stat-skeleton" aria-hidden="true" /> : <b>—</b>}</div>
-                <div><span>WEIGHTED RANK</span>{verdictRank ? <b aria-label={`${formatOrdinal(verdictRank.rank)} out of ${verdictRank.total} among your saved verdicts`}>{formatOrdinal(verdictRank.rank)}<small> of {verdictRank.total}</small></b> : verdictRankLoading || verdictComputing ? <i className="verdict-stat-skeleton" aria-hidden="true" /> : <b>—</b>}</div>
+                <div title="Your weighted overall score compared with every completed verdict saved to your account. Ties share a rank."><span>WEIGHTED RANK</span>{verdictRank ? <b aria-label={`${formatOrdinal(verdictRank.rank)} out of ${verdictRank.total} among your saved verdicts`}>{formatOrdinal(verdictRank.rank)}<small> of {verdictRank.total}</small></b> : verdictRankLoading || verdictComputing ? <i className="verdict-stat-skeleton" aria-hidden="true" /> : <b>—</b>}</div>
                 <div><span>DEBATE TIME</span><b>{formatTime(Math.min(elapsed, duration * 60))}</b></div>
               </div>
-              {(analysisLoading || judgeLoading) && (
+              {verdictComputing && (
                 <div className="scoring-run" role="status" aria-live="polite">
-                  <span className="scoring-run-title">{analysisLoading ? "SCORING THE REVIEW" : "WEIGHING THE FINAL SCORE"}</span>
-                  <small>{analysisLoading ? `Reading your case · ${reviewElapsed}s` : "Delivery and the weighted total."}</small>
+                  <span className="scoring-run-title">{analysisLoading && !analysisComplete ? "SCORING THE REVIEW" : deliveryLoading ? "REVIEWING THE CLOSING TAKE" : "WEIGHING THE FINAL SCORE"}</span>
+                  <small>{analysisLoading && !analysisComplete ? `Reading your case · ${reviewElapsed}s` : deliveryLoading ? "Listening for pace, fillers, and pauses." : "Delivery and the weighted total."}</small>
                   <button type="button" onClick={stopScoring}>Stop scoring</button>
                 </div>
               )}
@@ -2451,6 +2596,16 @@ export default function App() {
                   <span className="scoring-run-title">SCORING STOPPED</span>
                   <small>Your transcript is saved. Continue whenever you want the scorecard.</small>
                   <button type="button" onClick={resumeScoring}>Resume scoring</button>
+                </div>
+              )}
+              {deliveryError && !verdictComputing && (
+                <div className="analysis-error" role="alert">
+                  <span>{deliveryError} The weighted score leaves Delivery out and rescales the other dimensions.</span>
+                  {closingTakeRef.current && (
+                    <button className="button button-light" type="button" onClick={retryDeliveryReview}>
+                      Retry delivery review
+                    </button>
+                  )}
                 </div>
               )}
               <section className="review-block verdict-review-block" aria-label="Argument review">
@@ -2512,7 +2667,7 @@ export default function App() {
                 )}
 
                   {analysis && <>
-                  {!judge && !judgeError && verdictComputing && analysisComplete && <p className="review-intro verdict-computing-status" role="status"><LoaderCircle className="spin" size={14} /> {analysisLoading ? "Updating your review and scorecard." : deliveryResult ? "Scoring your opening, replies, and closing take." : "Weighing the finished sections."}</p>}
+                  {!judge && !judgeError && verdictComputing && analysisComplete && <p className="review-intro verdict-computing-status" role="status"><LoaderCircle className="spin" size={14} /> {deliveryLoading ? "Reviewing your closing take. The weighted total follows." : analysisComplete && analysisLoading ? "Updating your review and scorecard." : deliveryResult ? "Scoring your opening, replies, and closing take." : "Weighing the finished sections."}</p>}
                   {judgeError && (
                     <div className="analysis-error" role="alert">
                       {judgeError}
@@ -2561,16 +2716,18 @@ export default function App() {
                     <summary className="verdict-delivery-summary">
                       <span className="verdict-delivery-copy">
                         <strong>Delivery review</strong>
-                        <small>{deliveryResult
-                          ? judgeLoading ? "Closing take reviewed. Updating your final weighted score…" : judgeError ? "Closing take reviewed. Retry scoring to refresh your final weighted score." : "Closing take reviewed. Your weighted score now includes delivery."
-                          : "Record a closing take to score delivery and complete your final weighted score."}</small>
+                        <small>{deliveryLoading
+                          ? "Reviewing your closing take before the final weighted score."
+                          : deliveryResult
+                            ? judgeLoading ? "Closing take reviewed. Updating your final weighted score…" : judgeError ? "Closing take reviewed. Retry scoring to refresh your final weighted score." : "Closing take reviewed. Your weighted score now includes delivery."
+                            : "Record a closing take to score delivery and complete your final weighted score."}</small>
                       </span>
-                      <span className="verdict-delivery-action">{deliveryResult ? judgeLoading ? "UPDATING" : judgeError ? "RETRY SCORE" : judge ? "FINAL SCORE READY" : "REVIEW TAKE" : "COMPLETE FINAL SCORE"}</span>
+                      <span className="verdict-delivery-action">{deliveryLoading ? "REVIEWING" : deliveryResult ? judgeLoading ? "UPDATING" : judgeError ? "RETRY SCORE" : judge ? "FINAL SCORE READY" : "REVIEW TAKE" : "COMPLETE FINAL SCORE"}</span>
                     </summary>
                     <div className="delivery-body">
                       <p className="analysis-intro">Record or upload a closing take. Pace, fillers, and pauses are observable patterns with timestamps, not diagnoses. Your audio is discarded after the review.</p>
                       <Suspense fallback={<div className="inline-notice" role="status">Loading delivery review…</div>}>
-                        <PresentationRoom key={`${recordId ?? "new"}-${deliveryResult ? "saved" : "empty"}`} topic={activeTopic} sessionId={recordId} compact model={appSettings.model} initialResult={deliveryResult} onResult={(next) => { setDeliveryResult(next); void runJudge(analysis, next); }} />
+                        <PresentationRoom key={`${recordId ?? "new"}-${deliveryResult ? "saved" : "empty"}`} topic={activeTopic} sessionId={recordId} compact model={appSettings.model} initialResult={deliveryResult} onResult={(next) => { setDeliveryError(""); setDeliveryResult(next); void runJudge(analysis, next); }} />
                       </Suspense>
                       <button className="text-link step-aside" type="button" onClick={openDeliveryPractice}>Or practice a take on its own <ArrowUpRight size={15} /></button>
                     </div>

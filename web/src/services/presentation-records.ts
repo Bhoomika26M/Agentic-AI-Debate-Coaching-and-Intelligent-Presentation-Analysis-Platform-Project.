@@ -1,4 +1,5 @@
-import type { PresentationReport, DeliverySignals, PresentationResult } from "./presentation-api";
+import { coachPresentation, transcribePresentation, type PresentationReport, type DeliverySignals, type PresentationResult } from "./presentation-api";
+import type { LocalModel } from "./app-settings";
 import { supabase } from "../features/auth/supabase";
 
 export type PresentationFeedback = {
@@ -6,6 +7,9 @@ export type PresentationFeedback = {
   signals: DeliverySignals; report: PresentationReport;
   audio_path: string | null; created_at: string;
 };
+
+/** The recorded or uploaded audio captured for a closing take. */
+export type DeliveryTake = { file: File; retain: boolean };
 
 function requireClient() {
   if (!supabase) throw new Error("Account storage is not configured.");
@@ -80,4 +84,106 @@ export async function uploadPresentationAudio(userId: string, feedbackId: string
   if (error) throw error;
   await setPresentationAudio(feedbackId, path);
   return path;
+}
+
+/**
+ * Start a closing-take review in two observable phases.
+ *
+ * `transcript` resolves as soon as speech recognition finishes, so the verdict
+ * can include the closing words in its single argument pass. `result` resolves
+ * when delivery coaching finishes, and `saved` covers best-effort archiving in
+ * the background so neither the argument review nor the judge waits for storage.
+ */
+export type DeliveryReview = {
+  transcript: Promise<string | null>;
+  result: Promise<PresentationResult>;
+  saved: Promise<{ retained: boolean; notice: string }>;
+};
+
+export function reviewDeliveryTake(input: {
+  file: File;
+  topic?: string;
+  sessionId?: string | null;
+  accessToken?: string;
+  model?: LocalModel;
+  retain?: boolean;
+  userId?: string | null;
+  save?: boolean;
+  signal?: AbortSignal;
+}): DeliveryReview {
+  const transcriptRequest = transcribePresentation(
+    input.file,
+    input.file.name,
+    input.accessToken,
+    input.signal,
+  );
+  // A failed transcription still lets the argument review run without closing
+  // words; the delivery promise below carries the error to the UI.
+  const transcript = transcriptRequest
+    .then((take) => take.transcript)
+    .catch(() => null);
+  const result = transcriptRequest.then(async (take) => {
+    const report = await coachPresentation({
+      topic: input.topic,
+      segments: take.segments,
+      signals: take.signals,
+      accessToken: input.accessToken,
+      model: input.model,
+      signal: input.signal,
+    });
+    return {
+      transcript: take.transcript,
+      segments: take.segments,
+      signals: take.signals,
+      report,
+      retained: false,
+    };
+  });
+  const saved = result
+    .then((review) => archiveDeliveryReview(input, review))
+    .catch(() => ({ retained: false, notice: "" }));
+  return { transcript, result, saved };
+}
+
+async function archiveDeliveryReview(input: {
+  file: File;
+  topic?: string;
+  sessionId?: string | null;
+  retain?: boolean;
+  userId?: string | null;
+  save?: boolean;
+  signal?: AbortSignal;
+}, result: PresentationResult): Promise<{ retained: boolean; notice: string }> {
+  if (!input.save || !input.userId || input.signal?.aborted) {
+    return { retained: false, notice: "" };
+  }
+  try {
+    const feedbackId = await savePresentationFeedback({
+      sessionId: input.sessionId,
+      topic: input.topic,
+      transcript: result.transcript,
+      signals: result.signals,
+      report: result.report,
+    });
+    if (!input.retain) {
+      return { retained: false, notice: "Saved to your learner archive. Audio discarded." };
+    }
+    try {
+      await uploadPresentationAudio(input.userId, feedbackId, input.file);
+      return {
+        retained: true,
+        notice: "Saved to your learner archive with its recording.",
+      };
+    } catch {
+      return {
+        retained: false,
+        notice: "Saved to your learner archive, but the recording could not be kept. Audio is discarded by default.",
+      };
+    }
+  } catch {
+    return {
+      retained: false,
+      notice: "Review is ready, but saving failed. It stays in this browser session.",
+    };
+  }
 }

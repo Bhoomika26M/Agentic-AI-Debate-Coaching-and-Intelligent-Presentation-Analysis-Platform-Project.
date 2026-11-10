@@ -150,6 +150,7 @@
   background: #f4eee0;
 }
 .closing-booth-foot .button { min-height: 46px; padding-inline: 17px; }
+.closing-booth-note { flex: 1 1 100%; margin: 0; color: #655d52; font-size: 10.5px; line-height: 1.5; }
 .closing-loading { min-height: 60vh; display: flex; align-items: center; justify-content: center; gap: 9px; color: #514a40; font: 10px var(--mono); letter-spacing: .06em; }
 
 @media (max-width: 900px) {

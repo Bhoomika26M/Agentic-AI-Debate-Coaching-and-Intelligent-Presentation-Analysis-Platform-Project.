@@ -42,7 +42,10 @@ from .schemas import (
     JudgeVerdict,
     PlanRequest,
     PlanResponse,
+    PresentationReport,
+    PresentationRequest,
     PresentationResponse,
+    PresentationTranscriptResponse,
 )
 from .speech import (
     MAX_AUDIO_MB,
@@ -601,21 +604,13 @@ async def debate_judge(request: JudgeRequest) -> JudgeVerdict:
     return JudgeVerdict.model_validate(cleaned)
 
 
-@app.post(
-    "/api/presentation/analyze",
-    dependencies=[Depends(authenticate_request), Depends(enforce_model_rate_limit)],
-    response_model=PresentationResponse,
-)
-async def presentation_analysis(
-    audio: UploadFile = File(...),  # noqa: B008 - FastAPI reads the upload from this default.
-    topic: str | None = Form(default=None, min_length=3, max_length=240),
-    model: LocalModel | None = Form(default=None),  # noqa: B008 - FastAPI reads this form field.
-) -> PresentationResponse:
-    # Persistence stays in the browser; Python holds audio in memory and discards it.
+async def _validated_presentation_audio(
+    audio: UploadFile,
+) -> tuple[bytes, str, str]:
+    """Read and reject bad uploads before a heavy review or a model slot is used."""
     data = await audio.read(MAX_AUDIO_MB * 1024 * 1024 + 1)
     filename = audio.filename or "talk.webm"
     content_type = audio.content_type or "audio/webm"
-    # Size, type, and duration are rejected at the boundary, before a model slot is taken.
     try:
         validate_audio(filename, content_type, data)
         duration = await asyncio.to_thread(probe_duration, data)
@@ -627,6 +622,110 @@ async def presentation_analysis(
             status_code=413 if too_large else 400,
             detail=str(error),
         ) from error
+    return data, filename, content_type
+
+
+def _delivery_error(gaps: list[str], kind: str) -> HTTPException:
+    detail = "; ".join(gaps[:3]) if gaps else "Delivery review failed."
+    status = {"audio": 413, "unavailable": 503, "no_speech": 400}.get(kind, 502)
+    if status == 502:
+        detail = f"{detail} Try again."
+    return HTTPException(status_code=status, detail=detail)
+
+
+@app.post(
+    "/api/presentation/transcribe",
+    dependencies=[Depends(authenticate_request), Depends(enforce_model_rate_limit)],
+    response_model=PresentationTranscriptResponse,
+)
+async def presentation_transcribe(
+    audio: UploadFile = File(...),  # noqa: B008 - FastAPI reads the upload from this default.
+) -> PresentationTranscriptResponse:
+    """Return the transcript and signals as soon as speech recognition finishes.
+
+    The verdict flow can then include the closing words in its single argument
+    review while delivery coaching runs separately.
+    """
+    data, filename, content_type = await _validated_presentation_audio(audio)
+    if stream_slots.locked():
+        raise HTTPException(
+            status_code=429,
+            detail="The model is busy. Please retry in a moment.",
+        )
+    await stream_slots.acquire()
+    try:
+        from .agents.delivery_graph import transcribe_delivery
+
+        result, gaps, kind = await transcribe_delivery(data, filename, content_type)
+        if result is None:
+            raise _delivery_error(gaps, kind)
+        return PresentationTranscriptResponse.model_validate(result)
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception("Transcription failed unexpectedly: %s", error)
+        raise HTTPException(
+            status_code=503,
+            detail="Transcription failed. Check the backend logs and try again.",
+        ) from error
+    finally:
+        stream_slots.release()
+
+
+@app.post(
+    "/api/presentation/coach",
+    dependencies=[Depends(authenticate_request), Depends(enforce_model_rate_limit)],
+    response_model=PresentationReport,
+)
+async def presentation_coach(request: PresentationRequest) -> PresentationReport:
+    """Coach an already-transcribed take without uploading or transcribing it again."""
+    if stream_slots.locked():
+        raise HTTPException(
+            status_code=429,
+            detail="The model is busy. Please retry in a moment.",
+        )
+    await stream_slots.acquire()
+    try:
+        from .agents.delivery_graph import coach_transcript
+
+        with use_model(request.model):
+            report, gaps, kind = await coach_transcript(
+                request.topic,
+                [segment.model_dump() for segment in request.segments],
+                request.signals.model_dump(),
+            )
+        if report is None:
+            raise _delivery_error(gaps, kind)
+        return PresentationReport.model_validate(report)
+    except HTTPError as error:
+        logger.exception("Model delivery coaching failed: %s", error)
+        raise HTTPException(
+            status_code=503, detail="The model could not finish delivery review."
+        ) from error
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception("Delivery coaching failed unexpectedly: %s", error)
+        raise HTTPException(
+            status_code=503,
+            detail="Delivery review failed. Check the backend logs and try again.",
+        ) from error
+    finally:
+        stream_slots.release()
+
+
+@app.post(
+    "/api/presentation/analyze",
+    dependencies=[Depends(authenticate_request), Depends(enforce_model_rate_limit)],
+    response_model=PresentationResponse,
+)
+async def presentation_analysis(
+    audio: UploadFile = File(...),  # noqa: B008 - FastAPI reads the upload from this default.
+    topic: str | None = Form(default=None, min_length=3, max_length=240),
+    model: LocalModel | None = Form(default=None),  # noqa: B008 - FastAPI reads this form field.
+) -> PresentationResponse:
+    # Persistence stays in the browser; Python holds audio in memory and discards it.
+    data, filename, content_type = await _validated_presentation_audio(audio)
     if stream_slots.locked():
         raise HTTPException(
             status_code=429,
@@ -642,11 +741,7 @@ async def presentation_analysis(
             )
         if result is not None and not gaps:
             return PresentationResponse.model_validate({**result, "ser_reflection": []})
-        detail = "; ".join(gaps[:3]) if gaps else "Delivery review failed."
-        status = {"audio": 413, "unavailable": 503, "no_speech": 400}.get(kind, 502)
-        if status == 502:
-            raise HTTPException(status_code=502, detail=f"{detail} Try again.")
-        raise HTTPException(status_code=status, detail=detail)
+        raise _delivery_error(gaps, kind)
     except HTTPError as error:
         logger.exception("Model delivery coaching failed: %s", error)
         raise HTTPException(
