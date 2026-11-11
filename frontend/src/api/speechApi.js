@@ -16,11 +16,11 @@ export const speechApi = {
     return response.data;
   },
   getSessions: async () => {
-    const response = await axiosClient.get('/speech/sessions/');
+    const response = await axiosClient.get('/speech/speech-sessions/');
     return response.data;
   },
   getSessionDetail: async (id) => {
-    const response = await axiosClient.get(`/speech/sessions/${id}/`);
+    const response = await axiosClient.get(`/speech/speech-sessions/${id}/`);
     return response.data;
   },
 };
